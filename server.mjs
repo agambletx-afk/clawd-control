@@ -117,8 +117,8 @@ if (!existsSync(agentsJsonPath)) {
 const collector = new AgentCollector(agentsJsonPath);
 const sseClients = new Set();
 
-collector.on('update', ({ id, state }) => {
-  broadcast({ type: 'agent', id, data: state });
+collector.on('update', ({ id, state, removed }) => {
+  broadcast({ type: 'agent', id, data: state, removed: !!removed });
 });
 
 collector.on('hostMetrics', (metrics) => {

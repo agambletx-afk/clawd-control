@@ -250,13 +250,20 @@ node_modules/`);
     if (newAgent) {
       if (!newAgent.subagents) newAgent.subagents = {};
       newAgent.subagents.allowAgents = ['main'];
+    }
 
-      // Bind Telegram channel if verified
-      if (telegramVerified) {
-        newAgent.channels = {
-          telegram: { botToken: telegramToken, dmPolicy: 'pairing' }
-        };
-      }
+    // Bind Telegram channel as an account under channels.telegram.accounts
+    if (telegramVerified) {
+      if (!config.channels) config.channels = {};
+      if (!config.channels.telegram) config.channels.telegram = { enabled: true };
+      if (!config.channels.telegram.accounts) config.channels.telegram.accounts = {};
+      config.channels.telegram.accounts[id] = {
+        enabled: true,
+        dmPolicy: 'pairing',
+        botToken: telegramToken,
+        groupPolicy: 'allowlist',
+        streamMode: 'partial'
+      };
     }
 
     // Enable agent-to-agent messaging
@@ -266,7 +273,7 @@ node_modules/`);
 
     writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
     steps.push('✅ Cross-agent permissions configured');
-    if (telegramVerified) steps.push('📱 Telegram channel bound');
+    if (telegramVerified) steps.push(`📱 Telegram bound as account "${id}"`);
     else if (telegramToken) steps.push('⏭️ Telegram binding skipped (verification failed)');
     else steps.push('⏭️ Telegram skipped');
   } catch (e) {

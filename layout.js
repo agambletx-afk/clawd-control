@@ -468,11 +468,15 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
           updateClock();
           document.dispatchEvent(new CustomEvent('layout:snapshot'));
         } else if (msg.type === 'agent') {
-          agentState[msg.id] = msg.data;
+          if (msg.removed || msg.data === null) {
+            delete agentState[msg.id];
+          } else {
+            agentState[msg.id] = msg.data;
+          }
           renderSidebar();
           renderFleetBar();
           document.dispatchEvent(
-            new CustomEvent('layout:agent-update', { detail: { id: msg.id } })
+            new CustomEvent('layout:agent-update', { detail: { id: msg.id, removed: !!msg.removed } })
           );
         } else if (msg.type === 'host') {
           window.hostState = msg.data;

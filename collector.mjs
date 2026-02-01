@@ -35,6 +35,21 @@ export class AgentCollector extends EventEmitter {
 
   loadConfig() {
     this.config = JSON.parse(readFileSync(this.configPath, 'utf8'));
+    const currentIds = new Set(this.config.agents.map(a => a.id));
+
+    // Prune agents that were removed from config
+    for (const id of this.agents.keys()) {
+      if (!currentIds.has(id)) {
+        this.agents.delete(id);
+        this.state.delete(id);
+        this.agentGateway.delete(id);
+        this.emit('update', { id, state: null, removed: true });
+      }
+    }
+
+    // Rebuild gateway agent lists (clear and repopulate)
+    for (const [, gw] of this.gateways) { gw.agents = []; }
+
     for (const agent of this.config.agents) {
       this.agents.set(agent.id, agent);
       const gwKey = `${agent.host}:${agent.port}:${agent.token.slice(0, 8)}`;
@@ -56,6 +71,15 @@ export class AgentCollector extends EventEmitter {
           health: null, sessions: null, usage: null, heartbeat: null,
           presence: null, channels: null, cron: null, error: null,
         });
+      }
+    }
+
+    // Remove empty gateways
+    for (const [key, gw] of this.gateways) {
+      if (gw.agents.length === 0) {
+        if (gw.ws) try { gw.ws.close(); } catch {}
+        if (gw.reconnectTimer) clearTimeout(gw.reconnectTimer);
+        this.gateways.delete(key);
       }
     }
   }

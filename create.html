@@ -528,162 +528,174 @@
 </div>
 
 <script>
-let currentStep = 0;
-let selectedEmoji = '';
-let skipTelegram = false;
+// All state and functions on window so they survive SPA navigation
+// (the shared layout runs inline scripts via new Function(), which scopes locally)
+window._createPage = window._createPage || {};
+window._createPage.currentStep = 0;
+window._createPage.selectedEmoji = '';
+window._createPage.skipTelegram = false;
 
-// Emoji picker
-document.querySelectorAll('.emoji-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.emoji-btn').forEach(b => b.classList.remove('selected'));
-    btn.classList.add('selected');
-    selectedEmoji = btn.dataset.emoji;
-    document.getElementById('agent-emoji-custom').value = '';
-  });
-});
-document.getElementById('agent-emoji-custom').addEventListener('input', (e) => {
-  if (e.target.value) {
-    document.querySelectorAll('.emoji-btn').forEach(b => b.classList.remove('selected'));
-    selectedEmoji = e.target.value;
-  }
-});
+(function() {
+  const state = window._createPage;
 
-// Update BotFather hints when name changes
-document.getElementById('agent-name').addEventListener('input', (e) => {
-  const name = e.target.value.trim();
-  const el1 = document.getElementById('botfather-name');
-  const el2 = document.getElementById('botfather-user');
-  if (name) {
-    el1.textContent = name;
-    el2.textContent = name.toLowerCase().replace(/[^a-z0-9]/g, '') + '_bot';
-  }
-});
-
-function getEmoji() {
-  return selectedEmoji || document.getElementById('agent-emoji-custom').value || '🤖';
-}
-
-function getData() {
-  return {
-    name: document.getElementById('agent-name').value.trim(),
-    emoji: getEmoji(),
-    soul: document.getElementById('agent-soul').value.trim(),
-    model: document.getElementById('agent-model').value,
-    telegramToken: skipTelegram ? '' : document.getElementById('agent-token').value.trim(),
-  };
-}
-
-function validate(step) {
-  if (step === 0) {
-    const name = document.getElementById('agent-name').value.trim();
-    const field = document.getElementById('f-name');
-    if (!name) { field.classList.add('error'); return false; }
-    field.classList.remove('error');
-    return true;
-  }
-  if (step === 2 && !skipTelegram) {
-    const token = document.getElementById('agent-token').value.trim();
-    if (!token) return true; // allow empty, they'll skip
-    const field = document.getElementById('f-token');
-    if (!/^\d+:[A-Za-z0-9_-]+$/.test(token)) { field.classList.add('error'); return false; }
-    field.classList.remove('error');
-    return true;
-  }
-  return true;
-}
-
-function skipChannel() {
-  skipTelegram = true;
-  nextStep();
-}
-
-function showStep(n) {
-  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-  document.getElementById(`step-${n}`).classList.add('active');
-  document.querySelectorAll('.step-dot').forEach((d, i) => {
-    d.classList.remove('active', 'done');
-    if (i < n) d.classList.add('done');
-    if (i === n) d.classList.add('active');
-  });
-}
-
-function nextStep() {
-  if (!validate(currentStep)) return;
-  if (currentStep === 2 && !skipTelegram && !document.getElementById('agent-token').value.trim()) {
-    skipTelegram = true;
-  }
-  currentStep++;
-  if (currentStep === 3) buildReview();
-  showStep(currentStep);
-}
-
-function prevStep() {
-  if (currentStep > 0) { currentStep--; skipTelegram = false; showStep(currentStep); }
-}
-
-function buildReview() {
-  const d = getData();
-  const card = document.getElementById('review-card');
-  card.innerHTML = `
-    <div class="review-row"><span class="review-label">Name</span><span class="review-value">${d.emoji} ${d.name}</span></div>
-    <div class="review-row"><span class="review-label">Personality</span><span class="review-value">${d.soul || '(default)'}</span></div>
-    <div class="review-row"><span class="review-label">Model</span><span class="review-value">${d.model.split('/')[1]}</span></div>
-    <div class="review-row"><span class="review-label">Telegram</span><span class="review-value">${d.telegramToken ? '✅ Connected' : '⏭️ Skipped'}</span></div>
-    <div class="review-row"><span class="review-label">Workspace</span><span class="review-value">~/clawd-agents/${d.name.toLowerCase()}</span></div>
-  `;
-}
-
-function addLog(msg) {
-  const log = document.getElementById('create-log');
-  const div = document.createElement('div');
-  div.textContent = `> ${msg}`;
-  log.appendChild(div);
-  log.scrollTop = log.scrollHeight;
-}
-
-async function createAgent() {
-  const d = getData();
-  const btn = document.getElementById('create-btn');
-  btn.disabled = true;
-
-  showStep('creating');
-  addLog(`Creating ${d.name}...`);
-
-  try {
-    const res = await fetch('/api/create-agent', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(d),
+  // Emoji picker
+  document.querySelectorAll('.emoji-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.emoji-btn').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      state.selectedEmoji = btn.dataset.emoji;
+      document.getElementById('agent-emoji-custom').value = '';
     });
-
-    const result = await res.json();
-
-    if (result.steps) {
-      for (const step of result.steps) {
-        addLog(step);
-        await new Promise(r => setTimeout(r, 300));
-      }
+  });
+  document.getElementById('agent-emoji-custom')?.addEventListener('input', (e) => {
+    if (e.target.value) {
+      document.querySelectorAll('.emoji-btn').forEach(b => b.classList.remove('selected'));
+      state.selectedEmoji = e.target.value;
     }
+  });
 
-    if (result.ok) {
-      addLog('Done!');
-      await new Promise(r => setTimeout(r, 500));
-      document.getElementById('result-icon').textContent = d.emoji;
-      document.getElementById('result-title').textContent = `${d.name} is alive!`;
-      document.getElementById('result-msg').textContent = result.message || 'Your agent is ready. Head back to Clawd Control to see them.';
-      showStep('done');
-    } else {
-      addLog(`Error: ${result.error}`);
-      btn.disabled = false;
-      currentStep = 3;
+  // Update BotFather hints when name changes
+  document.getElementById('agent-name')?.addEventListener('input', (e) => {
+    const name = e.target.value.trim();
+    const el1 = document.getElementById('botfather-name');
+    const el2 = document.getElementById('botfather-user');
+    if (name) {
+      el1.textContent = name;
+      el2.textContent = name.toLowerCase().replace(/[^a-z0-9]/g, '') + '_bot';
     }
-  } catch (err) {
-    addLog(`Error: ${err.message}`);
-    btn.disabled = false;
-    currentStep = 3;
+  });
+
+  function getEmoji() {
+    return state.selectedEmoji || document.getElementById('agent-emoji-custom')?.value || '🤖';
   }
-}
 
+  function getData() {
+    return {
+      name: document.getElementById('agent-name').value.trim(),
+      emoji: getEmoji(),
+      soul: document.getElementById('agent-soul').value.trim(),
+      model: document.getElementById('agent-model').value,
+      telegramToken: state.skipTelegram ? '' : document.getElementById('agent-token').value.trim(),
+    };
+  }
+
+  function validate(step) {
+    if (step === 0) {
+      const name = document.getElementById('agent-name').value.trim();
+      const field = document.getElementById('f-name');
+      if (!name) { field.classList.add('error'); return false; }
+      field.classList.remove('error');
+      return true;
+    }
+    if (step === 2 && !state.skipTelegram) {
+      const token = document.getElementById('agent-token').value.trim();
+      if (!token) return true;
+      const field = document.getElementById('f-token');
+      if (!/^\d+:[A-Za-z0-9_-]+$/.test(token)) { field.classList.add('error'); return false; }
+      field.classList.remove('error');
+      return true;
+    }
+    return true;
+  }
+
+  function showStep(n) {
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    document.getElementById(`step-${n}`).classList.add('active');
+    document.querySelectorAll('.step-dot').forEach((d, i) => {
+      d.classList.remove('active', 'done');
+      if (i < n) d.classList.add('done');
+      if (i === n) d.classList.add('active');
+    });
+  }
+
+  function addLog(msg) {
+    const log = document.getElementById('create-log');
+    const div = document.createElement('div');
+    div.textContent = `> ${msg}`;
+    log.appendChild(div);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  // Expose on window for onclick handlers
+  window.nextStep = function() {
+    if (!validate(state.currentStep)) return;
+    if (state.currentStep === 2 && !state.skipTelegram && !document.getElementById('agent-token').value.trim()) {
+      state.skipTelegram = true;
+    }
+    state.currentStep++;
+    if (state.currentStep === 3) buildReview();
+    showStep(state.currentStep);
+  };
+
+  window.prevStep = function() {
+    if (state.currentStep > 0) { state.currentStep--; state.skipTelegram = false; showStep(state.currentStep); }
+  };
+
+  window.skipChannel = function() {
+    state.skipTelegram = true;
+    window.nextStep();
+  };
+
+  function buildReview() {
+    const d = getData();
+    const card = document.getElementById('review-card');
+    card.innerHTML = `
+      <div class="review-row"><span class="review-label">Name</span><span class="review-value">${d.emoji} ${d.name}</span></div>
+      <div class="review-row"><span class="review-label">Personality</span><span class="review-value">${d.soul || '(default)'}</span></div>
+      <div class="review-row"><span class="review-label">Model</span><span class="review-value">${d.model.split('/')[1]}</span></div>
+      <div class="review-row"><span class="review-label">Telegram</span><span class="review-value">${d.telegramToken ? '✅ Connected' : '⏭️ Skipped'}</span></div>
+      <div class="review-row"><span class="review-label">Workspace</span><span class="review-value">~/clawd-agents/${d.name.toLowerCase()}</span></div>
+    `;
+  }
+
+  window.createAgent = async function() {
+    const d = getData();
+    const btn = document.getElementById('create-btn');
+    btn.disabled = true;
+
+    showStep('creating');
+    addLog(`Creating ${d.name}...`);
+
+    try {
+      const res = await fetch('/api/create-agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(d),
+      });
+
+      const result = await res.json();
+
+      if (result.steps) {
+        for (const step of result.steps) {
+          addLog(step);
+          await new Promise(r => setTimeout(r, 300));
+        }
+      }
+
+      if (result.ok) {
+        addLog('Done!');
+        await new Promise(r => setTimeout(r, 500));
+        document.getElementById('result-icon').textContent = d.emoji;
+        document.getElementById('result-title').textContent = `${d.name} is alive!`;
+        document.getElementById('result-msg').textContent = result.message || 'Your agent is ready. Head back to Clawd Control to see them.';
+        showStep('done');
+      } else {
+        addLog(`Error: ${result.error}`);
+        btn.disabled = false;
+        state.currentStep = 3;
+      }
+    } catch (err) {
+      addLog(`Error: ${err.message}`);
+      btn.disabled = false;
+      state.currentStep = 3;
+    }
+  };
+
+  // Reset state for fresh navigation
+  state.currentStep = 0;
+  state.selectedEmoji = '';
+  state.skipTelegram = false;
+})();
 </script>
 </div>
 </main>
