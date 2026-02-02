@@ -11,7 +11,7 @@
 
 import { mkdirSync, writeFileSync, readFileSync, existsSync, copyFileSync } from 'fs';
 import { join } from 'path';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 
 const DIR = new URL('.', import.meta.url).pathname;
 
@@ -54,7 +54,7 @@ export async function createAgent({ name, emoji, soul, model, telegramToken }) {
 
   // Check if agent already exists
   try {
-    const existing = execSync('clawdbot agents list --json 2>/dev/null', { encoding: 'utf8' });
+    const existing = execFileSync('clawdbot', ['agents', 'list', '--json'], { encoding: 'utf8', stdio: 'pipe' });
     const agents = JSON.parse(existing);
     if (agents.some(a => a.id === id)) {
       return { ok: false, error: 'Agent already exists', steps: [`❌ Agent "${id}" already exists`] };
@@ -148,7 +148,7 @@ Each session, you wake up fresh. Your files *are* your memory. Read them. Update
 > Environment-specific details. Update as you discover things.
 
 ## Host
-- **Machine:** ${execSync('hostname', { encoding: 'utf8' }).trim()}
+- **Machine:** ${execFileSync('hostname', [], { encoding: 'utf8', stdio: 'pipe' }).trim()}
 
 ---
 *Updated: ${today}*`);
@@ -193,8 +193,7 @@ node_modules/`);
   // 3. Register with Clawdbot
   steps.push('🔗 Registering with gateway');
   try {
-    const cmd = `clawdbot agents add "${id}" --workspace "${workspace}" --model "${model}" --non-interactive --json 2>&1`;
-    const output = execSync(cmd, { encoding: 'utf8' });
+    const output = execFileSync('clawdbot', ['agents', 'add', id, '--workspace', workspace, '--model', model, '--non-interactive', '--json'], { encoding: 'utf8', stdio: 'pipe' });
     steps.push('✅ Agent registered');
   } catch (e) {
     steps.push(`⚠️ Registration warning: ${e.message.substring(0, 100)}`);
@@ -203,7 +202,7 @@ node_modules/`);
   // 4. Set identity
   steps.push(`${emoji} Setting identity`);
   try {
-    execSync(`clawdbot agents set-identity "${id}" --name "${displayName}" --emoji "${emoji}" 2>&1`, { encoding: 'utf8' });
+    execFileSync('clawdbot', ['agents', 'set-identity', id, '--name', displayName, '--emoji', emoji], { encoding: 'utf8', stdio: 'pipe' });
   } catch {}
 
   // 5. Configure cross-agent spawning + Telegram binding (single config read/write)
@@ -216,7 +215,7 @@ node_modules/`);
   if (telegramToken) {
     steps.push('📱 Verifying Telegram bot token');
     try {
-      const verify = execSync(`curl -s "https://api.telegram.org/bot${telegramToken}/getMe"`, { encoding: 'utf8' });
+      const verify = execFileSync('curl', ['-s', `https://api.telegram.org/bot${telegramToken}/getMe`], { encoding: 'utf8', stdio: 'pipe' });
       const botInfo = JSON.parse(verify);
       if (!botInfo.ok) {
         steps.push('❌ Telegram token is invalid');
@@ -230,42 +229,30 @@ node_modules/`);
     }
   }
 
-  // Single atomic config update — read once, modify, write once
+  // Configure gateway via config.patch (safe atomic updates)
   try {
-    const configPath = join(process.env.HOME, '.clawdbot', 'clawdbot.json');
-    const config = JSON.parse(readFileSync(configPath, 'utf8'));
+    // Build patch object
+    const patch = { tools: { agentToAgent: { enabled: true } } };
 
-    // Cross-agent: main can spawn this agent
-    const mainAgent = config.agents?.list?.find(a => a.id === 'main');
-    if (mainAgent) {
-      if (!mainAgent.subagents) mainAgent.subagents = {};
-      if (!mainAgent.subagents.allowAgents) mainAgent.subagents.allowAgents = [];
-      if (!mainAgent.subagents.allowAgents.includes(id)) {
-        mainAgent.subagents.allowAgents.push(id);
-      }
-    }
-
-    // Cross-agent: new agent can spawn back to main
-    const newAgent = config.agents?.list?.find(a => a.id === id);
-    if (newAgent) {
-      if (!newAgent.subagents) newAgent.subagents = {};
-      newAgent.subagents.allowAgents = ['main'];
-    }
-
-    // Bind Telegram channel as an account under channels.telegram.accounts
+    // Telegram account + binding
     if (telegramVerified) {
-      if (!config.channels) config.channels = {};
-      if (!config.channels.telegram) config.channels.telegram = { enabled: true };
-      if (!config.channels.telegram.accounts) config.channels.telegram.accounts = {};
-      config.channels.telegram.accounts[id] = {
+      patch.channels = { telegram: { accounts: {} } };
+      patch.channels.telegram.accounts[id] = {
         enabled: true,
         dmPolicy: 'pairing',
         botToken: telegramToken,
         groupPolicy: 'allowlist',
         streamMode: 'partial'
       };
+    }
 
-      // Add binding to route this Telegram account to the agent
+    // Apply config patch via gateway RPC
+    execFileSync('clawdbot', ['gateway', 'config.patch', '--json', JSON.stringify(patch)], { encoding: 'utf8', stdio: 'pipe' });
+
+    // Add binding (read config to check, then patch if needed)
+    if (telegramVerified) {
+      const configPath = join(process.env.HOME, '.clawdbot', 'clawdbot.json');
+      const config = JSON.parse(readFileSync(configPath, 'utf8'));
       if (!config.bindings) config.bindings = [];
       const hasBinding = config.bindings.some(
         b => b.agentId === id && b.match?.channel === 'telegram' && b.match?.accountId === id
@@ -275,6 +262,8 @@ node_modules/`);
           agentId: id,
           match: { channel: 'telegram', accountId: id }
         });
+        // Bindings are an array — config.patch may not merge arrays, so write this part directly
+        writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
       }
     }
 
@@ -282,12 +271,6 @@ node_modules/`);
     const agentSessionsDir = join(process.env.HOME, '.clawdbot', 'agents', id, 'sessions');
     mkdirSync(agentSessionsDir, { recursive: true });
 
-    // Enable agent-to-agent messaging
-    if (!config.tools) config.tools = {};
-    if (!config.tools.agentToAgent) config.tools.agentToAgent = {};
-    config.tools.agentToAgent.enabled = true;
-
-    writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
     steps.push('✅ Cross-agent permissions configured');
     if (telegramVerified) steps.push(`📱 Telegram bound as account "${id}"`);
     else if (telegramToken) steps.push('⏭️ Telegram binding skipped (verification failed)');
@@ -312,7 +295,7 @@ node_modules/`);
         port: config.gateway?.port || 18789,
         token: config.gateway?.auth?.token || '',
         workspace,
-        machine: execSync('hostname', { encoding: 'utf8' }).trim(),
+        machine: execFileSync('hostname', [], { encoding: 'utf8', stdio: 'pipe' }).trim(),
       });
       writeFileSync(join(DIR, 'agents.json'), JSON.stringify(dashConfig, null, 2), 'utf8');
     }
@@ -325,12 +308,12 @@ node_modules/`);
   steps.push('🔄 Reloading gateway config');
   try {
     // Find gateway PID and send SIGUSR1 for hot reload
-    const pid = execSync("pgrep -f 'clawdbot.*gateway' 2>/dev/null || pgrep -f 'node.*clawdbot' 2>/dev/null", {
-      encoding: 'utf8'
+    const pid = execFileSync('pgrep', ['-f', 'clawdbot.*gateway'], {
+      encoding: 'utf8', stdio: 'pipe'
     }).trim().split('\n')[0];
 
     if (pid && /^\d+$/.test(pid)) {
-      execSync(`kill -USR1 ${pid} 2>&1`, { encoding: 'utf8' });
+      execFileSync('kill', ['-USR1', pid], { encoding: 'utf8', stdio: 'pipe' });
       steps.push('✅ Config reloaded (sessions preserved)');
     } else {
       throw new Error('Gateway PID not found');
@@ -338,8 +321,8 @@ node_modules/`);
   } catch {
     // Fallback: try clawdbot system event to nudge the gateway
     try {
-      execSync('clawdbot system event --mode now --text "New agent created — config reloaded" 2>&1', {
-        encoding: 'utf8', timeout: 5000
+      execFileSync('clawdbot', ['system', 'event', '--mode', 'now', '--text', 'New agent created — config reloaded'], {
+        encoding: 'utf8', stdio: 'pipe', timeout: 5000
       });
       steps.push('⚠️ Config reload signal sent — gateway will pick up changes on next cycle');
     } catch {

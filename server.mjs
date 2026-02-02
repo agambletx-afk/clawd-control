@@ -10,7 +10,7 @@ import { createServer } from 'http';
 import { readFileSync, existsSync, writeFileSync, copyFileSync, readdirSync, statSync } from 'fs';
 import { join, extname } from 'path';
 import { gzipSync } from 'zlib';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { AgentCollector } from './collector.mjs';
 import { createAgent } from './create-agent.mjs';
 import { discoverAgents } from './discover.mjs';
@@ -141,31 +141,28 @@ async function handleAgentAction(agentId, action) {
     switch (action) {
       case 'heartbeat-enable': {
         // Runtime toggle
-        execSync(`clawdbot system heartbeat enable 2>&1`, { encoding: 'utf8' });
-        // Also persist in config
-        const configE = JSON.parse(readFileSync(join(process.env.HOME, '.clawdbot', 'clawdbot.json'), 'utf8'));
-        if (configE.agents?.defaults?.heartbeat) {
-          delete configE.agents.defaults.heartbeat.enabled;  // remove explicit false
-          configE.agents.defaults.heartbeat.every = configE.agents.defaults.heartbeat._savedEvery || '55m';
-          delete configE.agents.defaults.heartbeat._savedEvery;
-          writeFileSync(join(process.env.HOME, '.clawdbot', 'clawdbot.json'), JSON.stringify(configE, null, 2), 'utf8');
-        }
+        execFileSync('clawdbot', ['system', 'heartbeat', 'enable'], { encoding: 'utf8', stdio: 'pipe' });
+        // Also persist via gateway config.patch
+        try {
+          execFileSync('clawdbot', ['gateway', 'config.patch', '--json', JSON.stringify({
+            agents: { defaults: { heartbeat: { every: '55m' } } }
+          })], { encoding: 'utf8', stdio: 'pipe' });
+        } catch (_) { /* best effort */ }
         return { ok: true, message: `Heartbeat enabled for ${agentId}` };
       }
       case 'heartbeat-disable': {
         // Runtime toggle
-        execSync(`clawdbot system heartbeat disable 2>&1`, { encoding: 'utf8' });
-        // Also persist: set every to "off" and save old value
-        const configD = JSON.parse(readFileSync(join(process.env.HOME, '.clawdbot', 'clawdbot.json'), 'utf8'));
-        if (configD.agents?.defaults?.heartbeat) {
-          configD.agents.defaults.heartbeat._savedEvery = configD.agents.defaults.heartbeat.every;
-          configD.agents.defaults.heartbeat.every = 'off';
-          writeFileSync(join(process.env.HOME, '.clawdbot', 'clawdbot.json'), JSON.stringify(configD, null, 2), 'utf8');
-        }
+        execFileSync('clawdbot', ['system', 'heartbeat', 'disable'], { encoding: 'utf8', stdio: 'pipe' });
+        // Also persist via gateway config.patch
+        try {
+          execFileSync('clawdbot', ['gateway', 'config.patch', '--json', JSON.stringify({
+            agents: { defaults: { heartbeat: { every: 'off' } } }
+          })], { encoding: 'utf8', stdio: 'pipe' });
+        } catch (_) { /* best effort */ }
         return { ok: true, message: `Heartbeat disabled for ${agentId}` };
       }
       case 'heartbeat-trigger': {
-        execSync(`clawdbot system event --mode now --text "Manual heartbeat trigger from Clawd Control" 2>&1`, { encoding: 'utf8' });
+        execFileSync('clawdbot', ['system', 'event', '--mode', 'now', '--text', 'Manual heartbeat trigger from Clawd Control'], { encoding: 'utf8', stdio: 'pipe' });
         return { ok: true, message: `Heartbeat triggered for ${agentId}` };
       }
       case 'session-new': {
@@ -776,7 +773,9 @@ const server = createServer((req, res) => {
     req.on('end', () => {
       try {
         const { password } = JSON.parse(body);
-        if (password === AUTH.password) {
+        const pwBuf = Buffer.from(String(password));
+        const authBuf = Buffer.from(String(AUTH.password));
+        if (pwBuf.length === authBuf.length && timingSafeEqual(pwBuf, authBuf)) {
           const token = createSession();
           res.writeHead(200, {
             'Content-Type': 'application/json',
