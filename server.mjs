@@ -264,7 +264,8 @@ async function handleAgentAction(agentId, action) {
         return { ok: false, error: `Unknown action: ${action}` };
     }
   } catch (e) {
-    return { ok: false, error: e.message?.substring(0, 200) };
+    console.error(`[API] agent action error:`, e.message);
+    return { ok: false, error: 'Action failed' };
   }
 }
 
@@ -491,6 +492,24 @@ function getAgentDetail(agentId) {
 
 // ── Analytics Aggregator ────────────────────────────
 import { homedir } from 'os';
+
+// Simple cache for analytics (60s TTL)
+const analyticsCache = new Map();
+const ANALYTICS_CACHE_TTL = 60000;
+
+function getCachedOrCompute(cacheKey, computeFn) {
+  const cached = analyticsCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < ANALYTICS_CACHE_TTL) return cached.data;
+  const data = computeFn();
+  analyticsCache.set(cacheKey, { data, ts: Date.now() });
+  // Prune old entries
+  if (analyticsCache.size > 20) {
+    for (const [k, v] of analyticsCache) {
+      if (Date.now() - v.ts > ANALYTICS_CACHE_TTL) analyticsCache.delete(k);
+    }
+  }
+  return data;
+}
 
 function getAnalytics(rangeStr, agentFilter) {
   const AGENTS_DIR = join(homedir(), '.clawdbot', 'agents');
@@ -848,7 +867,7 @@ function getTokenAnalytics(rangeStr, agentFilter) {
 
 // ── Session Trace (for waterfall view) ─────────────
 
-function getAllSessions() {
+function getAllSessions({ limit = 50, offset = 0 } = {}) {
   const AGENTS_DIR = join(homedir(), '.clawdbot', 'agents');
   const sessions = [];
 
@@ -888,10 +907,17 @@ function getAllSessions() {
 
   // Sort by most recent first
   sessions.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-  return sessions;
+  
+  // Apply pagination
+  const total = sessions.length;
+  const clampedLimit = Math.min(Math.max(1, limit), 200);
+  const clampedOffset = Math.max(0, offset);
+  const paginated = sessions.slice(clampedOffset, clampedOffset + clampedLimit);
+  
+  return { sessions: paginated, total, limit: clampedLimit, offset: clampedOffset };
 }
 
-function getSessionTrace(sessionKey) {
+function getSessionTrace(sessionKey, { limit = 500 } = {}) {
   const AGENTS_DIR = join(homedir(), '.clawdbot', 'agents');
   
   // Find the session file
@@ -921,6 +947,14 @@ function getSessionTrace(sessionKey) {
   }
 
   if (!sessionFile || !existsSync(sessionFile)) return null;
+
+  // Reject excessively large files (>50MB)
+  try {
+    const fileStat = statSync(sessionFile);
+    if (fileStat.size > 50 * 1024 * 1024) {
+      return { sessionKey, agentId, trace: [], truncated: true, totalMessages: 0, error: 'Session file too large (>50MB)', summary: { totalCost: 0, totalTokens: 0, totalInput: 0, totalOutput: 0, totalCacheRead: 0, messageCount: 0, totalDuration: 0, startTime: 0, endTime: 0 } };
+    }
+  } catch { return null; }
 
   // Parse the JSONL file
   const trace = [];
@@ -998,10 +1032,10 @@ function getSessionTrace(sessionKey) {
             timestamp,
             role,
             contentTypes,
-            toolCalls,
+            toolCalls: toolCalls.map(t => ({ name: t.name, id: t.id })), // Strip arguments from trace (available on detail click)
             hasThinking,
             textPreview: textContent.substring(0, 200),
-            fullText: textContent,
+            fullText: textContent.substring(0, 10000), // Cap full text to prevent huge payloads
             model: currentModel,
             stopReason,
             usage: {
@@ -1021,24 +1055,31 @@ function getSessionTrace(sessionKey) {
     return null;
   }
 
+  // Cap trace size — keep last N messages
+  const clampedLimit = Math.min(Math.max(1, limit), 2000);
+  const wasTruncated = trace.length > clampedLimit;
+  const truncatedTrace = wasTruncated ? trace.slice(-clampedLimit) : trace;
+
   // Calculate durations (time between messages)
-  for (let i = 0; i < trace.length - 1; i++) {
-    const current = new Date(trace[i].timestamp).getTime();
-    const next = new Date(trace[i + 1].timestamp).getTime();
-    trace[i].duration = next - current;
+  for (let i = 0; i < truncatedTrace.length - 1; i++) {
+    const current = new Date(truncatedTrace[i].timestamp).getTime();
+    const next = new Date(truncatedTrace[i + 1].timestamp).getTime();
+    truncatedTrace[i].duration = next - current;
   }
-  if (trace.length > 0) {
-    trace[trace.length - 1].duration = 0; // Last message has no duration
+  if (truncatedTrace.length > 0) {
+    truncatedTrace[truncatedTrace.length - 1].duration = 0; // Last message has no duration
   }
 
-  const startTime = trace.length > 0 ? new Date(trace[0].timestamp).getTime() : 0;
-  const endTime = trace.length > 0 ? new Date(trace[trace.length - 1].timestamp).getTime() : 0;
+  const startTime = truncatedTrace.length > 0 ? new Date(truncatedTrace[0].timestamp).getTime() : 0;
+  const endTime = truncatedTrace.length > 0 ? new Date(truncatedTrace[truncatedTrace.length - 1].timestamp).getTime() : 0;
   const totalDuration = endTime - startTime;
 
   return {
     sessionKey,
     agentId,
-    trace,
+    trace: truncatedTrace,
+    truncated: wasTruncated,
+    totalMessages: trace.length,
     summary: {
       totalCost,
       totalTokens,
@@ -1361,7 +1402,8 @@ const server = createServer((req, res) => {
         }
       } catch (e) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: false, error: e.message, steps: [`❌ ${e.message}`] }));
+        console.error('[API] /api/create-agent error:', e.message);
+        res.end(JSON.stringify({ ok: false, error: 'Agent creation failed', steps: ['❌ Internal error'] }));
       }
     });
     return;
@@ -1375,7 +1417,8 @@ const server = createServer((req, res) => {
       res.end(JSON.stringify(result));
     } catch (e) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: e.message }));
+      console.error('[API] /api/security-audit error:', e.message);
+      res.end(JSON.stringify({ error: 'Internal server error' }));
     }
     return;
   }
@@ -1389,7 +1432,8 @@ const server = createServer((req, res) => {
       res.end(output);
     } catch (e) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: `Failed to list cron jobs: ${e.message}` }));
+      console.error('[API] /api/crons error:', e.message);
+      res.end(JSON.stringify({ error: 'Failed to list cron jobs' }));
     }
     return;
   }
@@ -1399,12 +1443,12 @@ const server = createServer((req, res) => {
     try {
       const range = url.searchParams.get('range') || '7';
       const agentFilter = url.searchParams.get('agent') || 'all';
-      const result = getAnalytics(range, agentFilter);
+      const result = getCachedOrCompute(`analytics:${range}:${agentFilter}`, () => getAnalytics(range, agentFilter));
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(result));
     } catch (e) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: e.message }));
+      console.error('[API] error:', e.message); res.end(JSON.stringify({ error: 'Internal server error' }));
     }
     return;
   }
@@ -1414,12 +1458,12 @@ const server = createServer((req, res) => {
     try {
       const range = url.searchParams.get('range') || '7';
       const agentFilter = url.searchParams.get('agent') || 'all';
-      const result = getTokenAnalytics(range, agentFilter);
+      const result = getCachedOrCompute(`tokens:${range}:${agentFilter}`, () => getTokenAnalytics(range, agentFilter));
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(result));
     } catch (e) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: e.message }));
+      console.error('[API] error:', e.message); res.end(JSON.stringify({ error: 'Internal server error' }));
     }
     return;
   }
@@ -1428,7 +1472,8 @@ const server = createServer((req, res) => {
   if (path.startsWith('/api/session/') && path.endsWith('/trace') && req.method === 'GET') {
     try {
       const sessionKey = decodeURIComponent(path.split('/')[3]);
-      const result = getSessionTrace(sessionKey);
+      const traceLimit = parseInt(url.searchParams.get('limit') || '500');
+      const result = getSessionTrace(sessionKey, { limit: traceLimit });
       if (!result) {
         res.writeHead(404, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Session not found' }));
@@ -1438,7 +1483,7 @@ const server = createServer((req, res) => {
       res.end(JSON.stringify(result));
     } catch (e) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: e.message }));
+      console.error('[API] error:', e.message); res.end(JSON.stringify({ error: 'Internal server error' }));
     }
     return;
   }
@@ -1451,7 +1496,7 @@ const server = createServer((req, res) => {
       res.end(JSON.stringify(result));
     } catch (e) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: e.message }));
+      console.error('[API] error:', e.message); res.end(JSON.stringify({ error: 'Internal server error' }));
     }
     return;
   }
@@ -1459,12 +1504,14 @@ const server = createServer((req, res) => {
   // ── List Sessions ──
   if (path === '/api/sessions' && req.method === 'GET') {
     try {
-      const result = getAllSessions();
+      const limit = parseInt(url.searchParams.get('limit') || '50');
+      const offset = parseInt(url.searchParams.get('offset') || '0');
+      const result = getAllSessions({ limit, offset });
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(result));
     } catch (e) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: e.message }));
+      console.error('[API] error:', e.message); res.end(JSON.stringify({ error: 'Internal server error' }));
     }
     return;
   }
@@ -1508,7 +1555,8 @@ const server = createServer((req, res) => {
         res.end(JSON.stringify(result));
       } catch (e) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: false, error: e.message }));
+        console.error('[API] agent action error:', e.message);
+        res.end(JSON.stringify({ ok: false, error: 'Action failed' }));
       }
     });
     return;
