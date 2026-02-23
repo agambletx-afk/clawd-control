@@ -179,6 +179,66 @@
   font-size: 0.7rem; color: var(--text-secondary); margin-top: 4px;
 }
 
+/* ── Tooltip ────────────────────────────── */
+.chart-tooltip {
+  position: absolute; pointer-events: none;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 10px 14px;
+  font-size: 0.75rem; z-index: 10;
+  box-shadow: 0 4px 12px rgba(0,0,0,.3);
+  transition: opacity 0.15s;
+  min-width: 160px;
+}
+.chart-tooltip.hidden { opacity: 0; }
+.tooltip-date { font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
+.tooltip-row { display: flex; justify-content: space-between; gap: 12px; margin: 2px 0; }
+.tooltip-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+.tooltip-label { color: var(--text-secondary); }
+.tooltip-val { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-primary); }
+
+/* ── View Toggle ───────────────────────── */
+.view-toggle {
+  display: flex; gap: 2px; background: var(--bg-primary);
+  border-radius: var(--radius-sm); padding: 2px;
+}
+.view-toggle button {
+  padding: 4px 10px; border: none; border-radius: var(--radius-sm);
+  background: transparent; color: var(--text-tertiary); cursor: pointer;
+  font-size: 0.7rem; font-weight: 600; font-family: var(--font-sans);
+  transition: all 0.2s;
+}
+.view-toggle button.active {
+  background: var(--surface); color: var(--text-primary);
+  box-shadow: 0 1px 3px rgba(0,0,0,.2);
+}
+
+/* ── Model Bar Chart ───────────────────── */
+.model-bar-chart { display: flex; flex-direction: column; gap: 10px; min-height: 200px; }
+.model-bar-item { display: flex; flex-direction: column; gap: 4px; }
+.model-bar-header { display: flex; justify-content: space-between; align-items: center; }
+.model-bar-name {
+  font-size: 0.75rem; font-weight: 600; color: var(--text-secondary);
+  display: flex; align-items: center; gap: 6px;
+}
+.model-bar-name .model-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+.model-bar-tokens {
+  font-size: 0.72rem; font-weight: 700; font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+.model-bar-cost {
+  font-size: 0.65rem; color: var(--accent); font-weight: 600;
+}
+.model-bar-track {
+  height: 24px; background: var(--bg-primary);
+  border-radius: var(--radius-sm); overflow: hidden;
+  display: flex;
+}
+.model-bar-segment {
+  height: 100%; display: flex; align-items: center; justify-content: center;
+  font-size: 0.6rem; font-weight: 700; color: white;
+  transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 /* ── Loading State ─────────────────────── */
 .loading-state {
   text-align: center; padding: 40px 20px; color: var(--text-tertiary);
@@ -259,10 +319,17 @@
         <i data-lucide="trending-up"></i>
         Daily Token Usage
       </div>
-      <div class="chart-subtitle" id="dailySubtitle">Input, output, and cache tokens over time</div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="chart-subtitle" id="dailySubtitle">Input, output, and cache tokens over time</div>
+        <div class="view-toggle">
+          <button class="active" onclick="setChartMode('lines', this)">Lines</button>
+          <button onclick="setChartMode('stacked', this)">Stacked</button>
+        </div>
+      </div>
     </div>
     <div class="line-chart-container">
       <canvas id="dailyTokenChart" class="line-chart"></canvas>
+      <div class="chart-tooltip hidden" id="dailyTooltip"></div>
     </div>
   </div>
 
@@ -298,19 +365,48 @@
     </div>
   </div>
 
-  <div class="chart-card-full fade-up" style="animation-delay:.25s">
+  <div class="chart-row fade-up" style="animation-delay:.25s">
+    <div class="chart-card">
+      <div class="chart-header">
+        <div class="chart-title">
+          <i data-lucide="users"></i>
+          Token Usage by Agent
+        </div>
+      </div>
+      <div id="agentTokenChart" class="bar-chart">
+        <div class="loading-state">
+          <div class="icon">⏳</div>
+          <p>Loading data...</p>
+        </div>
+      </div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-header">
+        <div class="chart-title">
+          <i data-lucide="cpu"></i>
+          Token Usage by Model
+        </div>
+      </div>
+      <div id="modelTokenChart" class="model-bar-chart">
+        <div class="loading-state">
+          <div class="icon">⏳</div>
+          <p>Loading data...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="chart-card-full fade-up" id="agentComparisonSection" style="animation-delay:.3s;display:none">
     <div class="chart-header">
       <div class="chart-title">
-        <i data-lucide="users"></i>
-        Token Usage by Agent
+        <i data-lucide="git-compare"></i>
+        Agent Comparison Over Time
       </div>
-      <div class="chart-subtitle">Input, output, and cache breakdown per agent</div>
+      <div class="chart-subtitle">Daily token consumption per agent</div>
     </div>
-    <div id="agentTokenChart" class="bar-chart">
-      <div class="loading-state">
-        <div class="icon">⏳</div>
-        <p>Loading data...</p>
-      </div>
+    <div class="line-chart-container">
+      <canvas id="agentComparisonChart" class="line-chart"></canvas>
+      <div class="chart-tooltip hidden" id="comparisonTooltip"></div>
     </div>
   </div>
 
@@ -322,6 +418,8 @@
 
 const $ = s => document.querySelector(s);
 let tokenData = null;
+let chartMode = 'lines';
+let dailyChartPoints = []; // store for tooltip hit detection
 
 // ═══════════════════════════════════════════
 // INIT
@@ -337,6 +435,13 @@ setTimeout(() => {
   if (!tokenData) loadTokens();
 }, 500);
 
+// Resize handler
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { if (tokenData) renderAll(); }, 200);
+});
+
 function populateAgentSelect() {
   const select = $('#agentSelect');
   const ids = Object.keys(agentState).sort();
@@ -345,6 +450,13 @@ function populateAgentSelect() {
     return `<option value="${id}">${a.emoji || '🤖'} ${a.name || id}</option>`;
   }).join('');
   select.innerHTML = '<option value="all">All Agents</option>' + agentOptions;
+}
+
+function setChartMode(mode, btn) {
+  chartMode = mode;
+  document.querySelectorAll('.view-toggle button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderDailyChart();
 }
 
 // ═══════════════════════════════════════════
@@ -377,6 +489,8 @@ function renderAll() {
   renderInputOutputDonut();
   renderCacheEfficiency();
   renderAgentBreakdown();
+  renderModelBreakdown();
+  renderAgentComparison();
 
   refreshIcons();
 }
@@ -400,20 +514,26 @@ function renderStats() {
 function renderDailyChart() {
   const canvas = $('#dailyTokenChart');
   const ctx = canvas.getContext('2d');
+  const tooltip = $('#dailyTooltip');
   const timeline = tokenData.overTime || [];
 
   if (timeline.length === 0) {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    canvas.width = canvas.parentElement.clientWidth * 2;
+    canvas.height = canvas.parentElement.clientHeight * 2;
+    canvas.style.width = canvas.parentElement.clientWidth + 'px';
+    canvas.style.height = canvas.parentElement.clientHeight + 'px';
+    ctx.scale(2, 2);
     ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-tertiary');
     ctx.font = '12px Inter, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('No data available', canvas.width / 2, canvas.height / 2);
+    ctx.fillText('No data available', canvas.parentElement.clientWidth / 2, canvas.parentElement.clientHeight / 2);
+    dailyChartPoints = [];
     return;
   }
 
   // Responsive canvas sizing
   const parent = canvas.parentElement;
-  canvas.width = parent.clientWidth * 2; // 2x for retina
+  canvas.width = parent.clientWidth * 2;
   canvas.height = parent.clientHeight * 2;
   canvas.style.width = parent.clientWidth + 'px';
   canvas.style.height = parent.clientHeight + 'px';
@@ -425,17 +545,18 @@ function renderDailyChart() {
   const chartW = w - padding.left - padding.right;
   const chartH = h - padding.top - padding.bottom;
 
-  // Colors
   const inputColor = '#3b82f6';
   const outputColor = '#22c55e';
   const cacheColor = '#c9a44a';
   const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim();
   const borderColor = getComputedStyle(document.documentElement).getPropertyValue('--border-subtle').trim();
 
-  // Find max tokens for scaling
-  const maxTokens = Math.max(...timeline.map(d => d.inputTokens + d.outputTokens + d.cacheReadTokens), 1000);
+  const isStacked = chartMode === 'stacked';
+  const maxTokens = isStacked
+    ? Math.max(...timeline.map(d => d.inputTokens + d.outputTokens + d.cacheReadTokens), 1000)
+    : Math.max(...timeline.map(d => Math.max(d.inputTokens, d.outputTokens, d.cacheReadTokens)), 1000);
 
-  // Draw grid lines
+  // Grid
   ctx.strokeStyle = borderColor;
   ctx.lineWidth = 1;
   for (let i = 0; i <= 4; i++) {
@@ -444,8 +565,6 @@ function renderDailyChart() {
     ctx.moveTo(padding.left, y);
     ctx.lineTo(padding.left + chartW, y);
     ctx.stroke();
-
-    // Y-axis labels
     const value = maxTokens * (1 - i / 4);
     ctx.fillStyle = textColor;
     ctx.font = '10px Inter, sans-serif';
@@ -453,79 +572,83 @@ function renderDailyChart() {
     ctx.fillText(formatNumber(value), padding.left - 8, y + 3);
   }
 
-  // Calculate points for each line
   const points = timeline.map((d, i) => {
     const x = padding.left + (chartW / (timeline.length - 1 || 1)) * i;
-    const inputY = padding.top + chartH - (d.inputTokens / maxTokens * chartH);
-    const outputY = padding.top + chartH - (d.outputTokens / maxTokens * chartH);
-    const cacheY = padding.top + chartH - (d.cacheReadTokens / maxTokens * chartH);
-    return { 
-      x, 
-      inputY, 
-      outputY, 
-      cacheY,
-      date: d.date,
-      input: d.inputTokens,
-      output: d.outputTokens,
-      cache: d.cacheReadTokens
-    };
+    let inputY, outputY, cacheY;
+    if (isStacked) {
+      const total = d.inputTokens + d.outputTokens + d.cacheReadTokens;
+      const inputTop = d.inputTokens;
+      const outputTop = inputTop + d.outputTokens;
+      const cacheTop = outputTop + d.cacheReadTokens;
+      inputY = padding.top + chartH - (inputTop / maxTokens * chartH);
+      outputY = padding.top + chartH - (outputTop / maxTokens * chartH);
+      cacheY = padding.top + chartH - (cacheTop / maxTokens * chartH);
+    } else {
+      inputY = padding.top + chartH - (d.inputTokens / maxTokens * chartH);
+      outputY = padding.top + chartH - (d.outputTokens / maxTokens * chartH);
+      cacheY = padding.top + chartH - (d.cacheReadTokens / maxTokens * chartH);
+    }
+    return { x, inputY, outputY, cacheY, date: d.date, input: d.inputTokens, output: d.outputTokens, cache: d.cacheReadTokens, cost: d.cost };
   });
+  dailyChartPoints = points;
 
-  // Draw area fills (stacked)
-  // Cache area
-  ctx.fillStyle = cacheColor + '30';
-  ctx.beginPath();
-  ctx.moveTo(points[0].x, padding.top + chartH);
-  points.forEach(p => ctx.lineTo(p.x, p.cacheY));
-  ctx.lineTo(points[points.length - 1].x, padding.top + chartH);
-  ctx.closePath();
-  ctx.fill();
+  const baseY = padding.top + chartH;
 
-  // Output area
-  ctx.fillStyle = outputColor + '30';
-  ctx.beginPath();
-  ctx.moveTo(points[0].x, padding.top + chartH);
-  points.forEach(p => ctx.lineTo(p.x, p.outputY));
-  ctx.lineTo(points[points.length - 1].x, padding.top + chartH);
-  ctx.closePath();
-  ctx.fill();
+  if (isStacked) {
+    // Stacked areas: input → output → cache (bottom to top)
+    // Input (bottom)
+    ctx.fillStyle = inputColor + '60';
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, baseY);
+    points.forEach(p => ctx.lineTo(p.x, p.inputY));
+    ctx.lineTo(points[points.length - 1].x, baseY);
+    ctx.closePath();
+    ctx.fill();
 
-  // Input area
-  ctx.fillStyle = inputColor + '30';
-  ctx.beginPath();
-  ctx.moveTo(points[0].x, padding.top + chartH);
-  points.forEach(p => ctx.lineTo(p.x, p.inputY));
-  ctx.lineTo(points[points.length - 1].x, padding.top + chartH);
-  ctx.closePath();
-  ctx.fill();
+    // Output (middle)
+    ctx.fillStyle = outputColor + '60';
+    ctx.beginPath();
+    points.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.inputY) : ctx.lineTo(p.x, p.inputY));
+    for (let i = points.length - 1; i >= 0; i--) ctx.lineTo(points[i].x, points[i].outputY);
+    ctx.closePath();
+    ctx.fill();
 
-  // Draw lines
-  const drawLine = (color, yAccessor) => {
+    // Cache (top)
+    ctx.fillStyle = cacheColor + '60';
+    ctx.beginPath();
+    points.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.outputY) : ctx.lineTo(p.x, p.outputY));
+    for (let i = points.length - 1; i >= 0; i--) ctx.lineTo(points[i].x, points[i].cacheY);
+    ctx.closePath();
+    ctx.fill();
+  } else {
+    // Independent area fills
+    [[cacheColor, p => p.cacheY], [outputColor, p => p.outputY], [inputColor, p => p.inputY]].forEach(([color, yFn]) => {
+      ctx.fillStyle = color + '30';
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, baseY);
+      points.forEach(p => ctx.lineTo(p.x, yFn(p)));
+      ctx.lineTo(points[points.length - 1].x, baseY);
+      ctx.closePath();
+      ctx.fill();
+    });
+  }
+
+  // Lines and dots
+  const drawLine = (color, yFn) => {
     ctx.strokeStyle = color;
     ctx.lineWidth = 2;
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
     ctx.beginPath();
-    points.forEach((p, i) => {
-      const y = yAccessor(p);
-      if (i === 0) ctx.moveTo(p.x, y);
-      else ctx.lineTo(p.x, y);
-    });
+    points.forEach((p, i) => { const y = yFn(p); i === 0 ? ctx.moveTo(p.x, y) : ctx.lineTo(p.x, y); });
     ctx.stroke();
-
-    // Points
-    points.forEach(p => {
-      const y = yAccessor(p);
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.arc(p.x, y, 3, 0, Math.PI * 2);
-      ctx.fill();
-    });
+    points.forEach(p => { ctx.fillStyle = color; ctx.beginPath(); ctx.arc(p.x, yFn(p), 3, 0, Math.PI * 2); ctx.fill(); });
   };
-
-  drawLine(inputColor, p => p.inputY);
-  drawLine(outputColor, p => p.outputY);
-  drawLine(cacheColor, p => p.cacheY);
+  if (!isStacked) {
+    drawLine(inputColor, p => p.inputY);
+    drawLine(outputColor, p => p.outputY);
+    drawLine(cacheColor, p => p.cacheY);
+  }
 
   // X-axis labels
   ctx.fillStyle = textColor;
@@ -534,29 +657,55 @@ function renderDailyChart() {
   const step = Math.max(1, Math.floor(timeline.length / 7));
   timeline.forEach((d, i) => {
     if (i % step === 0 || i === timeline.length - 1) {
-      const x = points[i].x;
-      const label = formatDate(d.date);
-      ctx.fillText(label, x, padding.top + chartH + 18);
+      ctx.fillText(formatDate(d.date), points[i].x, baseY + 18);
     }
   });
 
   // Legend
-  const legends = [
-    { color: inputColor, label: 'Input' },
-    { color: outputColor, label: 'Output' },
-    { color: cacheColor, label: 'Cache' }
-  ];
+  const legends = [{ color: inputColor, label: 'Input' }, { color: outputColor, label: 'Output' }, { color: cacheColor, label: 'Cache' }];
   let legendX = padding.left;
-  const legendY = padding.top + chartH + 32;
   legends.forEach(leg => {
     ctx.fillStyle = leg.color;
-    ctx.fillRect(legendX, legendY, 12, 12);
+    ctx.fillRect(legendX, baseY + 32, 12, 12);
     ctx.fillStyle = textColor;
     ctx.font = '10px Inter, sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText(leg.label, legendX + 16, legendY + 9);
+    ctx.fillText(leg.label, legendX + 16, baseY + 41);
     legendX += 80;
   });
+
+  // Tooltip handler
+  canvas.onmousemove = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    let closest = null, minDist = Infinity;
+    for (const p of dailyChartPoints) {
+      const dist = Math.abs(p.x - mx);
+      if (dist < minDist) { minDist = dist; closest = p; }
+    }
+    if (closest && minDist < 30) {
+      tooltip.classList.remove('hidden');
+      tooltip.innerHTML = `
+        <div class="tooltip-date">${closest.date}</div>
+        <div class="tooltip-row"><span><span class="tooltip-dot" style="background:#3b82f6"></span><span class="tooltip-label">Input</span></span><span class="tooltip-val">${formatNumber(closest.input)}</span></div>
+        <div class="tooltip-row"><span><span class="tooltip-dot" style="background:#22c55e"></span><span class="tooltip-label">Output</span></span><span class="tooltip-val">${formatNumber(closest.output)}</span></div>
+        <div class="tooltip-row"><span><span class="tooltip-dot" style="background:#c9a44a"></span><span class="tooltip-label">Cache</span></span><span class="tooltip-val">${formatNumber(closest.cache)}</span></div>
+        <div class="tooltip-row"><span class="tooltip-label">Total</span><span class="tooltip-val">${formatNumber(closest.input + closest.output + closest.cache)}</span></div>
+        ${closest.cost ? `<div class="tooltip-row"><span class="tooltip-label">Cost</span><span class="tooltip-val" style="color:var(--accent)">$${closest.cost.toFixed(4)}</span></div>` : ''}
+      `;
+      // Position tooltip
+      const tx = Math.min(e.clientX - rect.left + 12, rect.width - 180);
+      const ty = Math.max(e.clientY - rect.top - 80, 0);
+      tooltip.style.left = tx + 'px';
+      tooltip.style.top = ty + 'px';
+
+      // Draw hover line
+      renderDailyChart.__hoveredX = closest.x;
+    } else {
+      tooltip.classList.add('hidden');
+    }
+  };
+  canvas.onmouseleave = () => { tooltip.classList.add('hidden'); };
 }
 
 function renderInputOutputDonut() {
@@ -700,6 +849,231 @@ function renderAgentBreakdown() {
       </div>
     `;
   }).join('');
+}
+
+// ═══════════════════════════════════════════
+// MODEL BREAKDOWN
+// ═══════════════════════════════════════════
+
+function renderModelBreakdown() {
+  const container = $('#modelTokenChart');
+  const models = tokenData.byModel || [];
+
+  if (models.length === 0) {
+    container.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>No model data</p></div>';
+    return;
+  }
+
+  const maxTotal = Math.max(...models.map(m => m.inputTokens + m.outputTokens + m.cacheReadTokens), 1);
+  const colors = ['#3b82f6', '#22c55e', '#c9a44a', '#ef4444', '#8b5cf6', '#f59e0b', '#06b6d4', '#ec4899'];
+
+  container.innerHTML = models.slice(0, 8).map((m, idx) => {
+    const total = m.inputTokens + m.outputTokens + m.cacheReadTokens;
+    const inputPct = (m.inputTokens / maxTotal * 100);
+    const outputPct = (m.outputTokens / maxTotal * 100);
+    const cachePct = (m.cacheReadTokens / maxTotal * 100);
+    const color = colors[idx % colors.length];
+
+    return `
+      <div class="model-bar-item">
+        <div class="model-bar-header">
+          <div class="model-bar-name">
+            <span class="model-dot" style="background:${color}"></span>
+            <span>${escapeHtml(truncate(m.model, 28))}</span>
+          </div>
+          <div>
+            <span class="model-bar-tokens">${formatNumber(total)}</span>
+            ${m.cost > 0 ? `<span class="model-bar-cost"> · $${m.cost.toFixed(2)}</span>` : ''}
+          </div>
+        </div>
+        <div class="model-bar-track">
+          <div class="model-bar-segment" style="width:${inputPct}%;background:#3b82f6">
+            ${inputPct > 8 ? formatNumber(m.inputTokens) : ''}
+          </div>
+          <div class="model-bar-segment" style="width:${outputPct}%;background:#22c55e">
+            ${outputPct > 8 ? formatNumber(m.outputTokens) : ''}
+          </div>
+          <div class="model-bar-segment" style="width:${cachePct}%;background:#c9a44a">
+            ${cachePct > 8 ? formatNumber(m.cacheReadTokens) : ''}
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════
+// AGENT COMPARISON CHART
+// ═══════════════════════════════════════════
+
+function renderAgentComparison() {
+  const section = $('#agentComparisonSection');
+  const agentTS = tokenData.agentTimeSeries || {};
+  const agentIds = Object.keys(agentTS);
+
+  // Only show when "All Agents" is selected and there are multiple
+  if ($('#agentSelect').value !== 'all' || agentIds.length < 2) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = '';
+
+  const canvas = $('#agentComparisonChart');
+  const ctx = canvas.getContext('2d');
+  const tooltip = $('#comparisonTooltip');
+
+  const parent = canvas.parentElement;
+  canvas.width = parent.clientWidth * 2;
+  canvas.height = parent.clientHeight * 2;
+  canvas.style.width = parent.clientWidth + 'px';
+  canvas.style.height = parent.clientHeight + 'px';
+  ctx.scale(2, 2);
+
+  const w = parent.clientWidth;
+  const h = parent.clientHeight;
+  const padding = { top: 20, right: 20, bottom: 40, left: 60 };
+  const chartW = w - padding.left - padding.right;
+  const chartH = h - padding.top - padding.bottom;
+
+  const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim();
+  const borderColor = getComputedStyle(document.documentElement).getPropertyValue('--border-subtle').trim();
+  const agentColors = ['#3b82f6', '#22c55e', '#c9a44a', '#ef4444', '#8b5cf6', '#f59e0b', '#06b6d4', '#ec4899'];
+
+  // Build unified date axis
+  const allDates = new Set();
+  for (const id of agentIds) {
+    for (const dp of agentTS[id]) allDates.add(dp.date);
+  }
+  const dates = [...allDates].sort();
+  if (dates.length === 0) { section.style.display = 'none'; return; }
+
+  // Build lookup
+  const lookup = {};
+  for (const id of agentIds) {
+    lookup[id] = {};
+    for (const dp of agentTS[id]) lookup[id][dp.date] = dp.tokens;
+  }
+
+  const maxTokens = Math.max(...dates.map(date => Math.max(...agentIds.map(id => lookup[id]?.[date] || 0))), 1000);
+
+  // Grid
+  ctx.strokeStyle = borderColor;
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = padding.top + (chartH / 4) * i;
+    ctx.beginPath();
+    ctx.moveTo(padding.left, y);
+    ctx.lineTo(padding.left + chartW, y);
+    ctx.stroke();
+    ctx.fillStyle = textColor;
+    ctx.font = '10px Inter, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(formatNumber(maxTokens * (1 - i / 4)), padding.left - 8, y + 3);
+  }
+
+  // Draw each agent's line
+  const allPoints = {};
+  agentIds.forEach((id, idx) => {
+    const color = agentColors[idx % agentColors.length];
+    const pts = dates.map((date, i) => {
+      const tokens = lookup[id]?.[date] || 0;
+      const x = padding.left + (chartW / (dates.length - 1 || 1)) * i;
+      const y = padding.top + chartH - (tokens / maxTokens * chartH);
+      return { x, y, tokens, date };
+    });
+    allPoints[id] = pts;
+
+    // Area
+    ctx.fillStyle = color + '15';
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, padding.top + chartH);
+    pts.forEach(p => ctx.lineTo(p.x, p.y));
+    ctx.lineTo(pts[pts.length - 1].x, padding.top + chartH);
+    ctx.closePath();
+    ctx.fill();
+
+    // Line
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+    ctx.stroke();
+
+    // Dots
+    pts.forEach(p => {
+      if (p.tokens > 0) {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    });
+  });
+
+  // X-axis
+  ctx.fillStyle = textColor;
+  ctx.font = '10px Inter, sans-serif';
+  ctx.textAlign = 'center';
+  const step = Math.max(1, Math.floor(dates.length / 7));
+  dates.forEach((d, i) => {
+    if (i % step === 0 || i === dates.length - 1) {
+      const x = padding.left + (chartW / (dates.length - 1 || 1)) * i;
+      ctx.fillText(formatDate(d), x, padding.top + chartH + 18);
+    }
+  });
+
+  // Legend
+  let legendX = padding.left;
+  agentIds.forEach((id, idx) => {
+    const color = agentColors[idx % agentColors.length];
+    const info = window.agentState?.[id] || {};
+    const label = (info.emoji || '') + ' ' + (info.name || id);
+    ctx.fillStyle = color;
+    ctx.fillRect(legendX, padding.top + chartH + 30, 10, 10);
+    ctx.fillStyle = textColor;
+    ctx.font = '10px Inter, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(truncate(label, 12), legendX + 14, padding.top + chartH + 39);
+    legendX += 100;
+  });
+
+  // Tooltip
+  canvas.onmousemove = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    // Find closest date column
+    let closestIdx = 0, minDist = Infinity;
+    dates.forEach((_, i) => {
+      const x = padding.left + (chartW / (dates.length - 1 || 1)) * i;
+      const dist = Math.abs(x - mx);
+      if (dist < minDist) { minDist = dist; closestIdx = i; }
+    });
+    if (minDist < 30) {
+      const date = dates[closestIdx];
+      tooltip.classList.remove('hidden');
+      let rows = `<div class="tooltip-date">${date}</div>`;
+      agentIds.forEach((id, idx) => {
+        const tokens = lookup[id]?.[date] || 0;
+        const info = window.agentState?.[id] || {};
+        const color = agentColors[idx % agentColors.length];
+        rows += `<div class="tooltip-row"><span><span class="tooltip-dot" style="background:${color}"></span><span class="tooltip-label">${escapeHtml(info.name || id)}</span></span><span class="tooltip-val">${formatNumber(tokens)}</span></div>`;
+      });
+      tooltip.innerHTML = rows;
+      const tx = Math.min(e.clientX - rect.left + 12, rect.width - 180);
+      tooltip.style.left = tx + 'px';
+      tooltip.style.top = Math.max(e.clientY - rect.top - 60, 0) + 'px';
+    } else {
+      tooltip.classList.add('hidden');
+    }
+  };
+  canvas.onmouseleave = () => tooltip.classList.add('hidden');
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
 }
 
 // ═══════════════════════════════════════════

@@ -723,6 +723,8 @@ function getTokenAnalytics(rangeStr, agentFilter) {
 
   const byAgent = new Map(); // agentId -> {inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cost}
   const byDate = new Map(); // date -> {inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, cost}
+  const byModel = new Map(); // model -> {inputTokens, outputTokens, cacheReadTokens, cost}
+  const byAgentDate = new Map(); // "agentId:date" -> {inputTokens, outputTokens, cacheReadTokens, cost}
 
   // Discover all agents
   let agentIds = [];
@@ -761,6 +763,7 @@ function getTokenAnalytics(rangeStr, agentFilter) {
         }
 
         // Parse session
+        let currentModel = null;
         try {
           const content = readFileSync(sessionPath, 'utf8');
           const lines = content.split('\n').filter(l => l.trim());
@@ -768,6 +771,11 @@ function getTokenAnalytics(rangeStr, agentFilter) {
           for (const line of lines) {
             try {
               const data = JSON.parse(line);
+
+              // Track model changes
+              if (data.type === 'model_change' && data.modelId) {
+                currentModel = data.modelId;
+              }
 
               // Message cost extraction
               if (data.type === 'message' && data.message) {
@@ -821,6 +829,31 @@ function getTokenAnalytics(rangeStr, agentFilter) {
                 a.cacheReadTokens += cacheRead;
                 a.cacheWriteTokens += cacheWrite;
                 a.cost += cost;
+
+                // Track by model
+                if (currentModel) {
+                  const modelKey = currentModel.replace('anthropic/', '').replace('openai/', '');
+                  if (!byModel.has(modelKey)) {
+                    byModel.set(modelKey, { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cost: 0 });
+                  }
+                  const m = byModel.get(modelKey);
+                  m.inputTokens += input;
+                  m.outputTokens += output;
+                  m.cacheReadTokens += cacheRead;
+                  m.cost += cost;
+                }
+
+                // Track by agent+date (for multi-agent comparison)
+                if (ts) {
+                  const date = new Date(ts).toISOString().split('T')[0];
+                  const adKey = `${agentId}:${date}`;
+                  if (!byAgentDate.has(adKey)) {
+                    byAgentDate.set(adKey, { agentId, date, tokens: 0, cost: 0 });
+                  }
+                  const ad = byAgentDate.get(adKey);
+                  ad.tokens += input + output + cacheRead;
+                  ad.cost += cost;
+                }
               }
             } catch {
               // Skip malformed lines
@@ -844,6 +877,20 @@ function getTokenAnalytics(rangeStr, agentFilter) {
     .map(([date, data]) => ({ date, ...data }))
     .sort((a, b) => a.date.localeCompare(b.date));
 
+  const byModelArray = Array.from(byModel.entries())
+    .map(([model, data]) => ({ model, ...data }))
+    .sort((a, b) => (b.inputTokens + b.outputTokens + b.cacheReadTokens) - (a.inputTokens + a.outputTokens + a.cacheReadTokens));
+
+  // Build per-agent time series (for comparison chart)
+  const agentTimeSeries = {};
+  for (const [, val] of byAgentDate) {
+    if (!agentTimeSeries[val.agentId]) agentTimeSeries[val.agentId] = [];
+    agentTimeSeries[val.agentId].push({ date: val.date, tokens: val.tokens, cost: val.cost });
+  }
+  for (const id of Object.keys(agentTimeSeries)) {
+    agentTimeSeries[id].sort((a, b) => a.date.localeCompare(b.date));
+  }
+
   // Calculate cache efficiency
   const cacheHitRate = inputTokens > 0 ? (cacheReadTokens / (inputTokens + cacheReadTokens) * 100) : 0;
   const avgTokensPerCall = apiCalls > 0 ? Math.round(totalTokens / apiCalls) : 0;
@@ -862,6 +909,8 @@ function getTokenAnalytics(rangeStr, agentFilter) {
     avgTokensPerCall,
     byAgent: byAgentArray,
     overTime: byDateArray,
+    byModel: byModelArray,
+    agentTimeSeries,
   };
 }
 
