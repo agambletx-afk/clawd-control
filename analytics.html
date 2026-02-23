@@ -190,6 +190,75 @@
   color: var(--text-primary);
 }
 
+/* ── Tooltip ────────────────────────────── */
+.chart-tooltip {
+  position: absolute; pointer-events: none;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 10px 14px;
+  font-size: 0.75rem; z-index: 10;
+  box-shadow: 0 4px 12px rgba(0,0,0,.3);
+  transition: opacity 0.15s;
+  min-width: 160px;
+}
+.chart-tooltip.hidden { opacity: 0; }
+.tooltip-date { font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
+.tooltip-row { display: flex; justify-content: space-between; gap: 12px; margin: 2px 0; }
+.tooltip-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+.tooltip-label { color: var(--text-secondary); }
+.tooltip-val { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-primary); }
+
+/* ── View Toggle ───────────────────────── */
+.view-toggle {
+  display: flex; gap: 2px; background: var(--bg-primary);
+  border-radius: var(--radius-sm); padding: 2px;
+}
+.view-toggle button {
+  padding: 4px 10px; border: none; border-radius: var(--radius-sm);
+  background: transparent; color: var(--text-tertiary); cursor: pointer;
+  font-size: 0.7rem; font-weight: 600; font-family: var(--font-sans);
+  transition: all 0.2s;
+}
+.view-toggle button.active {
+  background: var(--surface); color: var(--text-primary);
+  box-shadow: 0 1px 3px rgba(0,0,0,.2);
+}
+
+/* ── Cost by Model ─────────────────────── */
+.cost-model-list { display: flex; flex-direction: column; gap: 8px; min-height: 200px; }
+.cost-model-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; background: var(--bg-primary);
+  border-radius: var(--radius-sm);
+}
+.cost-model-color { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+.cost-model-name { flex: 1; font-size: 0.78rem; font-weight: 600; color: var(--text-secondary); }
+.cost-model-amount { font-size: 0.82rem; font-weight: 800; color: var(--accent); font-variant-numeric: tabular-nums; }
+.cost-model-tokens { font-size: 0.68rem; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.cost-model-rate { font-size: 0.65rem; color: var(--text-tertiary); }
+.cost-model-bar { flex: 0 0 80px; height: 6px; background: var(--bg-secondary); border-radius: 3px; overflow: hidden; }
+.cost-model-fill { height: 100%; border-radius: 3px; transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
+
+/* ── Projection Card ───────────────────── */
+.projection-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 12px; min-height: 100px;
+}
+.projection-item {
+  text-align: center; padding: 16px 12px;
+  background: var(--bg-primary); border-radius: var(--radius-md);
+}
+.projection-value {
+  font-size: 1.8rem; font-weight: 800; line-height: 1;
+  font-variant-numeric: tabular-nums; color: var(--accent);
+}
+.projection-label {
+  font-size: 0.7rem; color: var(--text-tertiary); margin-top: 6px;
+  text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;
+}
+.projection-sub {
+  font-size: 0.68rem; color: var(--text-secondary); margin-top: 4px;
+}
+
 /* ── Loading State ─────────────────────── */
 .loading-state {
   text-align: center; padding: 40px 20px; color: var(--text-tertiary);
@@ -208,6 +277,7 @@
 @media (max-width: 900px) {
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
   .chart-row { grid-template-columns: 1fr; }
+  .projection-grid { grid-template-columns: 1fr; }
 }
 
 @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
@@ -257,9 +327,9 @@
       <div class="stat-sub" id="statCallsSub">Messages sent</div>
     </div>
     <div class="stat-card">
-      <div class="stat-label">Cache Hits</div>
-      <div class="stat-value" style="color: var(--accent)" id="statCacheHits">—</div>
-      <div class="stat-sub" id="statCacheSub">Token reads</div>
+      <div class="stat-label">Projected Monthly</div>
+      <div class="stat-value" style="color: var(--accent)" id="statProjected">—</div>
+      <div class="stat-sub" id="statProjectedSub">At current rate</div>
     </div>
   </div>
 
@@ -301,10 +371,17 @@
         <i data-lucide="trending-up"></i>
         Cost Over Time
       </div>
-      <div class="chart-subtitle" id="costTimeSubtitle">Daily breakdown</div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="chart-subtitle" id="costTimeSubtitle">Daily breakdown</div>
+        <div class="view-toggle">
+          <button class="active" onclick="setCostMode('daily', this)">Daily</button>
+          <button onclick="setCostMode('cumulative', this)">Cumulative</button>
+        </div>
+      </div>
     </div>
     <div class="line-chart-container">
       <canvas id="costOverTimeChart" class="line-chart"></canvas>
+      <div class="chart-tooltip hidden" id="costTooltip"></div>
     </div>
   </div>
 
@@ -328,15 +405,42 @@
       <div class="chart-header">
         <div class="chart-title">
           <i data-lucide="cpu"></i>
-          Model Distribution
+          Cost by Model
         </div>
       </div>
-      <div id="modelDistributionChart" class="model-distribution">
+      <div id="costByModelChart" class="cost-model-list">
         <div class="loading-state">
           <div class="icon">⏳</div>
           <p>Loading models...</p>
         </div>
       </div>
+    </div>
+  </div>
+
+  <div class="chart-card-full fade-up" style="animation-delay:.3s">
+    <div class="chart-header">
+      <div class="chart-title">
+        <i data-lucide="calculator"></i>
+        Cost Projections
+      </div>
+      <div class="chart-subtitle">Based on current usage patterns</div>
+    </div>
+    <div id="projectionsPanel" class="projection-grid">
+      <div class="loading-state"><div class="icon">⏳</div><p>Loading...</p></div>
+    </div>
+  </div>
+
+  <div class="chart-card-full fade-up" id="agentCostSection" style="animation-delay:.35s;display:none">
+    <div class="chart-header">
+      <div class="chart-title">
+        <i data-lucide="git-compare"></i>
+        Daily Cost by Agent
+      </div>
+      <div class="chart-subtitle">Stacked daily cost breakdown per agent</div>
+    </div>
+    <div class="line-chart-container">
+      <canvas id="agentCostChart" class="line-chart"></canvas>
+      <div class="chart-tooltip hidden" id="agentCostTooltip"></div>
     </div>
   </div>
 
@@ -348,6 +452,8 @@
 
 const $ = s => document.querySelector(s);
 let analyticsData = null;
+let tokenData = null;
+let costMode = 'daily';
 
 // ═══════════════════════════════════════════
 // INIT
@@ -358,10 +464,13 @@ document.addEventListener('layout:snapshot', () => {
   loadAnalytics();
 });
 
-// Also load immediately — don't wait for SSE snapshot
-setTimeout(() => {
-  if (!analyticsData) loadAnalytics();
-}, 500);
+setTimeout(() => { if (!analyticsData) loadAnalytics(); }, 500);
+
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { if (analyticsData) renderAll(); }, 200);
+});
 
 function populateAgentSelect() {
   const select = $('#agentSelect');
@@ -373,8 +482,15 @@ function populateAgentSelect() {
   select.innerHTML = '<option value="all">All Agents</option>' + agentOptions;
 }
 
+function setCostMode(mode, btn) {
+  costMode = mode;
+  document.querySelectorAll('.view-toggle button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderCostOverTime();
+}
+
 // ═══════════════════════════════════════════
-// LOAD ANALYTICS DATA
+// LOAD DATA (both endpoints)
 // ═══════════════════════════════════════════
 
 async function loadAnalytics() {
@@ -382,17 +498,21 @@ async function loadAnalytics() {
   const agent = $('#agentSelect').value;
 
   try {
-    const res = await fetch(`/api/analytics?range=${range}&agent=${agent}`);
-    analyticsData = await res.json();
+    const [aRes, tRes] = await Promise.all([
+      fetch(`/api/analytics?range=${range}&agent=${agent}`),
+      fetch(`/api/tokens?range=${range}&agent=${agent}`)
+    ]);
+    analyticsData = await aRes.json();
+    tokenData = await tRes.json();
     renderAll();
   } catch (e) {
     console.error('Failed to load analytics:', e);
-    showToast('Failed to load analytics data', 'error');
+    if (typeof showToast === 'function') showToast('Failed to load analytics data', 'error');
   }
 }
 
 // ═══════════════════════════════════════════
-// RENDER ALL CHARTS
+// RENDER ALL
 // ═══════════════════════════════════════════
 
 function renderAll() {
@@ -403,7 +523,9 @@ function renderAll() {
   renderTokenBreakdown();
   renderCostOverTime();
   renderTopSessions();
-  renderModelDistribution();
+  renderCostByModel();
+  renderProjections();
+  renderAgentCostChart();
 
   refreshIcons();
 }
@@ -420,8 +542,12 @@ function renderStats() {
   $('#statApiCalls').textContent = formatNumber(d.apiCalls);
   $('#statCallsSub').textContent = 'Messages sent';
 
-  $('#statCacheHits').textContent = formatNumber(d.cacheReadTokens);
-  $('#statCacheSub').textContent = d.cacheReadTokens > 0 ? `${Math.round(d.cacheReadTokens / d.totalTokens * 100)}% of total` : 'No cache hits';
+  // Monthly projection
+  const days = d.overTime?.length || 1;
+  const dailyAvg = d.totalCost / days;
+  const monthly = dailyAvg * 30;
+  $('#statProjected').textContent = monthly > 0 ? `$${monthly.toFixed(2)}` : '$0.00';
+  $('#statProjectedSub').textContent = `$${dailyAvg.toFixed(3)}/day avg`;
 }
 
 function renderCostByAgent() {
@@ -487,40 +613,43 @@ function renderTokenBreakdown() {
 function renderCostOverTime() {
   const canvas = $('#costOverTimeChart');
   const ctx = canvas.getContext('2d');
+  const tooltip = $('#costTooltip');
   const timeline = analyticsData.overTime || [];
 
-  if (timeline.length === 0) {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-tertiary');
-    ctx.font = '12px Inter, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('No data available', canvas.width / 2, canvas.height / 2);
-    return;
-  }
-
-  // Responsive canvas sizing
   const parent = canvas.parentElement;
-  canvas.width = parent.clientWidth * 2; // 2x for retina
+  canvas.width = parent.clientWidth * 2;
   canvas.height = parent.clientHeight * 2;
   canvas.style.width = parent.clientWidth + 'px';
   canvas.style.height = parent.clientHeight + 'px';
   ctx.scale(2, 2);
 
+  if (timeline.length === 0) {
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-tertiary');
+    ctx.font = '12px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('No data available', parent.clientWidth / 2, parent.clientHeight / 2);
+    return;
+  }
+
   const w = parent.clientWidth;
   const h = parent.clientHeight;
-  const padding = { top: 20, right: 20, bottom: 30, left: 50 };
+  const padding = { top: 20, right: 20, bottom: 30, left: 55 };
   const chartW = w - padding.left - padding.right;
   const chartH = h - padding.top - padding.bottom;
 
-  // Get CSS colors
   const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
   const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim();
   const borderColor = getComputedStyle(document.documentElement).getPropertyValue('--border-subtle').trim();
+  const isCumulative = costMode === 'cumulative';
 
-  // Find max cost for scaling
-  const maxCost = Math.max(...timeline.map(d => d.cost), 0.01);
+  // Build cumulative data
+  let running = 0;
+  const cumData = timeline.map(d => { running += d.cost; return { ...d, cumulative: running }; });
+  const maxCost = isCumulative
+    ? Math.max(running, 0.01)
+    : Math.max(...timeline.map(d => d.cost), 0.01);
 
-  // Draw grid lines
+  // Grid
   ctx.strokeStyle = borderColor;
   ctx.lineWidth = 1;
   for (let i = 0; i <= 4; i++) {
@@ -529,28 +658,27 @@ function renderCostOverTime() {
     ctx.moveTo(padding.left, y);
     ctx.lineTo(padding.left + chartW, y);
     ctx.stroke();
-
-    // Y-axis labels
     const value = maxCost * (1 - i / 4);
     ctx.fillStyle = textColor;
     ctx.font = '10px Inter, sans-serif';
     ctx.textAlign = 'right';
-    ctx.fillText(`$${value.toFixed(2)}`, padding.left - 8, y + 3);
+    ctx.fillText(`$${value < 1 ? value.toFixed(3) : value.toFixed(2)}`, padding.left - 8, y + 3);
   }
 
-  // Draw line and area
-  const points = timeline.map((d, i) => {
+  const baseY = padding.top + chartH;
+  const costPoints = cumData.map((d, i) => {
     const x = padding.left + (chartW / (timeline.length - 1 || 1)) * i;
-    const y = padding.top + chartH - (d.cost / maxCost * chartH);
-    return { x, y, cost: d.cost, date: d.date };
+    const val = isCumulative ? d.cumulative : d.cost;
+    const y = padding.top + chartH - (val / maxCost * chartH);
+    return { x, y, cost: d.cost, cumulative: d.cumulative, date: d.date, tokens: d.tokens };
   });
 
-  // Area fill
-  ctx.fillStyle = accentColor + '20'; // 20% opacity
+  // Area
+  ctx.fillStyle = accentColor + '20';
   ctx.beginPath();
-  ctx.moveTo(points[0].x, padding.top + chartH);
-  points.forEach(p => ctx.lineTo(p.x, p.y));
-  ctx.lineTo(points[points.length - 1].x, padding.top + chartH);
+  ctx.moveTo(costPoints[0].x, baseY);
+  costPoints.forEach(p => ctx.lineTo(p.x, p.y));
+  ctx.lineTo(costPoints[costPoints.length - 1].x, baseY);
   ctx.closePath();
   ctx.fill();
 
@@ -560,32 +688,53 @@ function renderCostOverTime() {
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
   ctx.beginPath();
-  points.forEach((p, i) => {
-    if (i === 0) ctx.moveTo(p.x, p.y);
-    else ctx.lineTo(p.x, p.y);
-  });
+  costPoints.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
   ctx.stroke();
 
-  // Points
-  points.forEach(p => {
+  // Dots
+  costPoints.forEach(p => {
     ctx.fillStyle = accentColor;
     ctx.beginPath();
     ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
     ctx.fill();
   });
 
-  // X-axis labels (show every few days to avoid crowding)
+  // X-axis
   ctx.fillStyle = textColor;
   ctx.font = '10px Inter, sans-serif';
   ctx.textAlign = 'center';
   const step = Math.max(1, Math.floor(timeline.length / 7));
   timeline.forEach((d, i) => {
     if (i % step === 0 || i === timeline.length - 1) {
-      const x = points[i].x;
-      const label = formatDate(d.date);
-      ctx.fillText(label, x, padding.top + chartH + 18);
+      ctx.fillText(formatDate(d.date), costPoints[i].x, baseY + 18);
     }
   });
+
+  // Tooltip
+  canvas.onmousemove = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    let closest = null, minDist = Infinity;
+    for (const p of costPoints) {
+      const dist = Math.abs(p.x - mx);
+      if (dist < minDist) { minDist = dist; closest = p; }
+    }
+    if (closest && minDist < 30) {
+      tooltip.classList.remove('hidden');
+      tooltip.innerHTML = `
+        <div class="tooltip-date">${closest.date}</div>
+        <div class="tooltip-row"><span class="tooltip-label">Daily Cost</span><span class="tooltip-val" style="color:var(--accent)">$${closest.cost.toFixed(4)}</span></div>
+        <div class="tooltip-row"><span class="tooltip-label">Running Total</span><span class="tooltip-val">$${closest.cumulative.toFixed(4)}</span></div>
+        <div class="tooltip-row"><span class="tooltip-label">Tokens</span><span class="tooltip-val">${formatNumber(closest.tokens)}</span></div>
+      `;
+      const tx = Math.min(e.clientX - rect.left + 12, rect.width - 180);
+      tooltip.style.left = tx + 'px';
+      tooltip.style.top = Math.max(e.clientY - rect.top - 70, 0) + 'px';
+    } else {
+      tooltip.classList.add('hidden');
+    }
+  };
+  canvas.onmouseleave = () => tooltip.classList.add('hidden');
 }
 
 function renderTopSessions() {
@@ -616,30 +765,240 @@ function renderTopSessions() {
   }).join('');
 }
 
-function renderModelDistribution() {
-  const container = $('#modelDistributionChart');
-  const models = analyticsData.byModel || [];
+function renderCostByModel() {
+  const container = $('#costByModelChart');
+  const models = tokenData?.byModel || analyticsData?.byModel || [];
 
   if (models.length === 0) {
     container.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>No model data</p></div>';
     return;
   }
 
-  const total = models.reduce((sum, m) => sum + m.tokens, 0);
-  const colors = ['#3b82f6', '#22c55e', '#c9a44a', '#ef4444', '#8b5cf6', '#f59e0b'];
+  const maxCost = Math.max(...models.map(m => m.cost || 0), 0.001);
+  const colors = ['#3b82f6', '#22c55e', '#c9a44a', '#ef4444', '#8b5cf6', '#f59e0b', '#06b6d4', '#ec4899'];
 
-  container.innerHTML = models.slice(0, 6).map((m, i) => {
-    const pct = (m.tokens / total * 100).toFixed(1);
+  container.innerHTML = models.filter(m => m.cost > 0).slice(0, 8).map((m, i) => {
+    const pct = ((m.cost || 0) / maxCost * 100);
     const color = colors[i % colors.length];
-    const cleanModel = m.model.replace('anthropic/', '').replace('openai/', '');
+    const tokens = (m.inputTokens || 0) + (m.outputTokens || 0) + (m.cacheReadTokens || 0);
+    const costPer1k = tokens > 0 ? ((m.cost || 0) / tokens * 1000) : 0;
+    const cleanModel = (m.model || '').replace('anthropic/', '').replace('openai/', '');
+
     return `
-      <div class="model-item">
-        <div class="model-color" style="background:${color}"></div>
-        <div class="model-name">${truncate(cleanModel, 20)}</div>
-        <div class="model-percent">${pct}%</div>
+      <div class="cost-model-item">
+        <div class="cost-model-color" style="background:${color}"></div>
+        <div style="flex:1;min-width:0">
+          <div class="cost-model-name">${escapeHtml(truncate(cleanModel, 24))}</div>
+          <div class="cost-model-rate">${formatNumber(tokens)} tok · $${costPer1k.toFixed(4)}/1K</div>
+        </div>
+        <div style="text-align:right">
+          <div class="cost-model-amount">$${(m.cost || 0).toFixed(3)}</div>
+        </div>
+        <div class="cost-model-bar">
+          <div class="cost-model-fill" style="width:${pct}%;background:${color}"></div>
+        </div>
       </div>
     `;
   }).join('');
+}
+
+function renderProjections() {
+  const container = $('#projectionsPanel');
+  const d = analyticsData;
+  const timeline = d.overTime || [];
+
+  if (timeline.length === 0) {
+    container.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>No data for projections</p></div>';
+    return;
+  }
+
+  const days = timeline.length;
+  const dailyAvg = d.totalCost / days;
+  const weekly = dailyAvg * 7;
+  const monthly = dailyAvg * 30;
+  const yearly = dailyAvg * 365;
+
+  // Trend: compare last 7 days vs previous 7 days
+  const last7 = timeline.slice(-7).reduce((s, d) => s + d.cost, 0);
+  const prev7 = timeline.slice(-14, -7).reduce((s, d) => s + d.cost, 0);
+  const trendPct = prev7 > 0 ? ((last7 - prev7) / prev7 * 100) : 0;
+  const trendDir = trendPct > 5 ? '📈' : trendPct < -5 ? '📉' : '➡️';
+  const trendColor = trendPct > 5 ? 'var(--warning)' : trendPct < -5 ? 'var(--success)' : 'var(--text-secondary)';
+
+  // Cost per API call
+  const costPerCall = d.apiCalls > 0 ? (d.totalCost / d.apiCalls) : 0;
+
+  // Peak day
+  const peakDay = timeline.reduce((max, d) => d.cost > max.cost ? d : max, timeline[0]);
+
+  container.innerHTML = `
+    <div class="projection-item">
+      <div class="projection-value">$${monthly.toFixed(2)}</div>
+      <div class="projection-label">Monthly Estimate</div>
+      <div class="projection-sub">$${yearly.toFixed(2)}/year · $${weekly.toFixed(2)}/week</div>
+    </div>
+    <div class="projection-item">
+      <div class="projection-value" style="color:${trendColor}">${trendDir} ${Math.abs(trendPct).toFixed(0)}%</div>
+      <div class="projection-label">Week-over-Week</div>
+      <div class="projection-sub">$${last7.toFixed(3)} vs $${prev7.toFixed(3)}</div>
+    </div>
+    <div class="projection-item">
+      <div class="projection-value" style="font-size:1.4rem">$${costPerCall.toFixed(4)}</div>
+      <div class="projection-label">Cost per API Call</div>
+      <div class="projection-sub">Peak: $${peakDay.cost.toFixed(3)} on ${formatDate(peakDay.date)}</div>
+    </div>
+  `;
+}
+
+function renderAgentCostChart() {
+  const section = $('#agentCostSection');
+  const agentTS = tokenData?.agentTimeSeries || {};
+  const agentIds = Object.keys(agentTS);
+
+  if ($('#agentSelect').value !== 'all' || agentIds.length < 2) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = '';
+
+  const canvas = $('#agentCostChart');
+  const ctx = canvas.getContext('2d');
+  const tooltip = $('#agentCostTooltip');
+
+  const parent = canvas.parentElement;
+  canvas.width = parent.clientWidth * 2;
+  canvas.height = parent.clientHeight * 2;
+  canvas.style.width = parent.clientWidth + 'px';
+  canvas.style.height = parent.clientHeight + 'px';
+  ctx.scale(2, 2);
+
+  const w = parent.clientWidth;
+  const h = parent.clientHeight;
+  const padding = { top: 20, right: 20, bottom: 40, left: 55 };
+  const chartW = w - padding.left - padding.right;
+  const chartH = h - padding.top - padding.bottom;
+
+  const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim();
+  const borderColor = getComputedStyle(document.documentElement).getPropertyValue('--border-subtle').trim();
+  const agentColors = ['#3b82f6', '#22c55e', '#c9a44a', '#ef4444', '#8b5cf6', '#f59e0b', '#06b6d4', '#ec4899'];
+
+  // Build unified date axis
+  const allDates = new Set();
+  for (const id of agentIds) for (const dp of agentTS[id]) allDates.add(dp.date);
+  const dates = [...allDates].sort();
+  if (dates.length === 0) { section.style.display = 'none'; return; }
+
+  // Build lookup
+  const lookup = {};
+  for (const id of agentIds) {
+    lookup[id] = {};
+    for (const dp of agentTS[id]) lookup[id][dp.date] = dp.cost;
+  }
+
+  // Stacked bar chart — compute stacked totals per date
+  const stackedMax = Math.max(...dates.map(date =>
+    agentIds.reduce((sum, id) => sum + (lookup[id]?.[date] || 0), 0)
+  ), 0.001);
+
+  // Grid
+  ctx.strokeStyle = borderColor;
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = padding.top + (chartH / 4) * i;
+    ctx.beginPath();
+    ctx.moveTo(padding.left, y);
+    ctx.lineTo(padding.left + chartW, y);
+    ctx.stroke();
+    const value = stackedMax * (1 - i / 4);
+    ctx.fillStyle = textColor;
+    ctx.font = '10px Inter, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(`$${value < 1 ? value.toFixed(3) : value.toFixed(2)}`, padding.left - 8, y + 3);
+  }
+
+  const baseY = padding.top + chartH;
+  const barW = Math.max(2, Math.min(20, chartW / dates.length - 2));
+
+  // Draw stacked bars
+  dates.forEach((date, i) => {
+    const x = padding.left + (chartW / (dates.length - 1 || 1)) * i - barW / 2;
+    let stackY = baseY;
+
+    agentIds.forEach((id, idx) => {
+      const cost = lookup[id]?.[date] || 0;
+      if (cost <= 0) return;
+      const barH = (cost / stackedMax) * chartH;
+      ctx.fillStyle = agentColors[idx % agentColors.length];
+      ctx.fillRect(x, stackY - barH, barW, barH);
+      stackY -= barH;
+    });
+  });
+
+  // X-axis
+  ctx.fillStyle = textColor;
+  ctx.font = '10px Inter, sans-serif';
+  ctx.textAlign = 'center';
+  const step = Math.max(1, Math.floor(dates.length / 7));
+  dates.forEach((d, i) => {
+    if (i % step === 0 || i === dates.length - 1) {
+      const x = padding.left + (chartW / (dates.length - 1 || 1)) * i;
+      ctx.fillText(formatDate(d), x, baseY + 18);
+    }
+  });
+
+  // Legend
+  let legendX = padding.left;
+  agentIds.forEach((id, idx) => {
+    const color = agentColors[idx % agentColors.length];
+    const info = window.agentState?.[id] || {};
+    const label = (info.emoji || '') + ' ' + (info.name || id);
+    ctx.fillStyle = color;
+    ctx.fillRect(legendX, baseY + 28, 10, 10);
+    ctx.fillStyle = textColor;
+    ctx.font = '10px Inter, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(truncate(label, 12), legendX + 14, baseY + 37);
+    legendX += 100;
+  });
+
+  // Tooltip
+  canvas.onmousemove = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    let closestIdx = 0, minDist = Infinity;
+    dates.forEach((_, i) => {
+      const x = padding.left + (chartW / (dates.length - 1 || 1)) * i;
+      const dist = Math.abs(x - mx);
+      if (dist < minDist) { minDist = dist; closestIdx = i; }
+    });
+    if (minDist < 30) {
+      const date = dates[closestIdx];
+      const total = agentIds.reduce((s, id) => s + (lookup[id]?.[date] || 0), 0);
+      tooltip.classList.remove('hidden');
+      let rows = `<div class="tooltip-date">${date}</div>`;
+      agentIds.forEach((id, idx) => {
+        const cost = lookup[id]?.[date] || 0;
+        if (cost <= 0) return;
+        const info = window.agentState?.[id] || {};
+        const color = agentColors[idx % agentColors.length];
+        rows += `<div class="tooltip-row"><span><span class="tooltip-dot" style="background:${color}"></span><span class="tooltip-label">${escapeHtml(info.name || id)}</span></span><span class="tooltip-val" style="color:var(--accent)">$${cost.toFixed(4)}</span></div>`;
+      });
+      rows += `<div class="tooltip-row" style="border-top:1px solid var(--border-subtle);padding-top:4px;margin-top:4px"><span class="tooltip-label">Total</span><span class="tooltip-val">$${total.toFixed(4)}</span></div>`;
+      tooltip.innerHTML = rows;
+      const tx = Math.min(e.clientX - rect.left + 12, rect.width - 180);
+      tooltip.style.left = tx + 'px';
+      tooltip.style.top = Math.max(e.clientY - rect.top - 60, 0) + 'px';
+    } else {
+      tooltip.classList.add('hidden');
+    }
+  };
+  canvas.onmouseleave = () => tooltip.classList.add('hidden');
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
 }
 
 // ═══════════════════════════════════════════
