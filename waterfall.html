@@ -221,6 +221,78 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* ── Filter Bar ────────────────────────── */
+.filter-bar {
+  display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.filter-pill {
+  padding: 4px 12px; border-radius: 20px; border: 1px solid var(--border-subtle);
+  background: transparent; color: var(--text-tertiary); cursor: pointer;
+  font-size: 0.72rem; font-weight: 600; font-family: var(--font-sans);
+  transition: all 0.2s; display: flex; align-items: center; gap: 4px;
+}
+.filter-pill:hover { border-color: var(--border); color: var(--text-secondary); }
+.filter-pill.active { background: var(--accent); color: var(--bg-primary); border-color: var(--accent); }
+.filter-pill .pill-count {
+  background: rgba(255,255,255,.2); padding: 0 5px; border-radius: 10px;
+  font-size: 0.6rem; font-weight: 700;
+}
+.filter-pill.active .pill-count { background: rgba(0,0,0,.2); }
+
+.filter-search {
+  flex: 1; min-width: 160px; max-width: 260px;
+  padding: 5px 10px; border-radius: 20px;
+  background: var(--bg-primary); border: 1px solid var(--border-subtle);
+  color: var(--text-primary); font-family: var(--font-sans); font-size: 0.75rem;
+  outline: none;
+}
+.filter-search:focus { border-color: var(--accent); }
+.filter-search::placeholder { color: var(--text-tertiary); }
+
+.filter-actions {
+  display: flex; gap: 4px; margin-left: auto;
+}
+.filter-btn {
+  padding: 4px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);
+  background: transparent; color: var(--text-tertiary); cursor: pointer;
+  font-size: 0.68rem; font-weight: 600; font-family: var(--font-sans);
+  transition: all 0.2s;
+}
+.filter-btn:hover { border-color: var(--border); color: var(--text-secondary); }
+
+/* ── Duration Mini Chart (in stats) ────── */
+.duration-breakdown {
+  display: flex; gap: 2px; height: 6px; border-radius: 3px; overflow: hidden;
+  margin-top: 6px;
+}
+.duration-seg { height: 100%; border-radius: 2px; transition: width 0.4s; }
+
+/* ── Gap Indicator ─────────────────────── */
+.timeline-gap {
+  display: flex; align-items: center; justify-content: center;
+  padding: 2px 0; margin-left: 80px; position: relative;
+}
+.timeline-gap::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 50%;
+  border-top: 1px dashed var(--border-subtle);
+}
+.timeline-gap-label {
+  background: var(--surface); padding: 0 8px; position: relative; z-index: 1;
+  font-size: 0.6rem; color: var(--text-tertiary); font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Cost Heat Indicator ───────────────── */
+.timeline-bar.cost-high { box-shadow: 0 0 8px rgba(239, 68, 68, 0.4), 0 1px 3px rgba(0,0,0,0.2); }
+.timeline-bar.cost-medium { box-shadow: 0 0 6px rgba(201, 164, 74, 0.3), 0 1px 3px rgba(0,0,0,0.2); }
+
+/* ── Hidden by filter ──────────────────── */
+.timeline-entry.filtered-out { display: none; }
+
+/* ── Expand all detail panels ──────────── */
+.detail-panel.force-open { display: block; }
+
 /* ── Loading/Empty States ──────────────── */
 .loading-state, .empty-state {
   text-align: center; padding: 40px 20px; color: var(--text-tertiary);
@@ -234,6 +306,8 @@
   .timeline-marker { width: 60px; font-size: 0.65rem; }
   .timeline-tools { margin-left: 68px; }
   .detail-panel { margin-left: 68px; }
+  .timeline-gap { margin-left: 60px; }
+  .filter-bar { gap: 4px; }
 }
 
 @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
@@ -262,6 +336,7 @@
       <div class="stat-label">Total Duration</div>
       <div class="stat-value info" id="statDuration">—</div>
       <div class="stat-sub" id="statDurationSub">Session length</div>
+      <div class="duration-breakdown" id="durationBreakdown"></div>
     </div>
     <div class="stat-card">
       <div class="stat-label">Total Cost</div>
@@ -291,6 +366,19 @@
         <i data-lucide="activity"></i>
         Timeline
       </div>
+      <div id="timelineCount" style="font-size:0.72rem;color:var(--text-tertiary);font-variant-numeric:tabular-nums"></div>
+    </div>
+    <div id="filterBar" class="filter-bar" style="display:none">
+      <button class="filter-pill active" data-filter="all" onclick="setFilter('all', this)">All</button>
+      <button class="filter-pill" data-filter="user" onclick="setFilter('user', this)">👤 User <span class="pill-count" id="countUser">0</span></button>
+      <button class="filter-pill" data-filter="assistant" onclick="setFilter('assistant', this)">🤖 Assistant <span class="pill-count" id="countAssistant">0</span></button>
+      <button class="filter-pill" data-filter="tool" onclick="setFilter('tool', this)">🛠️ Tools <span class="pill-count" id="countTool">0</span></button>
+      <button class="filter-pill" data-filter="thinking" onclick="setFilter('thinking', this)">🤔 Thinking <span class="pill-count" id="countThinking">0</span></button>
+      <input class="filter-search" id="searchInput" type="text" placeholder="Search messages..." oninput="applyFilters()">
+      <div class="filter-actions">
+        <button class="filter-btn" onclick="expandAll()" title="Expand all details">↕ Expand All</button>
+        <button class="filter-btn" onclick="collapseAll()" title="Collapse all">↕ Collapse</button>
+      </div>
     </div>
     <div id="timeline" class="timeline">
       <div class="loading-state">
@@ -308,6 +396,8 @@
 
 const $ = s => document.querySelector(s);
 let currentTrace = null;
+let activeFilter = 'all';
+let allExpanded = false;
 
 // ═══════════════════════════════════════════
 // INIT
@@ -315,13 +405,22 @@ let currentTrace = null;
 
 loadSessions();
 
+// Keyboard navigation
+document.addEventListener('keydown', (e) => {
+  if (!currentTrace) return;
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if (e.key === 'e') expandAll();
+  if (e.key === 'c') collapseAll();
+});
+
 async function loadSessions() {
   try {
-    const res = await fetch('/api/sessions');
-    const sessions = await res.json();
+    const res = await fetch('/api/sessions?limit=100');
+    const data = await res.json();
+    const sessions = data.sessions || data; // handle both paginated and old format
     
     const select = $('#sessionSelect');
-    if (sessions.length === 0) {
+    if (!sessions || sessions.length === 0) {
       select.innerHTML = '<option value="">No sessions found</option>';
       return;
     }
@@ -329,34 +428,45 @@ async function loadSessions() {
     select.innerHTML = '<option value="">— Select a session —</option>' + 
       sessions.map(s => {
         const time = s.updatedAt ? timeAgo(s.updatedAt) : 'unknown';
-        return `<option value="${s.key}">${s.agentEmoji} ${s.agentName} / ${s.displayName} (${time})</option>`;
+        return `<option value="${escapeAttr(s.key)}">${escapeHtml(s.agentEmoji + ' ' + s.agentName + ' / ' + s.displayName)} (${time})</option>`;
       }).join('');
+
+    // Auto-select from URL hash
+    if (window.location.hash) {
+      const key = decodeURIComponent(window.location.hash.slice(1));
+      if (select.querySelector(`option[value="${CSS.escape(key)}"]`)) {
+        select.value = key;
+        loadSessionTrace();
+      }
+    }
   } catch (e) {
     console.error('Failed to load sessions:', e);
-    showToast('Failed to load sessions', 'error');
+    if (typeof showToast === 'function') showToast('Failed to load sessions', 'error');
   }
 }
 
 async function loadSessionTrace() {
   const sessionKey = $('#sessionSelect').value;
-  if (!sessionKey) {
-    resetView();
-    return;
-  }
+  if (!sessionKey) { resetView(); return; }
+
+  // Update URL hash for bookmarking
+  window.location.hash = encodeURIComponent(sessionKey);
 
   try {
     const res = await fetch(`/api/session/${encodeURIComponent(sessionKey)}/trace`);
     if (!res.ok) {
-      showToast('Session not found', 'error');
+      if (typeof showToast === 'function') showToast('Session not found', 'error');
       resetView();
       return;
     }
-
     currentTrace = await res.json();
+    activeFilter = 'all';
+    $('#searchInput').value = '';
+    document.querySelectorAll('.filter-pill').forEach(p => p.classList.toggle('active', p.dataset.filter === 'all'));
     renderTrace();
   } catch (e) {
     console.error('Failed to load trace:', e);
-    showToast('Failed to load trace data', 'error');
+    if (typeof showToast === 'function') showToast('Failed to load trace data', 'error');
     resetView();
   }
 }
@@ -373,7 +483,71 @@ function resetView() {
   $('#statMessagesSub').textContent = 'Turns';
   $('#statCache').textContent = '—';
   $('#statCacheSub').textContent = 'Cached tokens';
+  $('#durationBreakdown').innerHTML = '';
+  $('#filterBar').style.display = 'none';
+  $('#timelineCount').textContent = '';
   $('#timeline').innerHTML = '<div class="loading-state"><div class="icon">⏳</div><p>Select a session to view the waterfall</p></div>';
+}
+
+// ═══════════════════════════════════════════
+// FILTERS
+// ═══════════════════════════════════════════
+
+function setFilter(filter, btn) {
+  activeFilter = filter;
+  document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  applyFilters();
+}
+
+function applyFilters() {
+  const search = ($('#searchInput').value || '').toLowerCase();
+  const entries = document.querySelectorAll('.timeline-entry');
+  let visible = 0;
+
+  entries.forEach(entry => {
+    const type = entry.dataset.type;
+    const text = (entry.dataset.text || '').toLowerCase();
+    
+    const matchesType = activeFilter === 'all' || type === activeFilter;
+    const matchesSearch = !search || text.includes(search);
+    
+    entry.classList.toggle('filtered-out', !(matchesType && matchesSearch));
+    if (matchesType && matchesSearch) visible++;
+  });
+
+  // Also hide gap indicators that are between two filtered-out entries
+  document.querySelectorAll('.timeline-gap').forEach(gap => {
+    const prev = gap.previousElementSibling;
+    const next = gap.nextElementSibling;
+    const prevHidden = prev && prev.classList.contains('filtered-out');
+    const nextHidden = next && next.classList.contains('filtered-out');
+    gap.style.display = (prevHidden || nextHidden) ? 'none' : '';
+  });
+
+  const total = entries.length;
+  $('#timelineCount').textContent = visible < total ? `${visible} / ${total} shown` : `${total} messages`;
+}
+
+function expandAll() {
+  if (!currentTrace) return;
+  const entries = document.querySelectorAll('.timeline-entry:not(.filtered-out)');
+  entries.forEach(entry => {
+    const msg = currentTrace.trace[parseInt(entry.dataset.idx)];
+    if (!msg) return;
+    let panel = entry.querySelector('.detail-panel');
+    if (!panel) {
+      panel = buildDetailPanel(msg);
+      entry.appendChild(panel);
+    }
+    panel.classList.add('open');
+  });
+  allExpanded = true;
+}
+
+function collapseAll() {
+  document.querySelectorAll('.detail-panel').forEach(p => p.classList.remove('open'));
+  allExpanded = false;
 }
 
 // ═══════════════════════════════════════════
@@ -381,14 +555,11 @@ function resetView() {
 // ═══════════════════════════════════════════
 
 function renderTrace() {
-  if (!currentTrace || !currentTrace.trace) {
-    resetView();
-    return;
-  }
+  if (!currentTrace || !currentTrace.trace) { resetView(); return; }
 
   const { trace, summary } = currentTrace;
 
-  // Render stats
+  // Stats
   $('#statDuration').textContent = formatDuration(summary.totalDuration);
   $('#statDurationSub').textContent = `${trace.length} messages`;
 
@@ -398,67 +569,135 @@ function renderTrace() {
   $('#statTokens').textContent = formatNumber(summary.totalTokens);
   $('#statTokensSub').textContent = `${formatNumber(summary.totalInput)} in / ${formatNumber(summary.totalOutput)} out`;
 
+  const userTurns = trace.filter(t => t.role === 'user').length;
   $('#statMessages').textContent = summary.messageCount;
-  $('#statMessagesSub').textContent = trace.filter(t => t.role === 'user').length + ' user turns';
+  $('#statMessagesSub').textContent = userTurns + ' user turns';
 
   $('#statCache').textContent = formatNumber(summary.totalCacheRead);
   const cachePct = summary.totalTokens > 0 ? Math.round(summary.totalCacheRead / summary.totalTokens * 100) : 0;
   $('#statCacheSub').textContent = cachePct > 0 ? `${cachePct}% of total` : 'No cache hits';
 
-  // Render timeline
+  // Duration breakdown mini chart
+  renderDurationBreakdown(trace);
+
+  // Filter bar counts
+  const counts = { user: 0, assistant: 0, tool: 0, thinking: 0 };
+  trace.forEach(msg => {
+    const type = getMsgType(msg);
+    if (counts[type] !== undefined) counts[type]++;
+  });
+  Object.entries(counts).forEach(([k, v]) => {
+    const el = $(`#count${k.charAt(0).toUpperCase() + k.slice(1)}`);
+    if (el) el.textContent = v;
+  });
+  $('#filterBar').style.display = trace.length > 0 ? 'flex' : 'none';
+
+  // Timeline
   if (trace.length === 0) {
     $('#timeline').innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>No messages in this session</p></div>';
     return;
   }
 
   const maxDuration = Math.max(...trace.map(t => t.duration || 0), 1);
+  const maxCost = Math.max(...trace.map(t => t.cost || 0), 0.001);
   const timeline = $('#timeline');
   timeline.innerHTML = '';
 
   trace.forEach((msg, idx) => {
-    const item = createTimelineItem(msg, idx, maxDuration);
+    // Insert gap indicator for pauses > 30 seconds
+    if (idx > 0) {
+      const prevTs = new Date(trace[idx - 1].timestamp).getTime();
+      const thisTs = new Date(msg.timestamp).getTime();
+      const gap = thisTs - prevTs;
+      if (gap > 30000) {
+        const gapEl = document.createElement('div');
+        gapEl.className = 'timeline-gap';
+        gapEl.innerHTML = `<span class="timeline-gap-label">⏱ ${formatDuration(gap)} gap</span>`;
+        timeline.appendChild(gapEl);
+      }
+    }
+    const item = createTimelineItem(msg, idx, maxDuration, maxCost);
     timeline.appendChild(item);
   });
 
+  $('#timelineCount').textContent = `${trace.length} messages`;
   refreshIcons();
 }
 
-function createTimelineItem(msg, idx, maxDuration) {
-  const container = document.createElement('div');
+function getMsgType(msg) {
+  if (msg.role === 'user') return 'user';
+  if (msg.role === 'assistant') {
+    if (msg.contentTypes.includes('toolCall')) return 'tool';
+    if (msg.hasThinking) return 'thinking';
+    return 'assistant';
+  }
+  return msg.role;
+}
+
+function renderDurationBreakdown(trace) {
+  const container = $('#durationBreakdown');
+  const totalDuration = trace.reduce((s, m) => s + (m.duration || 0), 0) || 1;
   
-  // Determine bar type and color
+  // Aggregate duration by type
+  const byType = { user: 0, assistant: 0, tool: 0, thinking: 0 };
+  const colors = { user: '#3b82f6', assistant: '#22c55e', tool: '#c9a44a', thinking: '#8b5cf6' };
+  
+  trace.forEach(msg => {
+    const type = getMsgType(msg);
+    byType[type] = (byType[type] || 0) + (msg.duration || 0);
+  });
+
+  container.innerHTML = Object.entries(byType)
+    .filter(([, v]) => v > 0)
+    .map(([type, dur]) => {
+      const pct = Math.max(2, dur / totalDuration * 100);
+      return `<div class="duration-seg" style="width:${pct}%;background:${colors[type]}" title="${type}: ${formatDuration(dur)}"></div>`;
+    }).join('');
+}
+
+function createTimelineItem(msg, idx, maxDuration, maxCost) {
+  const container = document.createElement('div');
+  container.className = 'timeline-entry';
+  container.dataset.idx = idx;
+  container.dataset.type = getMsgType(msg);
+  container.dataset.text = (msg.textPreview || '') + ' ' + (msg.toolCalls || []).map(t => t.name).join(' ');
+
   let barType = msg.role;
   let icon = '💬';
   let label = msg.role.charAt(0).toUpperCase() + msg.role.slice(1);
 
   if (msg.role === 'user') {
-    icon = '👤';
-    label = 'User';
+    icon = '👤'; label = 'User';
+    if (msg.textPreview) label = truncate(msg.textPreview, 60);
   } else if (msg.role === 'assistant') {
     if (msg.contentTypes.includes('toolCall')) {
-      barType = 'tool';
-      icon = '🛠️';
-      label = `${msg.toolCalls.length} tool call${msg.toolCalls.length > 1 ? 's' : ''}`;
+      barType = 'tool'; icon = '🛠️';
+      label = `${msg.toolCalls.length} tool call${msg.toolCalls.length > 1 ? 's' : ''}: ${(msg.toolCalls || []).map(t => t.name).join(', ')}`;
+      label = truncate(label, 60);
     } else if (msg.hasThinking) {
-      barType = 'thinking';
-      icon = '🤔';
-      label = 'Thinking';
+      barType = 'thinking'; icon = '🤔'; label = 'Thinking + Response';
     } else {
       icon = '🤖';
-      label = 'Assistant';
+      label = msg.textPreview ? truncate(msg.textPreview, 60) : 'Assistant';
     }
   }
 
-  // Calculate bar width based on duration (logarithmic scale for better visual distribution)
+  // Duration → bar width
   const durationMs = msg.duration || 0;
   const widthPct = durationMs > 0 ? Math.min(95, Math.log(durationMs + 1) / Math.log(maxDuration + 1) * 90 + 5) : 5;
 
-  // Format timestamp
+  // Cost heat indicator
+  let costClass = '';
+  if (msg.cost > 0 && maxCost > 0) {
+    const costRatio = msg.cost / maxCost;
+    if (costRatio > 0.6) costClass = 'cost-high';
+    else if (costRatio > 0.3) costClass = 'cost-medium';
+  }
+
   const time = new Date(msg.timestamp);
   const timeStr = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const deltaStr = durationMs > 0 ? `+${formatDuration(durationMs)}` : '';
 
-  // Create timeline item
   const itemEl = document.createElement('div');
   itemEl.className = 'timeline-item';
   itemEl.innerHTML = `
@@ -467,9 +706,9 @@ function createTimelineItem(msg, idx, maxDuration) {
       ${deltaStr ? `<div class="timeline-delta">${deltaStr}</div>` : ''}
     </div>
     <div class="timeline-bar-container">
-      <div class="timeline-bar ${barType}" style="width: ${widthPct}%">
+      <div class="timeline-bar ${barType} ${costClass}" style="width: ${widthPct}%">
         <span class="timeline-icon">${icon}</span>
-        <span class="timeline-label">${label}</span>
+        <span class="timeline-label">${escapeHtml(label)}</span>
         <span class="timeline-stats">
           ${msg.usage.total > 0 ? `<span>${formatNumber(msg.usage.total)} tok</span>` : ''}
           ${msg.cost > 0 ? `<span>$${msg.cost.toFixed(4)}</span>` : ''}
@@ -478,23 +717,36 @@ function createTimelineItem(msg, idx, maxDuration) {
     </div>
   `;
 
-  // Add click handler to expand details
   itemEl.addEventListener('click', (e) => {
-    if (e.target.closest('.tool-bar')) return; // Don't toggle when clicking tool bars
+    if (e.target.closest('.tool-bar')) return;
     toggleDetails(container, msg);
   });
 
   container.appendChild(itemEl);
 
-  // Add tool call bars if present
+  // Tool call bars with clickable expansion
   if (msg.toolCalls && msg.toolCalls.length > 0) {
     const toolsEl = document.createElement('div');
     toolsEl.className = 'timeline-tools';
-    msg.toolCalls.forEach(tool => {
+    msg.toolCalls.forEach((tool, ti) => {
       const toolBar = document.createElement('div');
       toolBar.className = 'tool-bar';
-      toolBar.innerHTML = `<span class="tool-name">${escapeHtml(tool.name)}</span>`;
-      toolBar.title = typeof tool.arguments === 'string' ? tool.arguments.substring(0, 500) : JSON.stringify(tool.arguments, null, 2).substring(0, 500);
+      toolBar.style.cursor = 'pointer';
+      toolBar.innerHTML = `<span class="tool-name">${escapeHtml(tool.name)}</span><span style="font-size:0.6rem;color:var(--text-tertiary);margin-left:auto">▸ details</span>`;
+      toolBar.addEventListener('click', (e) => {
+        e.stopPropagation();
+        // Toggle inline tool detail
+        let det = toolBar.nextElementSibling;
+        if (det && det.classList.contains('tool-detail-inline')) {
+          det.remove();
+          return;
+        }
+        det = document.createElement('div');
+        det.className = 'tool-detail-inline';
+        det.style.cssText = 'margin:2px 0 4px;padding:8px;background:var(--bg-primary);border:1px solid var(--border-subtle);border-radius:var(--radius-sm);font-size:0.75rem;font-family:var(--font-mono);white-space:pre-wrap;max-height:200px;overflow-y:auto;color:var(--text-secondary);';
+        det.textContent = JSON.stringify(tool, null, 2);
+        toolBar.after(det);
+      });
       toolsEl.appendChild(toolBar);
     });
     container.appendChild(toolsEl);
@@ -503,21 +755,12 @@ function createTimelineItem(msg, idx, maxDuration) {
   return container;
 }
 
-function toggleDetails(container, msg) {
-  let detailPanel = container.querySelector('.detail-panel');
-  
-  if (detailPanel) {
-    detailPanel.classList.toggle('open');
-    return;
-  }
-
-  // Create detail panel
-  detailPanel = document.createElement('div');
-  detailPanel.className = 'detail-panel open';
+function buildDetailPanel(msg) {
+  const detailPanel = document.createElement('div');
+  detailPanel.className = 'detail-panel';
 
   let html = '';
 
-  // Message text
   if (msg.fullText) {
     html += `
       <div class="detail-section">
@@ -527,7 +770,21 @@ function toggleDetails(container, msg) {
     `;
   }
 
-  // Usage stats
+  // Duration bar if available
+  if (msg.duration > 0) {
+    html += `
+      <div class="detail-section">
+        <div class="detail-heading">Timing</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="flex:1;height:8px;background:var(--bg-secondary);border-radius:4px;overflow:hidden">
+            <div style="height:100%;width:100%;background:var(--accent);border-radius:4px"></div>
+          </div>
+          <span style="font-size:0.8rem;font-weight:700;color:var(--text-primary);font-variant-numeric:tabular-nums">${formatDuration(msg.duration)}</span>
+        </div>
+      </div>
+    `;
+  }
+
   html += `
     <div class="detail-section">
       <div class="detail-heading">Token Usage & Cost</div>
@@ -552,7 +809,6 @@ function toggleDetails(container, msg) {
     </div>
   `;
 
-  // Model & metadata
   html += `
     <div class="detail-section">
       <div class="detail-heading">Metadata</div>
@@ -577,17 +833,29 @@ function toggleDetails(container, msg) {
     </div>
   `;
 
-  // Tool calls detail
   if (msg.toolCalls && msg.toolCalls.length > 0) {
     html += `
       <div class="detail-section">
-        <div class="detail-heading">Tool Calls</div>
+        <div class="detail-heading">Tool Calls (${msg.toolCalls.length})</div>
         <div class="detail-text">${escapeHtml(JSON.stringify(msg.toolCalls, null, 2))}</div>
       </div>
     `;
   }
 
   detailPanel.innerHTML = html;
+  return detailPanel;
+}
+
+function toggleDetails(container, msg) {
+  let detailPanel = container.querySelector('.detail-panel');
+  
+  if (detailPanel) {
+    detailPanel.classList.toggle('open');
+    return;
+  }
+
+  detailPanel = buildDetailPanel(msg);
+  detailPanel.classList.add('open');
   container.appendChild(detailPanel);
 }
 
@@ -618,10 +886,19 @@ function timeAgo(ts) {
   return Math.floor(d / 86400000) + 'd ago';
 }
 
+function truncate(str, max) {
+  if (!str || str.length <= max) return str || '';
+  return str.slice(0, max - 1) + '…';
+}
+
 function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+function escapeAttr(text) {
+  return text.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 </script>
