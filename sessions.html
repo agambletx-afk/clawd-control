@@ -164,8 +164,8 @@
 
                             const typeCell = row.insertCell();
                             const typeBadge = document.createElement('span');
-                            typeBadge.className = `type-badge ${event.type === 'toolCall' ? 'tool_call' : event.type}`;
-                            typeBadge.textContent = event.type === 'toolCall' ? 'Tool Call' : event.type.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
+                            typeBadge.className = `type-badge ${event.type}`;
+                            typeBadge.textContent = event.type === 'tool_call' ? 'Tool Call' : event.type.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
                             typeCell.appendChild(typeBadge);
 
                             row.insertCell().textContent = event.model || '--';

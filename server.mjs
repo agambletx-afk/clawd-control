@@ -616,9 +616,6 @@ function computeCostsData() {
 
               if (data.type === 'session') {
                 sessionStartTime = data.timestamp;
-                if (data.metadata?.conversation_label === 'heartbeat') { // Check for heartbeat
-                    isHeartbeatSession = true;
-                }
               } else if (data.type === 'model_change' && data.modelId) {
                 currentModel = data.modelId;
               } else if (data.type === 'custom' && data.customType === 'model-snapshot' && data.data?.modelId) {
@@ -628,6 +625,12 @@ function computeCostsData() {
               if (data.type === 'message' && data.message) {
                 sessionMessageCount++;
                 const msg = data.message;
+                if (!isHeartbeatSession && msg.role === 'user') {
+                  // Spec: heartbeat identified by first user message containing conversation_label=heartbeat
+                  if (line.includes('\"conversation_label\"') && line.toLowerCase().includes('heartbeat')) {
+                    isHeartbeatSession = true;
+                  }
+                }
                 const usage = msg.usage || {};
                 const cost = usage.cost?.total || 0;
                 const tokens = (usage.input || 0) + (usage.output || 0) + (usage.cacheRead || 0);
@@ -1667,15 +1670,12 @@ function getSessionsEvents({ range = '24h', source = 'all', page = 1, limit = EV
             const lines = content.split('\n').filter(l => l.trim());
 
             let isHeartbeatSession = false;
-            // Determine if it's a heartbeat session by checking the first 'session' event
+            // Determine if it's a heartbeat session by checking the first user message
             for (const line of lines) {
-                try {
-                    const data = JSON.parse(line);
-                    if (data.type === 'session' && data.metadata?.conversation_label === 'heartbeat') {
-                        isHeartbeatSession = true;
-                        break;
-                    }
-                } catch { /* ignore */ }
+              if (line.includes('\"conversation_label\"') && line.toLowerCase().includes('heartbeat')) {
+                isHeartbeatSession = true;
+                break;
+              }
             }
 
             for (const line of lines) {
@@ -1712,7 +1712,7 @@ function getSessionsEvents({ range = '24h', source = 'all', page = 1, limit = EV
                     }
                   }
                   eventPreview = textContent.substring(0, 100) + (textContent.length > 100 ? '...' : '');
-                  if (hasToolCall) eventType = 'toolCall'; // Override type for display
+                  if (hasToolCall) eventType = 'tool_call'; // Override type for display
 
                 } else if (data.type === 'session') {
                     eventPreview = `Session started (cwd: ${data.cwd || 'N/A'})`;
@@ -1901,7 +1901,7 @@ const server = createServer((req, res) => {
     try {
       const agents = computeAgentMetrics();
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(agents));
+      res.end(JSON.stringify(Object.values(agents)));
     } catch (e) {
       console.error('[API] /api/agents error:', e.message);
       res.writeHead(500, { 'Content-Type': 'application/json' });
