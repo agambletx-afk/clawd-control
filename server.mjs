@@ -2272,6 +2272,25 @@ const server = createServer((req, res) => {
     return;
   }
 
+  // ── Session Events (paginated and filtered) ──
+  if (path === '/api/sessions/events' && req.method === 'GET') {
+    try {
+      const range = url.searchParams.get('range') || '24h';
+      const source = url.searchParams.get('source') || 'all';
+      const page = parseInt(url.searchParams.get('page') || '1');
+      const limit = parseInt(url.searchParams.get('limit') || String(EVENTS_PER_PAGE));
+
+      const result = getSessionsEvents({ range, source, page, limit });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      console.error('[API] /api/sessions/events error:', e.message);
+      res.end(JSON.stringify({ error: 'Internal server error' }));
+    }
+    return;
+  }
+
   // ── Session Events (for unified log) ──
   if (path === '/api/sessions/events' && req.method === 'GET') {
     try {
