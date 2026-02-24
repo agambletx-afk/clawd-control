@@ -916,29 +916,56 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
       if (pushState) history.pushState({}, '', href);
 
       // Execute page-specific scripts from the new page in original order.
-      // innerHTML does not execute scripts, so recreate script elements explicitly.
+      // innerHTML does not execute scripts, so run scripts explicitly.
       const newScripts = Array.from(doc.querySelectorAll('script')).filter((script) => {
         const src = (script.getAttribute('src') || '').trim();
-        return !/\/layout\.js(\?.*)?$/.test(src);
+        return !/(^|\/)layout\.js(\?.*)?$/.test(src);
       });
 
       for (const script of newScripts) {
-        const scriptEl = document.createElement('script');
-        for (const attr of script.attributes) {
-          scriptEl.setAttribute(attr.name, attr.value);
-        }
-        if (!script.src) {
-          scriptEl.textContent = script.textContent;
+        if (script.src) {
+          const scriptEl = document.createElement('script');
+          for (const attr of script.attributes) {
+            scriptEl.setAttribute(attr.name, attr.value);
+          }
+
+          const loadPromise = new Promise((resolve) => {
+            scriptEl.onload = () => resolve();
+            scriptEl.onerror = () => resolve();
+          });
+
+          document.body.appendChild(scriptEl);
+          await loadPromise;
+          scriptEl.remove();
+          continue;
         }
 
-        const loadPromise = new Promise((resolve) => {
-          scriptEl.onload = () => resolve();
-          scriptEl.onerror = () => resolve();
-        });
+        // Run inline scripts in function scope to avoid cross-page
+        // top-level const/let redeclaration errors during SPA navigation.
+        const originalAddEventListener = document.addEventListener;
+        document.addEventListener = function (type, listener, options) {
+          if (type === 'DOMContentLoaded' && document.readyState !== 'loading') {
+            try {
+              if (typeof listener === 'function') {
+                listener.call(document, new Event('DOMContentLoaded'));
+              } else if (listener && typeof listener.handleEvent === 'function') {
+                listener.handleEvent(new Event('DOMContentLoaded'));
+              }
+            } catch (err) {
+              console.warn('[SPA] DOMContentLoaded listener error:', err);
+            }
+            return;
+          }
+          return originalAddEventListener.call(document, type, listener, options);
+        };
 
-        document.body.appendChild(scriptEl);
-        if (script.src) await loadPromise;
-        scriptEl.remove();
+        try {
+          new Function(script.textContent || '')();
+        } catch (e) {
+          console.warn('[SPA] inline script error:', e);
+        } finally {
+          document.addEventListener = originalAddEventListener;
+        }
       }
 
       // Re-highlight active sidebar item
