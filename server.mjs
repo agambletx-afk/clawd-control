@@ -20,6 +20,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 
 const PORT = parseInt(process.argv.find((_, i, a) => a[i - 1] === '--port') || '3100');
 const DIR = new URL('.', import.meta.url).pathname;
+const AUTH_DISABLED = String(process.env.AUTH_DISABLED || '').toLowerCase() === 'true';
 
 // ── Security constants ──
 const MAX_BODY_SIZE = 1024 * 1024; // 1MB max POST body
@@ -30,7 +31,7 @@ const loginAttempts = new Map();   // ip → [timestamps]
 // ── Auth ─────────────────────────────────────────────
 // Password stored in auth.json. On first run, generates a random one.
 const AUTH_PATH = join(DIR, 'auth.json');
-let AUTH = loadAuth();
+let AUTH = AUTH_DISABLED ? { sessionTtlHours: 24 } : loadAuth();
 
 function loadAuth() {
   if (existsSync(AUTH_PATH)) {
@@ -81,6 +82,8 @@ function getSessionToken(req) {
 }
 
 function requireAuth(req, res) {
+  if (AUTH_DISABLED) return true;
+
   const token = getSessionToken(req);
   if (token && isValidSession(token)) return true;
 
@@ -1805,6 +1808,12 @@ const server = createServer((req, res) => {
 
   // ── Login (rate-limited) ──
   if (path === '/api/login' && req.method === 'POST') {
+    if (AUTH_DISABLED) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, authDisabled: true }));
+      return;
+    }
+
     const clientIp = req.socket.remoteAddress || 'unknown';
     const now = Date.now();
     const attempts = loginAttempts.get(clientIp) || [];
@@ -1867,6 +1876,12 @@ const server = createServer((req, res) => {
 
   // ── Login page ──
   if (path === '/login') {
+    if (AUTH_DISABLED) {
+      res.writeHead(302, { Location: '/' });
+      res.end();
+      return;
+    }
+
     // If already logged in, redirect to dashboard
     const token = getSessionToken(req);
     if (token && isValidSession(token)) {
@@ -2300,6 +2315,6 @@ server.listen(PORT, BIND, () => {
   console.log(`🏰 Clawd Control v2.0`);
   console.log(`   http://${BIND}:${PORT}`);
   console.log(`   Agents: ${collector.agents.size}`);
-  console.log(`   🔐 Auth: enabled (password in auth.json)`);
+  console.log(`   🔐 Auth: ${AUTH_DISABLED ? 'disabled (AUTH_DISABLED=true)' : 'enabled (password in auth.json)'}`);
   console.log(`   🔒 Bound to ${BIND} (home network only)`);
 });
