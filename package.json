@@ -24,6 +24,7 @@
   "author": "Clawdbot Contributors",
   "license": "MIT",
   "dependencies": {
+    "better-sqlite3": "^12.6.2",
     "ws": "^8.19.0"
   }
 }
