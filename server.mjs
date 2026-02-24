@@ -9,7 +9,7 @@
 import http from 'http';
 const { createServer } = http;
 import { readFileSync, existsSync, writeFileSync, copyFileSync, readdirSync, statSync } from 'fs';
-import { join, extname } from 'path';
+import { join, extname, resolve, sep } from 'path';
 import { gzipSync } from 'zlib';
 import { execFileSync } from 'child_process';
 import { AgentCollector } from './collector.mjs';
@@ -985,7 +985,7 @@ function getSessionTrace(sessionKey, { limit = 500 } = {}) {
       try {
         const sessData = JSON.parse(readFileSync(sessionsPath, 'utf8'));
         if (sessData[sessionKey]) {
-          sessionFile = sessData[sessionKey].sessionFile;
+          sessionFile = getSafeSessionFilePath(sessData[sessionKey].sessionFile, aid);
           agentId = aid;
           break;
         }
@@ -1143,6 +1143,18 @@ function getSessionTrace(sessionKey, { limit = 500 } = {}) {
   };
 }
 
+function getSafeSessionFilePath(sessionFile, agentId) {
+  if (typeof sessionFile !== 'string' || !sessionFile) return null;
+  const sessionsDir = resolve(join(homedir(), '.clawdbot', 'agents', agentId, 'sessions'));
+  const resolvedFile = resolve(sessionFile);
+  const allowedPrefix = `${sessionsDir}${sep}`;
+
+  if (!resolvedFile.startsWith(allowedPrefix)) return null;
+  if (!resolvedFile.endsWith('.jsonl')) return null;
+
+  return resolvedFile;
+}
+
 // ── Traces (delegation trees) ──────────────────────
 
 function getTraces() {
@@ -1173,9 +1185,10 @@ function getTraces() {
           let startTime = null;
           let endTime = null;
 
-          if (existsSync(sess.sessionFile)) {
+          const safeSessionFile = getSafeSessionFilePath(sess.sessionFile, agentId);
+          if (safeSessionFile && existsSync(safeSessionFile)) {
             try {
-              const content = readFileSync(sess.sessionFile, 'utf8');
+              const content = readFileSync(safeSessionFile, 'utf8');
               const lines = content.split('\n').filter(l => l.trim());
 
               for (const line of lines) {
