@@ -1802,6 +1802,158 @@ function getTraces() {
   }
 }
 
+// Cache for session events data
+let cachedSessionEvents = null;
+let lastSessionEventsComputeTime = 0;
+const SESSION_EVENTS_CACHE_TTL = 30000; // 30 seconds for session events
+const EVENTS_PER_PAGE = 100;
+
+function getSessionsEvents({ range = '24h', source = 'all', page = 1, limit = EVENTS_PER_PAGE } = {}) {
+  const now = Date.now();
+  const AGENTS_DIR = join(homedir(), '.clawdbot', 'agents');
+
+  // Check cache validity and file mtimes
+  if (cachedSessionEvents && (now - lastSessionEventsComputeTime < SESSION_EVENTS_CACHE_TTL)) {
+    // For simplicity, we're not doing per-file mtime check for ALL events for now
+    // as it can be very expensive for many files. We rely on the TTL.
+    // A more robust solution would involve a persistent index of file mtimes.
+    // console.log('Serving session events from cache (ignoring file mtimes for full scan).');
+  } else {
+    // console.log('Recomputing session events.');
+    const allEvents = [];
+    let agentIds = [];
+    try {
+      agentIds = readdirSync(AGENTS_DIR, { withFileTypes: true })
+        .filter(d => d.isDirectory())
+        .map(d => d.name);
+    } catch { /* no agents dir */ }
+
+    for (const agentId of agentIds) {
+      const sessDir = join(AGENTS_DIR, agentId, 'sessions');
+      if (!existsSync(sessDir)) continue;
+
+      try {
+        const files = readdirSync(sessDir).filter(
+          f => f.endsWith('.jsonl') && !f.includes('.deleted.') && !f.includes('.archived.')
+        );
+
+        for (const file of files) {
+          const sessionPath = join(sessDir, file);
+          let currentModel = 'unknown';
+
+          try {
+            const content = readFileSync(sessionPath, 'utf8');
+            const lines = content.split('\n').filter(l => l.trim());
+
+            let isHeartbeatSession = false;
+            // Determine if it's a heartbeat session by checking the first 'session' event
+            for (const line of lines) {
+                try {
+                    const data = JSON.parse(line);
+                    if (data.type === 'session' && data.metadata?.conversation_label === 'heartbeat') {
+                        isHeartbeatSession = true;
+                        break;
+                    }
+                } catch { /* ignore */ }
+            }
+
+            for (const line of lines) {
+              try {
+                const data = JSON.parse(line);
+
+                if (data.type === 'model_change' && data.modelId) {
+                  currentModel = data.modelId;
+                } else if (data.type === 'custom' && data.customType === 'model-snapshot' && data.data?.modelId) {
+                  currentModel = data.data.modelId;
+                }
+
+                let eventType = data.type;
+                let eventRole = null;
+                let eventPreview = null;
+                let eventTokens = 0;
+                let eventCost = 0;
+
+                if (data.type === 'message' && data.message) {
+                  const msg = data.message;
+                  eventRole = msg.role;
+
+                  const usage = msg.usage || {};
+                  eventTokens = (usage.input || 0) + (usage.output || 0) + (usage.cacheRead || 0);
+                  eventCost = usage.cost?.total || 0;
+
+                  let textContent = '';
+                  let hasToolCall = false;
+                  for (const item of (msg.content || [])) {
+                    if (item.type === 'text') {
+                      textContent += item.text || '';
+                    } else if (item.type === 'toolCall') {
+                      hasToolCall = true;
+                    }
+                  }
+                  eventPreview = textContent.substring(0, 100) + (textContent.length > 100 ? '...' : '');
+                  if (hasToolCall) eventType = 'toolCall'; // Override type for display
+
+                } else if (data.type === 'session') {
+                    eventPreview = `Session started (cwd: ${data.cwd || 'N/A'})`;
+                } else if (data.type === 'model_change') {
+                    eventPreview = `Model changed to ${data.modelId}`; 
+                } else if (data.type === 'thinking_level_change') {
+                    eventPreview = `Thinking level changed to ${data.thinkingLevel}`; 
+                }
+
+                allEvents.push({
+                  timestamp: data.timestamp,
+                  sessionId: file.replace('.jsonl', ''),
+                  type: isHeartbeatSession && eventType === 'session' ? 'heartbeat' : eventType,
+                  model: currentModel.replace('anthropic/', '').replace('openai/', ''),
+                  role: eventRole,
+                  preview: eventPreview,
+                  tokens: eventTokens,
+                  cost: eventCost,
+                  source: isHeartbeatSession ? 'Heartbeat' : 'Telegram', // Set source based on detection
+                });
+
+              } catch (jsonErr) { /* ignore malformed lines */ }
+            }
+          } catch (readErr) { /* ignore broken files */ }
+        }
+      } catch (dirErr) { /* ignore inaccessible sessions dir */ }
+    }
+    cachedSessionEvents = allEvents;
+    lastSessionEventsComputeTime = now;
+  }
+
+  // Apply filters to cached data
+  let filteredEvents = cachedSessionEvents.filter(event => {
+    // Time range filter
+    const eventTime = new Date(event.timestamp).getTime();
+    let cutoffTime = 0;
+    if (range === '24h') cutoffTime = now - (24 * 3600 * 1000);
+    else if (range === '3d') cutoffTime = now - (3 * 24 * 3600 * 1000);
+    else if (range === '7d') cutoffTime = now - (7 * 24 * 3600 * 1000);
+    else if (range === '30d') cutoffTime = now - (30 * 24 * 3600 * 1000);
+
+    if (eventTime < cutoffTime) return false;
+
+    // Source filter
+    if (source !== 'all' && event.source !== source) return false;
+
+    return true;
+  });
+
+  // Sort in reverse-chronological order
+  filteredEvents.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+  // Apply pagination
+  const totalEvents = filteredEvents.length;
+  const startIndex = (page - 1) * limit;
+  const endIndex = startIndex + limit;
+  const paginatedEvents = filteredEvents.slice(startIndex, endIndex);
+  const hasMore = endIndex < totalEvents;
+
+  return { events: paginatedEvents, total: totalEvents, page, limit, hasMore };
+}
+
 // ── HTTP Server ─────────────────────────────────────
 
 const server = createServer((req, res) => {
@@ -2116,6 +2268,24 @@ const server = createServer((req, res) => {
     } catch (e) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       console.error('[API] error:', e.message); res.end(JSON.stringify({ error: 'Internal server error' }));
+    }
+    return;
+  }
+
+  // ── Session Events (for unified log) ──
+  if (path === '/api/sessions/events' && req.method === 'GET') {
+    try {
+      const range = url.searchParams.get('range') || '24h';
+      const source = url.searchParams.get('source') || 'all';
+      const page = parseInt(url.searchParams.get('page') || '1');
+      const limit = parseInt(url.searchParams.get('limit') || `${EVENTS_PER_PAGE}`);
+      const result = getSessionsEvents({ range, source, page, limit });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      console.error('[API] /api/sessions/events error:', e.message);
+      res.end(JSON.stringify({ error: 'Internal server error' }));
     }
     return;
   }
