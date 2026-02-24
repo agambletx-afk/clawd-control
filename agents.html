@@ -59,8 +59,13 @@
         </style>
 
         <script>
-            document.addEventListener('DOMContentLoaded', () => {
+            function initAgentsTab() {
                 const FETCH_OPTS = { credentials: 'same-origin' };
+                const fmtBytes = window.fmtBytes || ((b) => {
+                    if (b > 1e9) return (b / 1e9).toFixed(1) + 'GB';
+                    if (b > 1e6) return (b / 1e6).toFixed(0) + 'MB';
+                    return (b / 1e3).toFixed(0) + 'KB';
+                });
 
                 async function fetchAndRenderAgents() {
                     try {
@@ -109,7 +114,7 @@
                             <ul class="agent-details-list">
                                 <li><span class="label">Model:</span> <span class="value">${agent.model || 'N/A'}</span></li>
                                 <li><span class="label">Workspace:</span> <span class="value small-text">${agent.workspacePath || 'N/A'}</span></li>
-                                <li><span class="label">Workspace Size:</span> <span class="value">${window.fmtBytes(agent.workspaceSize || 0)}</span></li>
+                                <li><span class="label">Workspace Size:</span> <span class="value">${fmtBytes(agent.workspaceSize || 0)}</span></li>
                                 <li><span class="label">Active Session:</span> <span class="value">${agent.activeSessionId ? `${agent.activeSessionId.substring(0, 8)} (${formatDuration(Date.now() - new Date(agent.activeSessionStarted).getTime())} ago)` : 'None'}</span></li>
                                 <li><span class="label">Today's Tokens:</span> <span class="value">${agent.todayTokens || 0}</span></li>
                                 <li><span class="label">Today's Spend:</span> <span class="value">$${(agent.todaySpend || 0).toFixed(4)}</span></li>
@@ -124,9 +129,16 @@
                 fetchAndRenderAgents();
 
                 // Refresh data on snapshot updates from SSE
-                document.addEventListener('layout:snapshot', fetchAndRenderAgents);
-            });
+                if (window.__agentsSnapshotHandler) {
+                    document.removeEventListener('layout:snapshot', window.__agentsSnapshotHandler);
+                }
+                window.__agentsSnapshotHandler = fetchAndRenderAgents;
+                document.addEventListener('layout:snapshot', window.__agentsSnapshotHandler);
+            }
+
+            initAgentsTab();
         </script>
     </main>
+    <script src="/layout.js"></script>
 </body>
 </html>

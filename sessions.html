@@ -116,7 +116,7 @@
             let isLoading = false;
             let hasMore = true;
 
-            document.addEventListener('DOMContentLoaded', () => {
+            function initSessionsTab() {
                 const FETCH_OPTS = { credentials: 'same-origin' };
                 const eventLogTableBody = document.querySelector('#eventLogTable tbody');
                 const loadMoreButton = document.getElementById('loadMoreButton');
@@ -219,8 +219,11 @@
 
                 // Initial load
                 fetchAndRenderEvents();
-            });
+            }
+
+            initSessionsTab();
         </script>
     </main>
+    <script src="/layout.js"></script>
 </body>
 </html>

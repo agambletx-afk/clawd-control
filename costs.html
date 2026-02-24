@@ -209,7 +209,7 @@
 
         <script>
             // Data loading and rendering logic will go here
-            document.addEventListener('DOMContentLoaded', () => {
+            function initCostsTab() {
                 // Ensure cookies (HttpOnly session) are sent with API calls
                 const FETCH_OPTS = { credentials: 'same-origin' };
 
@@ -256,7 +256,11 @@
                 updateQuota();
 
                 // Set up SSE for live updates (already handled by layout.js 'layout:snapshot' event)
-                document.addEventListener('layout:snapshot', updateQuota);
+                if (window.__costsSnapshotHandler) {
+                    document.removeEventListener('layout:snapshot', window.__costsSnapshotHandler);
+                }
+                window.__costsSnapshotHandler = updateQuota;
+                document.addEventListener('layout:snapshot', window.__costsSnapshotHandler);
 
 
                 // Placeholder for other charts and tables
@@ -383,8 +387,11 @@
                 }
 
                 loadCostData();
-            });
+            }
+
+            initCostsTab();
         </script>
     </main>
+    <script src="/layout.js"></script>
 </body>
 </html>
