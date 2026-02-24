@@ -178,7 +178,7 @@ async function handleAgentAction(agentId, action) {
       case 'session-new': {
         // Clear only the main session to start fresh (keeps other sessions)
         const mainAgentId = agentId === 'gandalf' ? 'main' : agentId;
-        const sessPath = join(process.env.HOME, '.clawdbot', 'agents', mainAgentId, 'sessions', 'sessions.json');
+        const sessPath = join(process.env.HOME, '.openclaw', 'agents', mainAgentId, 'sessions', 'sessions.json');
         if (existsSync(sessPath)) {
           const sessions = JSON.parse(readFileSync(sessPath, 'utf8'));
           const mainKey = `agent:${mainAgentId}:main`;
@@ -186,7 +186,7 @@ async function handleAgentAction(agentId, action) {
             // Backup the session transcript before clearing
             const sid = sessions[mainKey].sessionId;
             if (sid) {
-              const transcript = join(process.env.HOME, '.clawdbot', 'agents', mainAgentId, 'sessions', `${sid}.jsonl`);
+              const transcript = join(process.env.HOME, '.openclaw', 'agents', mainAgentId, 'sessions', `${sid}.jsonl`);
               if (existsSync(transcript)) {
                 const bak = transcript.replace('.jsonl', `.archived.${Date.now()}.jsonl`);
                 copyFileSync(transcript, bak);
@@ -201,7 +201,7 @@ async function handleAgentAction(agentId, action) {
       case 'session-reset': {
         // Delete ALL sessions (nuclear option)
         const agentIdForPath = agentId === 'gandalf' ? 'main' : agentId;
-        const sessionPath = join(process.env.HOME, '.clawdbot', 'agents', agentIdForPath, 'sessions', 'sessions.json');
+        const sessionPath = join(process.env.HOME, '.openclaw', 'agents', agentIdForPath, 'sessions', 'sessions.json');
         if (existsSync(sessionPath)) {
           const backup = sessionPath + '.bak.' + Date.now();
           copyFileSync(sessionPath, backup);
@@ -527,186 +527,7 @@ function toCstDate(isoString) {
 
 function computeCostsData() {
   const now = Date.now();
-  const AGENTS_DIR = join(homedir(), '.clawdbot', 'agents');
-
-  // Check cache validity (30 seconds TTL and file mtimes)
-  if (cachedCostsData && (now - lastCostsComputeTime < COSTS_CACHE_TTL)) {
-    let filesChanged = false;
-    try {
-      const agentIds = readdirSync(AGENTS_DIR, { withFileTypes: true })
-        .filter(d => d.isDirectory())
-        .map(d => d.name);
-      for (const agentId of agentIds) {
-        const sessDir = join(AGENTS_DIR, agentId, 'sessions');
-        if (!existsSync(sessDir)) continue;
-        const files = readdirSync(sessDir).filter(
-          f => f.endsWith('.jsonl') && !f.includes('.deleted.') && !f.includes('.archived.')
-        );
-        for (const file of files) {
-          const sessionPath = join(sessDir, file);
-          const stat = statSync(sessionPath);
-          if (sessionFilesMtimes.get(sessionPath) !== stat.mtimeMs) {
-            filesChanged = true;
-            break;
-          }
-        }
-        if (filesChanged) break;
-      }
-    } catch (e) {
-      console.warn('Error checking session file mtimes, forcing recompute:', e.message);
-      filesChanged = true; // Force recompute on error
-    }
-    if (!filesChanged) {
-      // console.log('Serving costs data from cache.');
-      return cachedCostsData;
-    }
-    // console.log('Session files changed or cache expired, recomputing costs data.');
-  }
-
-  const dailyCosts = new Map(); // date -> { total: 0, byModel: { modelId: cost } }
-  const sessionCosts = []; // [{ id, started, model, messages, tokens, cost, source }]
-  const modelTotalCosts = new Map(); // modelId -> totalCost
-  const modelTotalTokens = new Map(); // modelId -> totalTokens
-
-  // Quota tracking
-  const todayCST = toCstDate(new Date().toISOString());
-  let rpdUsed = 0; // Requests per Day
-  let rpmUsed = 0; // Requests per Minute
-  const currentMinuteStartCST = new Date(new Date().getTime() + CST_OFFSET_MS);
-  currentMinuteStartCST.setSeconds(0, 0);
-
-  const AGENTS_SUBDIR = join(homedir(), '.openclaw', 'agents'); // Corrected path based on previous issue
-  let agentIds = [];
-  try {
-    agentIds = readdirSync(AGENTS_SUBDIR, { withFileTypes: true })
-      .filter(d => d.isDirectory())
-      .map(d => d.name);
-  } catch { /* no agents dir */ }
-
-  sessionFilesMtimes.clear(); // Clear previous mtimes
-
-  for (const agentId of agentIds) {
-    const sessDir = join(AGENTS_SUBDIR, agentId, 'sessions');
-    if (!existsSync(sessDir)) continue;
-
-    try {
-      const files = readdirSync(sessDir).filter(
-        f => f.endsWith('.jsonl') && !f.includes('.deleted.') && !f.includes('.archived.')
-      );
-
-      for (const file of files) {
-        const sessionPath = join(sessDir, file);
-        const stat = statSync(sessionPath);
-        sessionFilesMtimes.set(sessionPath, stat.mtimeMs); // Store mtime
-
-        let currentModel = 'unknown';
-        let sessionStartTime = null;
-        let sessionMessageCount = 0;
-        let sessionTotalTokens = 0;
-        let sessionTotalCost = 0;
-        let isHeartbeatSession = false;
-
-        try {
-          const content = readFileSync(sessionPath, 'utf8');
-          const lines = content.split('\n').filter(l => l.trim());
-
-          for (const line of lines) {
-            try {
-              const data = JSON.parse(line);
-
-              if (data.type === 'session') {
-                sessionStartTime = data.timestamp;
-                if (data.metadata?.conversation_label === 'heartbeat') { // Check for heartbeat
-                    isHeartbeatSession = true;
-                }
-              } else if (data.type === 'model_change' && data.modelId) {
-                currentModel = data.modelId;
-              } else if (data.type === 'custom' && data.customType === 'model-snapshot' && data.data?.modelId) {
-                currentModel = data.data.modelId;
-              }
-
-              if (data.type === 'message' && data.message) {
-                sessionMessageCount++;
-                const msg = data.message;
-                const usage = msg.usage || {};
-                const cost = usage.cost?.total || 0;
-                const tokens = (usage.input || 0) + (usage.output || 0) + (usage.cacheRead || 0);
-
-                // Aggregate costs by day
-                const cstDate = toCstDate(data.timestamp);
-                if (!dailyCosts.has(cstDate)) {
-                  dailyCosts.set(cstDate, { total: 0, byModel: {} });
-                }
-                const dayEntry = dailyCosts.get(cstDate);
-                dayEntry.total += cost;
-                dayEntry.byModel[currentModel] = (dayEntry.byModel[currentModel] || 0) + cost;
-
-                // Aggregate total model costs/tokens
-                modelTotalCosts.set(currentModel, (modelTotalCosts.get(currentModel) || 0) + cost);
-                modelTotalTokens.set(currentModel, (modelTotalTokens.get(currentModel) || 0) + tokens);
-
-                sessionTotalTokens += tokens;
-                sessionTotalCost += cost;
-
-                // Gemini Flash quota tracking (assuming 'google' provider for Flash)
-                if (msg.provider === 'google' && cstDate === todayCST) {
-                  rpdUsed++;
-                  const msgTime = new Date(new Date(data.timestamp).getTime() + CST_OFFSET_MS);
-                  if (msgTime >= currentMinuteStartCST) {
-                    rpmUsed++;
-                  }
-                }
-              }
-            } catch (jsonErr) {
-              // console.warn(`Skipping malformed line in ${file}:`, jsonErr.message);
-            }
-          }
-        } catch (readErr) {
-          // console.warn(`Skipping broken file ${file}:`, readErr.message);
-        }
-
-        if (sessionStartTime) {
-          sessionCosts.push({
-            id: file.replace('.jsonl', ''),
-            started: sessionStartTime,
-            model: currentModel,
-            messages: sessionMessageCount,
-            tokens: sessionTotalTokens,
-            cost: sessionTotalCost,
-            source: isHeartbeatSession ? 'Heartbeat' : 'Telegram', // Simple source detection
-          });
-        }
-      }
-    } catch (dirErr) {
-      // console.warn(`Skipping agent session directory ${agentId}:`, dirErr.message);
-    }
-  }
-
-  // Convert maps to arrays for final output
-  const dailyCostsArray = Array.from(dailyCosts.entries())
-    .map(([date, data]) => ({ date, ...data }))
-    .sort((a, b) => a.date.localeCompare(b.date));
-
-  const modelCostsArray = Array.from(modelTotalCosts.entries())
-    .map(([modelId, cost]) => ({ modelId, totalCost: cost, totalTokens: modelTotalTokens.get(modelId) || 0 }))
-    .sort((a, b) => b.totalCost - a.totalCost);
-
-  cachedCostsData = {
-    daily: dailyCostsArray,
-    sessions: sessionCosts.sort((a, b) => new Date(b.started) - new Date(a.started)), // Sort by most recent
-    models: modelCostsArray,
-    quota: {
-      rpd: { used: rpdUsed, limit: 250 },
-      rpm: { used: rpmUsed, limit: 10 },
-    }
-  };
-  lastCostsComputeTime = now;
-  return cachedCostsData;
-}
-
-function computeCostsData() {
-  const now = Date.now();
-  const AGENTS_DIR = join(homedir(), '.clawdbot', 'agents');
+  const AGENTS_DIR = join(homedir(), '.openclaw', 'agents');
 
   // Check cache validity (30 seconds TTL and file mtimes)
   if (cachedCostsData && (now - lastCostsComputeTime < COSTS_CACHE_TTL)) {
@@ -890,7 +711,7 @@ const AGENT_METRICS_CACHE_TTL = 30000; // 30 seconds for agent metrics
 
 function computeAgentMetrics() {
   const now = Date.now();
-  const AGENTS_DIR = join(homedir(), '.clawdbot', 'agents');
+  const AGENTS_DIR = join(homedir(), '.openclaw', 'agents');
 
   // Check cache validity
   if (cachedAgentMetrics && (now - lastAgentMetricsComputeTime < AGENT_METRICS_CACHE_TTL)) {
@@ -1008,7 +829,7 @@ function computeAgentMetrics() {
 }
 
 function getAnalytics(rangeStr, agentFilter) {
-  const AGENTS_DIR = join(homedir(), '.clawdbot', 'agents');
+  const AGENTS_DIR = join(homedir(), '.openclaw', 'agents');
   const range = rangeStr === 'all' ? Infinity : parseInt(rangeStr);
   const cutoffDate = rangeStr === 'all' ? 0 : Date.now() - (range * 86400000);
 
@@ -1204,7 +1025,7 @@ function getAnalytics(rangeStr, agentFilter) {
 
 // ── Token Analytics (granular breakdown by day and agent) ──
 function getTokenAnalytics(rangeStr, agentFilter) {
-  const AGENTS_DIR = join(homedir(), '.clawdbot', 'agents');
+  const AGENTS_DIR = join(homedir(), '.openclaw', 'agents');
   const range = rangeStr === 'all' ? Infinity : parseInt(rangeStr);
   const cutoffDate = rangeStr === 'all' ? 0 : Date.now() - (range * 86400000);
 
@@ -1413,7 +1234,7 @@ function getTokenAnalytics(rangeStr, agentFilter) {
 // ── Session Trace (for waterfall view) ─────────────
 
 function getAllSessions({ limit = 50, offset = 0 } = {}) {
-  const AGENTS_DIR = join(homedir(), '.clawdbot', 'agents');
+  const AGENTS_DIR = join(homedir(), '.openclaw', 'agents');
   const sessions = [];
 
   try {
@@ -1463,7 +1284,7 @@ function getAllSessions({ limit = 50, offset = 0 } = {}) {
 }
 
 function getSessionTrace(sessionKey, { limit = 500 } = {}) {
-  const AGENTS_DIR = join(homedir(), '.clawdbot', 'agents');
+  const AGENTS_DIR = join(homedir(), '.openclaw', 'agents');
   
   // Find the session file
   let sessionFile = null;
@@ -1641,7 +1462,7 @@ function getSessionTrace(sessionKey, { limit = 500 } = {}) {
 
 function getSafeSessionFilePath(sessionFile, agentId) {
   if (typeof sessionFile !== 'string' || !sessionFile) return null;
-  const sessionsDir = resolve(join(homedir(), '.clawdbot', 'agents', agentId, 'sessions'));
+  const sessionsDir = resolve(join(homedir(), '.openclaw', 'agents', agentId, 'sessions'));
   const resolvedFile = resolve(sessionFile);
   const allowedPrefix = `${sessionsDir}${sep}`;
 
@@ -1654,7 +1475,7 @@ function getSafeSessionFilePath(sessionFile, agentId) {
 // ── Traces (delegation trees) ──────────────────────
 
 function getTraces() {
-  const AGENTS_DIR = join(homedir(), '.clawdbot', 'agents');
+  const AGENTS_DIR = join(homedir(), '.openclaw', 'agents');
   const traces = [];
   const sessionMap = new Map(); // sessionKey -> session metadata
 
@@ -1810,7 +1631,7 @@ const EVENTS_PER_PAGE = 100;
 
 function getSessionsEvents({ range = '24h', source = 'all', page = 1, limit = EVENTS_PER_PAGE } = {}) {
   const now = Date.now();
-  const AGENTS_DIR = join(homedir(), '.clawdbot', 'agents');
+  const AGENTS_DIR = join(homedir(), '.openclaw', 'agents');
 
   // Check cache validity and file mtimes
   if (cachedSessionEvents && (now - lastSessionEventsComputeTime < SESSION_EVENTS_CACHE_TTL)) {
@@ -2291,23 +2112,6 @@ const server = createServer((req, res) => {
     return;
   }
 
-  // ── Session Events (for unified log) ──
-  if (path === '/api/sessions/events' && req.method === 'GET') {
-    try {
-      const range = url.searchParams.get('range') || '24h';
-      const source = url.searchParams.get('source') || 'all';
-      const page = parseInt(url.searchParams.get('page') || '1');
-      const limit = parseInt(url.searchParams.get('limit') || `${EVENTS_PER_PAGE}`);
-      const result = getSessionsEvents({ range, source, page, limit });
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(result));
-    } catch (e) {
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-      console.error('[API] /api/sessions/events error:', e.message);
-      res.end(JSON.stringify({ error: 'Internal server error' }));
-    }
-    return;
-  }
 
   // ── Agent Detail ──
   if (path.startsWith('/api/agents/') && path.endsWith('/detail') && req.method === 'GET') {

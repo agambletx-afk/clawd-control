@@ -18,11 +18,11 @@
                 <div class="quota-tracker">
                     <div class="quota-bar-container">
                         <div class="quota-label">Requests Today: <span id="rpdUsed">--</span> / <span id="rpdLimit">--</span> (<span id="rpdPercent">--%</span>)</div>
-                        <div class="quota-bar" id="rpdBar"></div>
+                        <div class="quota-bar"><div class="quota-fill" id="rpdFill"></div></div>
                     </div>
                     <div class="quota-bar-container">
                         <div class="quota-label">Requests This Minute: <span id="rpmUsed">--</span> / <span id="rpmLimit">--</span> (<span id="rpmPercent">--%</span>)</div>
-                        <div class="quota-bar" id="rpmBar"></div>
+                        <div class="quota-bar"><div class="quota-fill" id="rpmFill"></div></div>
                     </div>
                 </div>
             </div>
@@ -94,12 +94,11 @@
                 width: 100%; height: 10px; border-radius: 5px; background: var(--border-subtle);
                 overflow: hidden; position: relative;
             }
-            .quota-bar::before {
-                content: ''; position: absolute; top: 0; left: 0; height: 100%; width: 0%;
-                border-radius: 5px; background: var(--success); transition: width 0.3s ease-out, background-color 0.3s ease-out;
+            .quota-fill {
+                height: 100%; width: 0%; border-radius: 5px;
+                background: var(--success);
+                transition: width 0.3s ease-out, background-color 0.3s ease-out;
             }
-            .quota-bar[data-percent^="6"]::before, .quota-bar[data-percent^="7"]::before { background: var(--warning); }
-            .quota-bar[data-percent^="8"]::before, .quota-bar[data-percent^="9"]::before, .quota-bar[data-percent="100"]::before { background: var(--error); }
 
 
             /* Daily Spend Chart (CSS only) */
@@ -217,29 +216,33 @@
                         const response = await fetch('/api/costs/quota');
                         const data = await response.json();
 
+                        function applyFill(elId, used, limit) {
+                            const pct = limit > 0 ? Math.round((used / limit) * 100) : 0;
+                            const fill = document.getElementById(elId);
+                            if (!fill) return pct;
+                            fill.style.width = `${Math.min(100, Math.max(0, pct))}%`;
+                            // Color logic
+                            if (pct >= 80) fill.style.backgroundColor = '#f87171';
+                            else if (pct >= 60) fill.style.backgroundColor = '#facc15';
+                            else fill.style.backgroundColor = '#4ade80';
+                            return pct;
+                        }
+
                         // RPD
                         const rpdUsed = data.rpd.used;
                         const rpdLimit = data.rpd.limit;
-                        const rpdPercent = ((rpdUsed / rpdLimit) * 100).toFixed(0);
+                        const rpdPercent = applyFill('rpdFill', rpdUsed, rpdLimit);
                         document.getElementById('rpdUsed').textContent = rpdUsed;
                         document.getElementById('rpdLimit').textContent = rpdLimit;
                         document.getElementById('rpdPercent').textContent = rpdPercent;
-                        document.getElementById('rpdBar').style.setProperty('--width', `${rpdPercent}%`);
-                        document.getElementById('rpdBar').setAttribute('data-percent', rpdPercent);
-
 
                         // RPM
                         const rpmUsed = data.rpm.used;
                         const rpmLimit = data.rpm.limit;
-                        const rpmPercent = ((rpmUsed / rpmLimit) * 100).toFixed(0);
+                        const rpmPercent = applyFill('rpmFill', rpmUsed, rpmLimit);
                         document.getElementById('rpmUsed').textContent = rpmUsed;
                         document.getElementById('rpmLimit').textContent = rpmLimit;
                         document.getElementById('rpmPercent').textContent = rpmPercent;
-                        document.getElementById('rpmBar').style.setProperty('--width', `${rpmPercent}%`);
-                        document.getElementById('rpmBar').setAttribute('data-percent', rpmPercent);
-
-                        document.getElementById('rpdBar').style.width = `${rpdPercent}%`;
-                        document.getElementById('rpmBar').style.width = `${rpmPercent}%`;
 
                     } catch (error) {
                         console.error('Failed to fetch quota data:', error);
