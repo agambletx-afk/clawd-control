@@ -26,7 +26,13 @@
   const activePage =
     path === '/' || path === '/dashboard.html'
       ? 'dashboard'
-      : path === '/create.html'
+      : path === '/costs.html'
+        ? 'costs'
+        : path === '/agents.html'
+          ? 'agents'
+          : path === '/sessions.html'
+            ? 'sessions'
+            : path === '/create.html'
         ? 'create'
         : path === '/analytics.html'
           ? 'analytics'
@@ -426,6 +432,20 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
       <a href="/" class="nav-item${isActive('dashboard')}">
         <i data-lucide="layout-dashboard" class="nav-icon"></i>
         <span class="nav-label">Overview</span>
+      </a>
+
+      <div class="sidebar-section">Monitoring</div>
+      <a href="/costs.html" class="nav-item${isActive('costs')}">
+        <span class="nav-emoji">📊</span>
+        <span class="nav-label">Costs</span>
+      </a>
+      <a href="/agents.html" class="nav-item${isActive('agents')}">
+        <span class="nav-emoji">🤖</span>
+        <span class="nav-label">Agents</span>
+      </a>
+      <a href="/sessions.html" class="nav-item${isActive('sessions')}">
+        <span class="nav-emoji">📋</span>
+        <span class="nav-label">Sessions</span>
       </a>
 
       <div class="sidebar-section">Agents</div>
