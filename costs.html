@@ -210,10 +210,13 @@
         <script>
             // Data loading and rendering logic will go here
             document.addEventListener('DOMContentLoaded', () => {
+                // Ensure cookies (HttpOnly session) are sent with API calls
+                const FETCH_OPTS = { credentials: 'same-origin' };
+
                 // Function to fetch and update quota data
                 async function updateQuota() {
                     try {
-                        const response = await fetch('/api/costs/quota');
+                        const response = await fetch('/api/costs/quota', FETCH_OPTS);
                         const data = await response.json();
 
                         function applyFill(elId, used, limit) {
@@ -259,15 +262,15 @@
                 // Placeholder for other charts and tables
                 async function loadCostData() {
                     try {
-                        const dailyResponse = await fetch('/api/costs/daily');
+                        const dailyResponse = await fetch('/api/costs/daily', FETCH_OPTS);
                         const dailyData = await dailyResponse.json();
                         renderDailySpendChart(dailyData);
 
-                        const sessionResponse = await fetch('/api/costs/sessions');
+                        const sessionResponse = await fetch('/api/costs/sessions', FETCH_OPTS);
                         const sessionData = await sessionResponse.json();
                         renderSessionCostTable(sessionData);
 
-                        const modelResponse = await fetch('/api/costs/daily'); // Reuse daily for model data structure
+                        const modelResponse = await fetch('/api/costs/daily', FETCH_OPTS); // Reuse daily for model data structure
                         const modelData = await modelResponse.json();
                         renderModelSpendDonut(modelData);
 

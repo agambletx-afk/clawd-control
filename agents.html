@@ -60,9 +60,11 @@
 
         <script>
             document.addEventListener('DOMContentLoaded', () => {
+                const FETCH_OPTS = { credentials: 'same-origin' };
+
                 async function fetchAndRenderAgents() {
                     try {
-                        const response = await fetch('/api/agents');
+                        const response = await fetch('/api/agents', FETCH_OPTS);
                         const agentsData = await response.json();
                         renderAgentCards(agentsData);
                     } catch (error) {

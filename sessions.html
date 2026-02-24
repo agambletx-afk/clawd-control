@@ -117,6 +117,7 @@
             let hasMore = true;
 
             document.addEventListener('DOMContentLoaded', () => {
+                const FETCH_OPTS = { credentials: 'same-origin' };
                 const eventLogTableBody = document.querySelector('#eventLogTable tbody');
                 const loadMoreButton = document.getElementById('loadMoreButton');
                 const timeRangeButtons = document.querySelectorAll('.filters-bar button[data-range]');
@@ -139,7 +140,7 @@
                     }
 
                     try {
-                        const response = await fetch(`/api/sessions/events?range=${currentRange}&source=${currentSource}&page=${currentPage}`);
+                        const response = await fetch(`/api/sessions/events?range=${currentRange}&source=${currentSource}&page=${currentPage}`, FETCH_OPTS);
                         const data = await response.json();
 
                         if (!append) {
