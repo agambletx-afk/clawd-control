@@ -704,6 +704,309 @@ function computeCostsData() {
   return cachedCostsData;
 }
 
+function computeCostsData() {
+  const now = Date.now();
+  const AGENTS_DIR = join(homedir(), '.clawdbot', 'agents');
+
+  // Check cache validity (30 seconds TTL and file mtimes)
+  if (cachedCostsData && (now - lastCostsComputeTime < COSTS_CACHE_TTL)) {
+    let filesChanged = false;
+    try {
+      const agentIds = readdirSync(AGENTS_DIR, { withFileTypes: true })
+        .filter(d => d.isDirectory())
+        .map(d => d.name);
+      for (const agentId of agentIds) {
+        const sessDir = join(AGENTS_DIR, agentId, 'sessions');
+        if (!existsSync(sessDir)) continue;
+        const files = readdirSync(sessDir).filter(
+          f => f.endsWith('.jsonl') && !f.includes('.deleted.') && !f.includes('.archived.')
+        );
+        for (const file of files) {
+          const sessionPath = join(sessDir, file);
+          const stat = statSync(sessionPath);
+          if (sessionFilesMtimes.get(sessionPath) !== stat.mtimeMs) {
+            filesChanged = true;
+            break;
+          }
+        }
+        if (filesChanged) break;
+      }
+    } catch (e) {
+      console.warn('Error checking session file mtimes, forcing recompute:', e.message);
+      filesChanged = true; // Force recompute on error
+    }
+    if (!filesChanged) {
+      // console.log('Serving costs data from cache.');
+      return cachedCostsData;
+    }
+    // console.log('Session files changed or cache expired, recomputing costs data.');
+  }
+
+  const dailyCosts = new Map(); // date -> { total: 0, byModel: { modelId: cost } }
+  const sessionCosts = []; // [{ id, started, model, messages, tokens, cost, source }]
+  const modelTotalCosts = new Map(); // modelId -> totalCost
+  const modelTotalTokens = new Map(); // modelId -> totalTokens
+
+  // Quota tracking
+  const todayCST = toCstDate(new Date().toISOString());
+  let rpdUsed = 0; // Requests per Day
+  let rpmUsed = 0; // Requests per Minute
+  const currentMinuteStartCST = new Date(new Date().getTime() + CST_OFFSET_MS);
+  currentMinuteStartCST.setSeconds(0, 0);
+
+  const AGENTS_SUBDIR = join(homedir(), '.openclaw', 'agents'); // Corrected path based on previous issue
+  let agentIds = [];
+  try {
+    agentIds = readdirSync(AGENTS_SUBDIR, { withFileTypes: true })
+      .filter(d => d.isDirectory())
+      .map(d => d.name);
+  } catch { /* no agents dir */ }
+
+  sessionFilesMtimes.clear(); // Clear previous mtimes
+
+  for (const agentId of agentIds) {
+    const sessDir = join(AGENTS_SUBDIR, agentId, 'sessions');
+    if (!existsSync(sessDir)) continue;
+
+    try {
+      const files = readdirSync(sessDir).filter(
+        f => f.endsWith('.jsonl') && !f.includes('.deleted.') && !f.includes('.archived.')
+      );
+
+      for (const file of files) {
+        const sessionPath = join(sessDir, file);
+        const stat = statSync(sessionPath);
+        sessionFilesMtimes.set(sessionPath, stat.mtimeMs); // Store mtime
+
+        let currentModel = 'unknown';
+        let sessionStartTime = null;
+        let sessionMessageCount = 0;
+        let sessionTotalTokens = 0;
+        let sessionTotalCost = 0;
+        let isHeartbeatSession = false;
+
+        try {
+          const content = readFileSync(sessionPath, 'utf8');
+          const lines = content.split('\n').filter(l => l.trim());
+
+          for (const line of lines) {
+            try {
+              const data = JSON.parse(line);
+
+              if (data.type === 'session') {
+                sessionStartTime = data.timestamp;
+                if (data.metadata?.conversation_label === 'heartbeat') { // Check for heartbeat
+                    isHeartbeatSession = true;
+                }
+              } else if (data.type === 'model_change' && data.modelId) {
+                currentModel = data.modelId;
+              } else if (data.type === 'custom' && data.customType === 'model-snapshot' && data.data?.modelId) {
+                currentModel = data.data.modelId;
+              }
+
+              if (data.type === 'message' && data.message) {
+                sessionMessageCount++;
+                const msg = data.message;
+                const usage = msg.usage || {};
+                const cost = usage.cost?.total || 0;
+                const tokens = (usage.input || 0) + (usage.output || 0) + (usage.cacheRead || 0);
+
+                // Aggregate costs by day
+                const cstDate = toCstDate(data.timestamp);
+                if (!dailyCosts.has(cstDate)) {
+                  dailyCosts.set(cstDate, { total: 0, byModel: {} });
+                }
+                const dayEntry = dailyCosts.get(cstDate);
+                dayEntry.total += cost;
+                dayEntry.byModel[currentModel] = (dayEntry.byModel[currentModel] || 0) + cost;
+
+                // Aggregate total model costs/tokens
+                modelTotalCosts.set(currentModel, (modelTotalCosts.get(currentModel) || 0) + cost);
+                modelTotalTokens.set(currentModel, (modelTotalTokens.get(currentModel) || 0) + tokens);
+
+                sessionTotalTokens += tokens;
+                sessionTotalCost += cost;
+
+                // Gemini Flash quota tracking (assuming 'google' provider for Flash)
+                if (msg.provider === 'google' && cstDate === todayCST) {
+                  rpdUsed++;
+                  const msgTime = new Date(new Date(data.timestamp).getTime() + CST_OFFSET_MS);
+                  if (msgTime >= currentMinuteStartCST) {
+                    rpmUsed++;
+                  }
+                }
+              }
+            } catch (jsonErr) {
+              // console.warn(`Skipping malformed line in ${file}:`, jsonErr.message);
+            }
+          }
+        } catch (readErr) {
+          // console.warn(`Skipping broken file ${file}:`, readErr.message);
+        }
+
+        if (sessionStartTime) {
+          sessionCosts.push({
+            id: file.replace('.jsonl', ''),
+            started: sessionStartTime,
+            model: currentModel,
+            messages: sessionMessageCount,
+            tokens: sessionTotalTokens,
+            cost: sessionTotalCost,
+            source: isHeartbeatSession ? 'Heartbeat' : 'Telegram', // Simple source detection
+          });
+        }
+      }
+    } catch (dirErr) {
+      // console.warn(`Skipping agent session directory ${agentId}:`, dirErr.message);
+    }
+  }
+
+  // Convert maps to arrays for final output
+  const dailyCostsArray = Array.from(dailyCosts.entries())
+    .map(([date, data]) => ({ date, ...data }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  const modelCostsArray = Array.from(modelTotalCosts.entries())
+    .map(([modelId, cost]) => ({ modelId, totalCost: cost, totalTokens: modelTotalTokens.get(modelId) || 0 }))
+    .sort((a, b) => b.totalCost - a.totalCost);
+
+  cachedCostsData = {
+    daily: dailyCostsArray,
+    sessions: sessionCosts.sort((a, b) => new Date(b.started) - new Date(a.started)), // Sort by most recent
+    models: modelCostsArray,
+    quota: {
+      rpd: { used: rpdUsed, limit: 250 },
+      rpm: { used: rpmUsed, limit: 10 },
+    }
+  };
+  lastCostsComputeTime = now;
+  return cachedCostsData;
+}
+
+// Cache for agent metrics data
+let cachedAgentMetrics = null;
+let lastAgentMetricsComputeTime = 0;
+const AGENT_METRICS_CACHE_TTL = 30000; // 30 seconds for agent metrics
+
+function computeAgentMetrics() {
+  const now = Date.now();
+  const AGENTS_DIR = join(homedir(), '.clawdbot', 'agents');
+
+  // Check cache validity
+  if (cachedAgentMetrics && (now - lastAgentMetricsComputeTime < AGENT_METRICS_CACHE_TTL)) {
+    return cachedAgentMetrics;
+  }
+
+  const agentsData = {};
+  let agentIds = [];
+  try {
+    agentIds = readdirSync(AGENTS_DIR, { withFileTypes: true })
+      .filter(d => d.isDirectory())
+      .map(d => d.name);
+  } catch { /* no agents dir */ }
+
+  for (const agentId of agentIds) {
+    let currentModel = 'N/A';
+    let activeSessionId = null;
+    let activeSessionStarted = null;
+    let todayTokens = 0;
+    let todaySpend = 0;
+    let sessionCount = 0;
+    let workspaceSize = 0;
+
+    const agentConfig = collector.config?.agents?.find(a => a.id === agentId);
+    const workspacePath = agentConfig?.workspace || null;
+    const todayCST = toCstDate(new Date().toISOString());
+
+    // Calculate workspace size
+    if (workspacePath && existsSync(workspacePath)) {
+      try {
+        const files = readdirSync(workspacePath, { withFileTypes: true });
+        for (const file of files) {
+          const filePath = join(workspacePath, file.name);
+          try {
+            const stat = statSync(filePath);
+            workspaceSize += stat.size;
+          } catch (e) { /* ignore inaccessible files */ }
+        }
+      } catch (e) { /* ignore inaccessible workspace */ }
+    }
+
+    const sessDir = join(AGENTS_DIR, agentId, 'sessions');
+    if (existsSync(sessDir)) {
+      try {
+        const files = readdirSync(sessDir).filter(
+          f => f.endsWith('.jsonl') && !f.includes('.deleted.') && !f.includes('.archived.')
+        );
+        sessionCount = files.length;
+
+        // Find active session (most recently updated session.json entry)
+        const sessionsJsonPath = join(AGENTS_DIR, agentId, 'sessions', 'sessions.json');
+        if (existsSync(sessionsJsonPath)) {
+          const sessionsMetadata = JSON.parse(readFileSync(sessionsJsonPath, 'utf8'));
+          let latestUpdatedAt = 0;
+          for (const key in sessionsMetadata) {
+            const sess = sessionsMetadata[key];
+            if (sess.updatedAt && sess.updatedAt > latestUpdatedAt) {
+              latestUpdatedAt = sess.updatedAt;
+              activeSessionId = sess.sessionId;
+              activeSessionStarted = sess.startedAt || sess.timestamp; // Use startedAt if available, fallback to timestamp
+            }
+          }
+        }
+
+        for (const file of files) {
+          const sessionPath = join(sessDir, file);
+          try {
+            const content = readFileSync(sessionPath, 'utf8');
+            const lines = content.split('\n').filter(l => l.trim());
+
+            for (const line of lines) {
+              try {
+                const data = JSON.parse(line);
+
+                if (data.type === 'model_change' && data.modelId) {
+                  currentModel = data.modelId;
+                } else if (data.type === 'custom' && data.customType === 'model-snapshot' && data.data?.modelId) {
+                  currentModel = data.data.modelId;
+                }
+
+                if (data.type === 'message' && data.message) {
+                  const msg = data.message;
+                  const cstDate = toCstDate(data.timestamp);
+                  if (cstDate === todayCST) {
+                    const usage = msg.usage || {};
+                    todayTokens += (usage.input || 0) + (usage.output || 0) + (usage.cacheRead || 0);
+                    todaySpend += usage.cost?.total || 0;
+                  }
+                }
+              } catch (jsonErr) { /* ignore malformed lines */ }
+            }
+          } catch (readErr) { /* ignore broken files */ }
+        }
+      } catch (dirErr) { /* ignore inaccessible sessions dir */ }
+    }
+
+    agentsData[agentId] = {
+      id: agentId,
+      name: collector.state.get(agentId)?.name || agentId, // Get name from collector.state
+      emoji: collector.state.get(agentId)?.emoji || '🤖',
+      model: currentModel,
+      workspacePath: workspacePath,
+      workspaceSize: workspaceSize,
+      activeSessionId: activeSessionId,
+      activeSessionStarted: activeSessionStarted,
+      todayTokens: todayTokens,
+      todaySpend: todaySpend,
+      sessionCount: sessionCount,
+    };
+  }
+
+  cachedAgentMetrics = agentsData;
+  lastAgentMetricsComputeTime = now;
+  return agentsData;
+}
+
 function getAnalytics(rangeStr, agentFilter) {
   const AGENTS_DIR = join(homedir(), '.clawdbot', 'agents');
   const range = rangeStr === 'all' ? Infinity : parseInt(rangeStr);
@@ -1621,10 +1924,16 @@ const server = createServer((req, res) => {
     return;
   }
 
-  if (path === '/api/agents') {
-    const agents = Object.fromEntries(collector.state);
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(agents));
+  if (path === '/api/agents' && req.method === 'GET') {
+    try {
+      const agents = computeAgentMetrics();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(agents));
+    } catch (e) {
+      console.error('[API] /api/agents error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Internal server error' }));
+    }
     return;
   }
 
