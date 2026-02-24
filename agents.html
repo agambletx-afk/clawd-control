@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agents — Clawd Control</title>
+</head>
+<body>
+    <main class="main">
+        <div class="page-header">
+            <h1>🤖 Agents</h1>
+            <p class="subtitle">Active agents and their current status</p>
+        </div>
+
+        <div class="agent-cards-grid" id="agentCardsGrid">
+            <!-- Agent cards will be injected here -->
+            <div class="card">
+                <h2 class="card-title">Loading Agents...</h2>
+            </div>
+        </div>
+
+        <style>
+            .page-header { margin-bottom: 24px; }
+            .page-header h1 { font-size: 2.2rem; margin-bottom: 8px; color: var(--text-primary); }
+            .page-header .subtitle { font-size: 0.95rem; color: var(--text-secondary); }
+
+            .agent-cards-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+                gap: 20px;
+            }
+            .card {
+                background: var(--bg-secondary);
+                border: 1px solid var(--border);
+                border-radius: var(--radius-lg);
+                padding: 24px;
+                box-shadow: var(--shadow-sm);
+                display: flex;
+                flex-direction: column;
+            }
+            .card-title { font-size: 1.25rem; font-weight: 600; margin-bottom: 20px; color: var(--text-primary); }
+            .agent-header {
+                display: flex; align-items: center; gap: 12px; margin-bottom: 15px;
+            }
+            .agent-header .agent-emoji { font-size: 2.5rem; line-height: 1; }
+            .agent-header .agent-name { font-size: 1.6rem; font-weight: 700; color: var(--text-primary); }
+            .agent-details-list {
+                list-style: none; padding: 0; margin: 0;
+            }
+            .agent-details-list li {
+                display: flex; justify-content: space-between; align-items: center;
+                padding: 8px 0; border-bottom: 1px dashed var(--border-subtle);
+                font-size: 0.9rem;
+            }
+            .agent-details-list li:last-child { border-bottom: none; }
+            .agent-details-list .label { color: var(--text-secondary); }
+            .agent-details-list .value { color: var(--text-primary); text-align: right; }
+            .agent-details-list .value.small-text { font-size: 0.8rem; }
+        </style>
+
+        <script>
+            document.addEventListener('DOMContentLoaded', () => {
+                async function fetchAndRenderAgents() {
+                    try {
+                        const response = await fetch('/api/agents');
+                        const agentsData = await response.json();
+                        renderAgentCards(agentsData);
+                    } catch (error) {
+                        console.error('Failed to fetch agent data:', error);
+                        document.getElementById('agentCardsGrid').innerHTML = '<div class="card"><h2 class="card-title">Error loading agents.</h2><p>Please check server logs.</p></div>';
+                    }
+                }
+
+                function renderAgentCards(agents) {
+                    const grid = document.getElementById('agentCardsGrid');
+                    grid.innerHTML = ''; // Clear loading message
+
+                    if (Object.keys(agents).length === 0) {
+                        grid.innerHTML = '<div class="card"><h2 class="card-title">No agents found.</h2></div>';
+                        return;
+                    }
+
+                    for (const agentId in agents) {
+                        const agent = agents[agentId];
+                        const agentCard = document.createElement('div');
+                        agentCard.className = 'card';
+                        agentCard.id = `agent-card-${agent.id}`;
+
+                        // Convert UTC to CST for display
+                        const toCstString = (isoString) => {
+                            if (!isoString) return '--';
+                            const date = new Date(isoString);
+                            // Assuming CST is UTC-6, without daylight saving complications for simplicity here.
+                            // For a more robust solution, a timezone library would be needed.
+                            const cstTime = new Date(date.getTime() - (6 * 60 * 60 * 1000));
+                            return cstTime.toLocaleString('en-US', { timeZone: 'America/Chicago', dateStyle: 'short', timeStyle: 'short' });
+                        };
+
+                        const formatDuration = (ms) => {
+                            if (ms === undefined || ms === null || isNaN(ms)) return '--';
+                            const seconds = Math.floor(ms / 1000);
+                            const minutes = Math.floor(seconds / 60);
+                            const hours = Math.floor(minutes / 60);
+                            const days = Math.floor(hours / 24);
+
+                            let parts = [];
+                            if (days > 0) parts.push(`${days}d`);
+                            if (hours % 24 > 0) parts.push(`${hours % 24}h`);
+                            if (minutes % 60 > 0) parts.push(`${minutes % 60}m`);
+                            if (parts.length === 0) return '0m';
+                            return parts.join(' ');
+                        };
+
+                        agentCard.innerHTML = `
+                            <div class="agent-header">
+                                <span class="agent-emoji">${agent.emoji || '🤖'}</span>
+                                <span class="agent-name">${agent.name || agent.id}</span>
+                            </div>
+                            <ul class="agent-details-list">
+                                <li><span class="label">Model:</span> <span class="value">${agent.model || 'N/A'}</span></li>
+                                <li><span class="label">Workspace:</span> <span class="value small-text">${agent.workspacePath || 'N/A'}</span></li>
+                                <li><span class="label">Workspace Size:</span> <span class="value">${window.fmtBytes(agent.workspaceSize || 0)}</span></li>
+                                <li><span class="label">Active Session:</span> <span class="value">${agent.activeSessionId ? `${agent.activeSessionId.substring(0, 8)} (${formatDuration(Date.now() - new Date(agent.activeSessionStarted).getTime())} ago)` : 'None'}</span></li>
+                                <li><span class="label">Today's Tokens:</span> <span class="value">${agent.todayTokens || 0}</span></li>
+                                <li><span class="label">Today's Spend:</span> <span class="value">$${(agent.todaySpend || 0).toFixed(4)}</span></li>
+                                <li><span class="label">Session Count:</span> <span class="value">${agent.sessionCount || 0}</span></li>
+                            </ul>
+                        `;
+                        grid.appendChild(agentCard);
+                    }
+                }
+
+                // Fetch data initially
+                fetchAndRenderAgents();
+
+                // Refresh data on snapshot updates from SSE
+                document.addEventListener('layout:snapshot', fetchAndRenderAgents);
+            });
+        </script>
+    </main>
+</body>
+</html>
