@@ -915,15 +915,30 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
       // Update URL
       if (pushState) history.pushState({}, '', href);
 
-      // Execute page-specific scripts from the new page
-      const newScripts = doc.querySelectorAll('script:not([src])');
+      // Execute page-specific scripts from the new page in original order.
+      // innerHTML does not execute scripts, so recreate script elements explicitly.
+      const newScripts = Array.from(doc.querySelectorAll('script')).filter((script) => {
+        const src = (script.getAttribute('src') || '').trim();
+        return !/\/layout\.js(\?.*)?$/.test(src);
+      });
+
       for (const script of newScripts) {
-        const text = script.textContent;
-        // Skip if it's just lucide init
-        if (text.trim() === 'lucide.createIcons();') continue;
-        // Skip layout.js related
-        if (text.includes('layout.js')) continue;
-        try { new Function(text)(); } catch (e) { console.warn('[SPA] script error:', e); }
+        const scriptEl = document.createElement('script');
+        for (const attr of script.attributes) {
+          scriptEl.setAttribute(attr.name, attr.value);
+        }
+        if (!script.src) {
+          scriptEl.textContent = script.textContent;
+        }
+
+        const loadPromise = new Promise((resolve) => {
+          scriptEl.onload = () => resolve();
+          scriptEl.onerror = () => resolve();
+        });
+
+        document.body.appendChild(scriptEl);
+        if (script.src) await loadPromise;
+        scriptEl.remove();
       }
 
       // Re-highlight active sidebar item
