@@ -76,11 +76,11 @@
       z-index: 1;
     }
     .column-body {
-      padding: 8px;
+      padding: 6px;
       overflow-y: auto;
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 4px;
     }
     .archive-collapsed .column-body { display: none; }
 
@@ -89,24 +89,23 @@
       border: 1px solid var(--border-subtle);
       border-left: 4px solid var(--text-tertiary);
       border-radius: 10px;
-      padding: 8px;
+      padding: 5px 6px;
       cursor: pointer;
       box-shadow: var(--shadow-sm);
     }
     .task-card:hover { border-color: var(--border); background: var(--surface); }
-    .task-title { font-size: 0.84rem; font-weight: 700; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .meta-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+    .task-title { font-size: 0.74rem; font-weight: 700; line-height: 1.12; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .meta-row { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; line-height: 1.1; }
     .badge {
-      font-size: 0.68rem;
+      font-size: 0.61rem;
       border: 1px solid var(--border);
       border-radius: 999px;
-      padding: 2px 7px;
+      padding: 1px 6px;
       color: var(--text-secondary);
       background: var(--bg-secondary);
       white-space: nowrap;
     }
-    .meta-sub { margin-top: 6px; display: flex; align-items: center; justify-content: space-between; color: var(--text-tertiary); font-size: 0.68rem; }
-    .card-actions { margin-top: 7px; display: flex; gap: 6px; }
+    .meta-sub { margin-top: 3px; display: flex; align-items: center; justify-content: space-between; color: var(--text-tertiary); font-size: 0.62rem; line-height: 1.1; }
 
     .priority-critical { border-left-color: #f87171; }
     .priority-high { border-left-color: #fb923c; }
@@ -126,7 +125,7 @@
       right: -520px;
       top: 0;
       width: min(520px, 100vw);
-      height: 100vh;
+      height: 100dvh;
       background: var(--bg-secondary);
       border-left: 1px solid var(--border);
       z-index: 160;
@@ -143,7 +142,7 @@
       align-items: center;
       gap: 10px;
     }
-    .panel-body { padding: 12px; overflow-y: auto; }
+    .panel-body { padding: 12px; overflow-y: auto; min-height: 0; }
     .panel-title { font-size: 1rem; font-weight: 700; }
     .field { margin-bottom: 10px; }
     .field .label { font-size: 0.7rem; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
@@ -367,6 +366,7 @@
           return String(value);
         };
         const esc = (s) => String(s ?? '').replace(/[&<>\"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+        function normalizeStatus(s) { return (s || '').toLowerCase().replace(/[- ]/g, '_'); }
 
         function ageLabel(iso) {
           const t = Date.parse(iso);
@@ -380,28 +380,29 @@
 
         function statusActionButtons(task) {
           if (!task) return '';
-          if (task.status === 'proposed') {
+          const status = normalizeStatus(task.status);
+          if (status === 'proposed') {
             return `
               <button class="btn btn-small" data-action="approve" data-id="${task.id}">Approve</button>
               <button class="btn btn-small btn-danger" data-action="reject" data-id="${task.id}">Reject</button>
             `;
           }
-          if (task.status === 'backlog') {
+          if (status === 'backlog') {
             return `<button class="btn btn-small" data-action="start" data-id="${task.id}">Start</button>`;
           }
-          if (task.status === 'in_progress') {
+          if (status === 'in_progress') {
             return `<button class="btn btn-small" data-action="complete" data-id="${task.id}">Complete</button>`;
           }
-          if (task.status === 'review') {
+          if (status === 'review') {
             return `
               <button class="btn btn-small" data-action="approve-review" data-id="${task.id}">Approve</button>
               <button class="btn btn-small" data-action="return-review" data-id="${task.id}">Return</button>
             `;
           }
-          if (task.status === 'done') {
+          if (status === 'done') {
             return `<button class="btn btn-small" data-action="archive" data-id="${task.id}">Archive</button>`;
           }
-          if (task.status === 'archive') {
+          if (status === 'archive') {
             return `<button class="btn btn-small" data-action="restore" data-id="${task.id}">Restore</button>`;
           }
           return '';
@@ -432,7 +433,6 @@
                 <span>${blocked ? `🔒` : ''}</span>
               </div>
               ${blocked ? `<div class="meta-sub" title="${esc(getBlockingTitle(task))}"><span>Blocked by: ${esc(task.blocked_by.join(','))}</span></div>` : ''}
-              <div class="card-actions">${statusActionButtons(task)}</div>
             </article>
           `;
         }
