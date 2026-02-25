@@ -5,6 +5,7 @@ CONFIG_PATH="/home/openclaw/clawd-control/apis-config.json"
 PRIMARY_ENV_PATH="/home/openclaw/clawd-control/.env"
 SECONDARY_ENV_PATH="/home/openclaw/.openclaw/workspace/.env"
 TERTIARY_ENV_PATH="/opt/openclaw.env"
+AUTH_PROFILES_PATH="/home/openclaw/.openclaw/agents/main/agent/auth-profiles.json"
 OUT_PATH="/tmp/api-health-results.json"
 
 SERVICE_FILTER="${1:-}"
@@ -88,6 +89,13 @@ write_error_payload() {
 load_env_file "$PRIMARY_ENV_PATH"
 load_env_file "$SECONDARY_ENV_PATH"
 load_env_file "$TERTIARY_ENV_PATH"
+
+if [[ -z "${GEMINI_API_KEY:-}" && -r "$AUTH_PROFILES_PATH" ]]; then
+  gemini_fallback_token="$(jq -r '.profiles.google.manual.token // empty' "$AUTH_PROFILES_PATH" 2>/dev/null)"
+  if [[ -n "$gemini_fallback_token" ]]; then
+    export GEMINI_API_KEY="$gemini_fallback_token"
+  fi
+fi
 
 if [[ ! -f "$CONFIG_PATH" ]]; then
   write_error_payload "Config file not found: $CONFIG_PATH"
