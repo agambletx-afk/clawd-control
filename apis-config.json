@@ -61,27 +61,6 @@
       }
     },
     {
-      "id": "brave",
-      "name": "Brave Search",
-      "provider": "Brave API",
-      "description": "Web search API for real-time information retrieval.",
-      "capabilities": ["Web Search", "Region Filter", "Freshness Filter"],
-      "health_check": {
-        "method": "GET",
-        "url": "https://api.search.brave.com/res/v1/web/search?q=test&count=1",
-        "headers": {
-          "X-Subscription-Token": "${BRAVE_API_KEY}"
-        },
-        "timeout_ms": 5000,
-        "expected_status": 200
-      },
-      "api_key": {
-        "env_var": "BRAVE_API_KEY",
-        "last_rotated": null,
-        "rotation_warning_days": 90
-      }
-    },
-    {
       "id": "openai",
       "name": "OpenAI / Codex",
       "provider": "OpenAI API",
