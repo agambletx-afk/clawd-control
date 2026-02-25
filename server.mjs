@@ -11,7 +11,7 @@ const { createServer } = http;
 import { readFileSync, existsSync, writeFileSync, copyFileSync, readdirSync, statSync } from 'fs';
 import { join, extname, resolve, sep } from 'path';
 import { gzipSync } from 'zlib';
-import { execFileSync } from 'child_process';
+import { execFileSync, execSync, spawnSync } from 'child_process';
 import { AgentCollector } from './collector.mjs';
 import { createAgent } from './create-agent.mjs';
 import { discoverAgents } from './discover.mjs';
@@ -30,6 +30,9 @@ import {
 } from './tasks-db.mjs';
 
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
+
+import { logAction, getLog, getLogStats, pruneLog } from './ops-log-db.mjs';
+import { createSnapshot, listSnapshots, getSnapshotManifest, restoreSnapshot, deleteSnapshot, enforceRetention } from './ops-backup.mjs';
 
 const PORT = parseInt(process.argv.find((_, i, a) => a[i - 1] === '--port') || '3100');
 const DIR = new URL('.', import.meta.url).pathname;
@@ -332,6 +335,75 @@ function mergeHealthData() {
     },
     services,
   };
+}
+
+
+const OPS_SERVICES = ['openclaw', 'clawd-control', 'clawmetry'];
+
+function truncateOutput(value, max = 2000) {
+  if (value == null) return '';
+  const text = String(value);
+  return text.length > max ? text.slice(0, max) : text;
+}
+
+function parseSystemctlShow(raw) {
+  const out = {};
+  for (const line of String(raw || '').split('\n')) {
+    const idx = line.indexOf('=');
+    if (idx <= 0) continue;
+    out[line.slice(0, idx)] = line.slice(idx + 1);
+  }
+  return out;
+}
+
+function parseMemoryMb(value) {
+  const bytes = Number.parseInt(value, 10);
+  if (!Number.isFinite(bytes) || bytes <= 0) return null;
+  return Math.round((bytes / (1024 * 1024)) * 10) / 10;
+}
+
+function parseCronEntries() {
+  const jobs = [];
+  const cronDir = '/etc/cron.d';
+  try {
+    const files = readdirSync(cronDir, { withFileTypes: true }).filter((d) => d.isFile());
+    for (const file of files) {
+      const fullPath = join(cronDir, file.name);
+      const lines = readFileSync(fullPath, 'utf8').split('\n');
+      for (const raw of lines) {
+        const line = raw.trim();
+        if (!line || line.startsWith('#') || line.includes('=')) continue;
+        const parts = line.split(/\s+/);
+        if (parts.length < 7) continue;
+        const schedule = parts.slice(0, 5).join(' ');
+        const user = parts[5];
+        const command = parts.slice(6).join(' ');
+        if (!/(openclaw|clawd|clawmetry|heartbeat|api-health|workspace|backup|check)/i.test(command + ' ' + file.name)) continue;
+        const name = file.name.replace(/\.[^.]+$/, '') + ':' + (command.split('/').pop() || command.split(' ')[0]);
+        jobs.push({ name, schedule, command, source: 'system', user, last_run: null });
+      }
+    }
+  } catch {}
+
+  try {
+    const result = spawnSync('crontab', ['-u', 'openclaw', '-l'], { encoding: 'utf8', timeout: 10000 });
+    if (result.status === 0) {
+      const lines = result.stdout.split('\n');
+      for (const raw of lines) {
+        const line = raw.trim();
+        if (!line || line.startsWith('#')) continue;
+        const parts = line.split(/\s+/);
+        if (parts.length < 6) continue;
+        const schedule = parts.slice(0, 5).join(' ');
+        const command = parts.slice(5).join(' ');
+        if (!/(openclaw|clawd|clawmetry|heartbeat|api-health|workspace|backup|check)/i.test(command)) continue;
+        const name = 'user:' + (command.split('/').pop() || command.split(' ')[0]);
+        jobs.push({ name, schedule, command, source: 'user', user: 'openclaw', last_run: null });
+      }
+    }
+  } catch {}
+
+  return jobs;
 }
 
 const MIME = {
@@ -2306,6 +2378,224 @@ const server = createServer((req, res) => {
   }
 
   // ── Tasks ──
+
+  if (path === '/api/ops/services/status' && req.method === 'GET') {
+    try {
+      const services = OPS_SERVICES.map((name) => {
+        const activeRaw = execSync(`systemctl is-active ${name}`, { encoding: 'utf8', timeout: 30000, stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+        const showRaw = execSync(`systemctl show ${name} --property=ActiveEnterTimestamp,MainPID,MemoryUsageCurrent`, { encoding: 'utf8', timeout: 30000, stdio: ['ignore', 'pipe', 'pipe'] });
+        const parsed = parseSystemctlShow(showRaw);
+        return {
+          name,
+          active: activeRaw === 'active',
+          pid: Number.parseInt(parsed.MainPID, 10) || null,
+          uptime_since: parsed.ActiveEnterTimestamp || null,
+          memory_mb: parseMemoryMb(parsed.MemoryUsageCurrent),
+        };
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ services }));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to fetch service status' }));
+    }
+    return;
+  }
+
+  if (path.startsWith('/api/ops/services/') && path.endsWith('/restart') && req.method === 'POST') {
+    const service = decodeURIComponent(path.split('/')[4] || '');
+    if (!OPS_SERVICES.includes(service)) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid service name' }));
+      return;
+    }
+    const started = Date.now();
+    try {
+      execSync(`sudo systemctl restart ${service}`, { timeout: 30000, stdio: ['ignore', 'pipe', 'pipe'] });
+      const duration = Date.now() - started;
+      logAction({ category: 'service', action: 'restart', target: service, status: 'success', detail: 'Service restarted', duration_ms: duration });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ service, status: 'success', duration_ms: duration, timestamp: new Date().toISOString() }));
+    } catch (e) {
+      const duration = Date.now() - started;
+      logAction({ category: 'service', action: 'restart', target: service, status: 'failed', detail: truncateOutput(e.stderr || e.message), duration_ms: duration });
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to restart service' }));
+    }
+    return;
+  }
+
+  if (path === '/api/ops/sessions/fresh' && req.method === 'POST') {
+    readJsonBody(req).then((body) => {
+      if (body.confirm !== true) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Confirmation required. Send { confirm: true } to proceed.' }));
+        return;
+      }
+      const started = Date.now();
+      try {
+        execSync('sudo systemctl restart openclaw', { timeout: 30000, stdio: ['ignore', 'pipe', 'pipe'] });
+        const duration = Date.now() - started;
+        logAction({ category: 'session', action: 'fresh_session', target: 'openclaw', status: 'success', detail: 'Fresh session triggered', duration_ms: duration });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'success', timestamp: new Date().toISOString() }));
+      } catch (e) {
+        const duration = Date.now() - started;
+        logAction({ category: 'session', action: 'fresh_session', target: 'openclaw', status: 'failed', detail: truncateOutput(e.stderr || e.message), duration_ms: duration });
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Failed to start fresh session' }));
+      }
+    }).catch(() => {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+    });
+    return;
+  }
+
+  if (path === '/api/ops/crons' && req.method === 'GET') {
+    try {
+      const jobs = parseCronEntries();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ jobs }));
+    } catch {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to list cron jobs' }));
+    }
+    return;
+  }
+
+  if (path.startsWith('/api/ops/crons/') && path.endsWith('/trigger') && req.method === 'POST') {
+    const jobName = decodeURIComponent(path.split('/')[4] || '');
+    const jobs = parseCronEntries();
+    const job = jobs.find((j) => j.name === jobName);
+    if (!job) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid cron job name' }));
+      return;
+    }
+    const started = Date.now();
+    const result = spawnSync('bash', ['-lc', job.command], { encoding: 'utf8', timeout: 60000 });
+    const duration = Date.now() - started;
+    const output = truncateOutput((result.stdout || '') + (result.stderr || ''));
+    const status = result.status === 0 ? 'success' : 'failed';
+    logAction({ category: 'cron', action: 'trigger', target: job.name, status, detail: output, duration_ms: duration });
+    res.writeHead(result.status === 0 ? 200 : 500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ name: job.name, exit_code: result.status ?? 1, output, duration_ms: duration }));
+    return;
+  }
+
+  if (path === '/api/ops/backups' && req.method === 'POST') {
+    try {
+      const snapshot = createSnapshot();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(snapshot));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (path === '/api/ops/backups' && req.method === 'GET') {
+    try {
+      const snapshots = listSnapshots();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ snapshots }));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (path.startsWith('/api/ops/backups/') && path.endsWith('/manifest') && req.method === 'GET') {
+    const filename = decodeURIComponent(path.split('/')[4] || '');
+    try {
+      const manifest = getSnapshotManifest(filename);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(manifest));
+    } catch (e) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (path.startsWith('/api/ops/backups/') && path.endsWith('/restore') && req.method === 'POST') {
+    const filename = decodeURIComponent(path.split('/')[4] || '');
+    readJsonBody(req).then((body) => {
+      if (body.confirm !== true) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Confirmation required. Send { confirm: true } to proceed.' }));
+        return;
+      }
+      try {
+        const result = restoreSnapshot(filename);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    }).catch(() => {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+    });
+    return;
+  }
+
+  if (path.startsWith('/api/ops/backups/') && req.method === 'DELETE') {
+    const filename = decodeURIComponent(path.split('/')[4] || '');
+    try {
+      deleteSnapshot(filename);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ deleted: true, filename }));
+    } catch (e) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (path === '/api/ops/cleanup' && req.method === 'POST') {
+    readJsonBody(req).then((body) => {
+      const maxBackups = body.maxBackups ?? 10;
+      const maxAgeDays = body.maxAgeDays ?? 30;
+      const retainDays = body.retainDays ?? 90;
+      try {
+        const backupResult = enforceRetention(maxBackups, maxAgeDays);
+        const pruned = pruneLog(retainDays);
+        logAction({ category: 'cleanup', action: 'retention', target: 'ops', status: 'success', detail: `Deleted ${backupResult.deleted_count} backups; pruned ${pruned} log entries` });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ backups_deleted: backupResult.deleted_count, deleted_files: backupResult.deleted_files, log_entries_pruned: pruned }));
+      } catch (e) {
+        logAction({ category: 'cleanup', action: 'retention', target: 'ops', status: 'failed', detail: truncateOutput(e.message) });
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    }).catch(() => {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+    });
+    return;
+  }
+
+  if (path === '/api/ops/log' && req.method === 'GET') {
+    try {
+      const limit = Math.max(1, Math.min(200, Number.parseInt(url.searchParams.get('limit') || '50', 10)));
+      const offset = Math.max(0, Number.parseInt(url.searchParams.get('offset') || '0', 10));
+      const category = url.searchParams.get('category') || null;
+      const { entries, total } = getLog({ limit, offset, category });
+      const stats = getLogStats();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ entries, total, stats: { total: stats.total, last_24h: stats.last_24h, last_7d: stats.last_7d, most_recent_timestamp: stats.most_recent_timestamp } }));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to fetch operations log' }));
+    }
+    return;
+  }
+
   if (path === '/api/tasks' && req.method === 'GET') {
     try {
       getDb();

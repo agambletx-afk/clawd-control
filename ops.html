@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Operations — Clawd Control</title>
+  <style>
+    .page-header{margin-bottom:14px}.page-header h1{font-size:1.9rem}.subtitle{color:var(--text-secondary);font-size:.88rem}
+    .section{background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:14px}
+    .section h2{font-size:1rem;margin-bottom:10px}.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .services{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.card{border:1px solid var(--border);border-radius:10px;padding:10px;background:var(--bg-tertiary)}
+    .dot{width:10px;height:10px;border-radius:50%;display:inline-block}.ok{background:#22c55e}.bad{background:#ef4444}
+    .muted{color:var(--text-tertiary);font-size:.78rem}.mono{font-family:var(--font-mono);font-size:.76rem}
+    table{width:100%;border-collapse:collapse}th,td{padding:8px;border-bottom:1px solid var(--border-subtle);font-size:.8rem;text-align:left}th{color:var(--text-tertiary)}
+    .btn{border:1px solid var(--border);background:var(--surface);color:var(--text-primary);padding:6px 10px;border-radius:7px;cursor:pointer;font-size:.78rem}
+    .btn:hover{background:var(--surface-hover)}.btn:disabled{opacity:.6;cursor:wait}.btn-green{border-color:rgba(34,197,94,.4);color:#4ade80}
+    .btn-amber{border-color:rgba(245,158,11,.45);color:#fbbf24}.btn-red{border-color:rgba(239,68,68,.45);color:#f87171}
+    .btn-outline-red{background:transparent;border-color:rgba(239,68,68,.45);color:#f87171}
+    .toast{position:fixed;right:12px;bottom:12px;background:#111827;color:#e5e7eb;border:1px solid var(--border);padding:10px;border-radius:8px;z-index:9999;display:none;max-width:420px}
+    .pill{padding:2px 8px;border-radius:999px;font-size:.68rem;border:1px solid transparent}.service{color:#93c5fd;border-color:#60a5fa66;background:#1e3a8a33}
+    .cron{color:#c4b5fd;border-color:#a78bfa66;background:#6d28d933}.backup{color:#5eead4;border-color:#2dd4bf66;background:#134e4a44}
+    .cleanup{color:#fdba74;border-color:#fb923c66;background:#9a341233}.session{color:#fde047;border-color:#facc1566;background:#713f1244}
+    .status-success{color:#4ade80}.status-failed{color:#f87171}.inputs input,.inputs select{background:var(--bg-tertiary);border:1px solid var(--border);color:var(--text-primary);padding:6px;border-radius:6px}
+    @media (max-width:900px){.services{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<main class="main">
+  <div class="page-header"><h1>⚙️ Operations</h1><div class="subtitle">Service controls, cron triggers, backups, and full audit trail.</div></div>
+
+  <section class="section">
+    <h2>Service Controls</h2>
+    <div id="serviceCards" class="services"></div>
+    <div style="margin-top:10px"><button id="freshSessionBtn" class="btn btn-outline-red">Fresh Session</button></div>
+  </section>
+
+  <section class="section">
+    <h2>Cron Jobs</h2>
+    <table><thead><tr><th>Name</th><th>Schedule</th><th>Command</th><th>Source</th><th>Actions</th></tr></thead><tbody id="cronRows"></tbody></table>
+  </section>
+
+  <section class="section">
+    <h2>Backups</h2>
+    <div class="row" id="backupStats"></div>
+    <div class="row" style="margin:10px 0"><button id="createBackupBtn" class="btn btn-green">Create Backup</button></div>
+    <table><thead><tr><th>Filename</th><th>Size</th><th>Age</th><th>Actions</th></tr></thead><tbody id="backupRows"></tbody></table>
+    <div class="row inputs" style="margin-top:10px">
+      <span class="muted">Keep last</span><input id="maxBackups" type="number" value="10" min="1" style="width:80px" />
+      <span class="muted">older than</span><input id="maxAgeDays" type="number" value="30" min="1" style="width:80px" /><span class="muted">days</span>
+      <button id="cleanupBtn" class="btn btn-amber">Run Cleanup</button>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>Activity Log</h2>
+    <div class="row inputs" style="margin-bottom:8px"><select id="logCategory"><option value="">All</option><option>service</option><option>cron</option><option>backup</option><option>cleanup</option><option>session</option></select></div>
+    <table><thead><tr><th>Timestamp</th><th>Category</th><th>Action</th><th>Target</th><th>Status</th><th>Duration</th><th>Detail</th></tr></thead><tbody id="logRows"></tbody></table>
+    <div style="margin-top:10px"><button id="loadMoreLogBtn" class="btn">Load more</button></div>
+  </section>
+</main>
+<div id="toast" class="toast"></div>
+<script src="/layout.js"></script>
+<script>
+const state={logOffset:0,logCategory:''};
+const $=(id)=>document.getElementById(id);
+const toast=(msg)=>{const t=$('toast');t.textContent=msg;t.style.display='block';setTimeout(()=>t.style.display='none',3500)};
+const fmtBytes=(b)=>{if(!b)return'0 B';const u=['B','KB','MB','GB'];let i=0,v=b;while(v>1024&&i<u.length-1){v/=1024;i++}return`${v.toFixed(v>100?0:1)} ${u[i]}`};
+const rel=(iso)=>{if(!iso)return'—';const d=(Date.now()-new Date(iso).getTime())/1000;if(d<60)return`${Math.floor(d)}s ago`;if(d<3600)return`${Math.floor(d/60)}m ago`;if(d<86400)return`${Math.floor(d/3600)}h ago`;return`${Math.floor(d/86400)}d ago`};
+async function api(path,opt={}){const r=await fetch(path,{headers:{'Content-Type':'application/json'},...opt});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Request failed');return j}
+
+async function loadServices(){const d=await api('/api/ops/services/status');$('serviceCards').innerHTML=d.services.map(s=>`<div class='card'><div class='row' style='justify-content:space-between'><strong>${s.name}</strong><span><span class='dot ${s.active?'ok':'bad'}'></span> ${s.active?'Running':'Stopped'}</span></div><div class='muted'>PID ${s.pid||'—'} · ${s.uptime_since?new Date(s.uptime_since).toLocaleString():'—'}</div><div class='muted'>${s.memory_mb??'—'} MB</div><button class='btn btn-amber' onclick="restartService('${s.name}',this)">Restart</button></div>`).join('')}
+async function restartService(name,btn){if(!confirm(`Restart ${name}?`))return;btn.disabled=true;btn.textContent='Restarting...';try{await api(`/api/ops/services/${encodeURIComponent(name)}/restart`,{method:'POST'});toast(`Restarted ${name}`);await loadServices();await resetLogs()}catch(e){toast(e.message)}finally{btn.disabled=false;btn.textContent='Restart'}}
+$('freshSessionBtn').onclick=async()=>{if(!confirm('This will clear the active agent session. Continue?'))return;try{await api('/api/ops/sessions/fresh',{method:'POST',body:JSON.stringify({confirm:true})});toast('Fresh session requested');await loadServices();await resetLogs()}catch(e){toast(e.message)}};
+
+async function loadCrons(){const d=await api('/api/ops/crons');$('cronRows').innerHTML=d.jobs.map(c=>`<tr><td>${c.name}</td><td>${c.schedule}</td><td title="${c.command.replace(/"/g,'&quot;')}">${c.command.slice(0,60)}</td><td>${c.source}</td><td><button class='btn' onclick="triggerCron('${encodeURIComponent(c.name)}',this)">Run Now</button></td></tr>`).join('')||`<tr><td colspan='5' class='muted'>No matching cron jobs found.</td></tr>`}
+async function triggerCron(name,btn){btn.disabled=true;btn.textContent='Running...';try{const d=await api(`/api/ops/crons/${name}/trigger`,{method:'POST'});toast(`Exit ${d.exit_code}: ${d.output.slice(0,120)}`);await resetLogs()}catch(e){toast(e.message)}finally{btn.disabled=false;btn.textContent='Run Now'}}
+
+async function loadBackups(){const d=await api('/api/ops/backups');const arr=d.snapshots||[];const total=arr.reduce((s,b)=>s+b.size_bytes,0);$('backupStats').innerHTML=`<div class='muted'>Total: <strong>${arr.length}</strong></div><div class='muted'>Storage: <strong>${fmtBytes(total)}</strong></div><div class='muted'>Oldest: <strong>${arr.length?arr[arr.length-1].age_days+'d':'—'}</strong></div><div class='muted'>Newest: <strong>${arr.length?arr[0].age_days+'d':'—'}</strong></div>`;
+$('backupRows').innerHTML=arr.map(b=>`<tr><td><button class='btn' onclick="showManifest('${b.filename.replace(/'/g,"\\'")}')">${b.filename}</button></td><td>${fmtBytes(b.size_bytes)}</td><td>${b.age_days}d</td><td><button class='btn btn-amber' onclick="restoreBackup('${b.filename.replace(/'/g,"\\'")}',this)">Restore</button> <button class='btn btn-red' onclick="deleteBackup('${b.filename.replace(/'/g,"\\'")}',this)">Delete</button></td></tr>`).join('')||`<tr><td colspan='4' class='muted'>No backups yet.</td></tr>`}
+$('createBackupBtn').onclick=async(e)=>{e.target.disabled=true;e.target.textContent='Creating...';try{const d=await api('/api/ops/backups',{method:'POST'});toast(`Created ${d.filename}`);await loadBackups();await resetLogs()}catch(err){toast(err.message)}finally{e.target.disabled=false;e.target.textContent='Create Backup'}};
+async function showManifest(filename){try{const d=await api(`/api/ops/backups/${encodeURIComponent(filename)}/manifest`);alert(`${filename}\nFiles: ${d.file_count}\n${(d.files||[]).slice(0,30).map(f=>`${f.path} (${fmtBytes(f.size_bytes)})`).join('\n')}`)}catch(e){toast(e.message)}}
+async function restoreBackup(filename,btn){if(!confirm('This will overwrite current workspace files with this backup. Continue?'))return;if(!confirm(`Restore ${filename}?`))return;btn.disabled=true;btn.textContent='Restoring...';try{const d=await api(`/api/ops/backups/${encodeURIComponent(filename)}/restore`,{method:'POST',body:JSON.stringify({confirm:true})});toast(`Restored ${d.restored_files} files`);await loadBackups();await resetLogs()}catch(e){toast(e.message)}finally{btn.disabled=false;btn.textContent='Restore'}}
+async function deleteBackup(filename,btn){if(!confirm(`Delete ${filename}?`))return;btn.disabled=true;btn.textContent='Deleting...';try{await api(`/api/ops/backups/${encodeURIComponent(filename)}`,{method:'DELETE'});toast('Backup deleted');await loadBackups();await resetLogs()}catch(e){toast(e.message)}finally{btn.disabled=false;btn.textContent='Delete'}}
+$('cleanupBtn').onclick=async(e)=>{e.target.disabled=true;e.target.textContent='Running...';try{const d=await api('/api/ops/cleanup',{method:'POST',body:JSON.stringify({maxBackups:Number($('maxBackups').value)||10,maxAgeDays:Number($('maxAgeDays').value)||30})});toast(`Deleted ${d.backups_deleted} backups, pruned ${d.log_entries_pruned} log entries`);await loadBackups();await resetLogs()}catch(err){toast(err.message)}finally{e.target.disabled=false;e.target.textContent='Run Cleanup'}};
+
+function catClass(c){return c==='service'?'service':c==='cron'?'cron':c==='backup'?'backup':c==='cleanup'?'cleanup':'session'}
+async function loadLog(append=false){const d=await api(`/api/ops/log?limit=50&offset=${state.logOffset}&category=${encodeURIComponent(state.logCategory)}`);if(!append){$('logRows').innerHTML=''};$('logRows').insertAdjacentHTML('beforeend',(d.entries||[]).map(e=>`<tr><td title='${e.timestamp}'>${rel(e.timestamp)}</td><td><span class='pill ${catClass(e.category)}'>${e.category}</span></td><td>${e.action}</td><td>${e.target}</td><td class='status-${e.status}'>${e.status}</td><td>${e.duration_ms?e.duration_ms+'ms':'—'}</td><td title="${(e.detail||'').replace(/"/g,'&quot;')}">${(e.detail||'').slice(0,90)}</td></tr>`).join(''));state.logOffset+=d.entries.length;$('loadMoreLogBtn').disabled=d.entries.length===0}
+async function resetLogs(){state.logOffset=0;await loadLog(false)}
+$('loadMoreLogBtn').onclick=()=>loadLog(true);
+$('logCategory').onchange=async(e)=>{state.logCategory=e.target.value;await resetLogs()};
+
+(async function init(){try{await Promise.all([loadServices(),loadCrons(),loadBackups()]);await resetLogs();setInterval(loadServices,30000)}catch(e){toast(e.message)}})();
+</script>
+</body>
+</html>

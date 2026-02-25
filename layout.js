@@ -34,6 +34,7 @@
     '/sessions.html': 'sessions',
     '/tasks.html': 'tasks',
     '/apis.html': 'apis',
+    '/ops.html': 'ops',
     '/create.html': 'create',
     '/analytics.html': 'analytics',
     '/tokens.html': 'tokens',
@@ -531,6 +532,10 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
       <a href="/apis.html" class="nav-item${isActive('apis')}">
         <span class="nav-emoji">📡</span>
         <span class="nav-label">APIs</span>
+      </a>
+      <a href="/ops.html" class="nav-item${isActive('ops')}">
+        <span class="nav-emoji">⚙️</span>
+        <span class="nav-label">Operations</span>
       </a>
 
       <div class="sidebar-section">Agents</div>
