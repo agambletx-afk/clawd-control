@@ -8,6 +8,7 @@ node_modules/
 # Reports & generated data
 reports/
 *.report.json
+tasks.db
 
 # Local/personal files
 gandalf-report.json
