@@ -366,6 +366,14 @@
           return String(value);
         };
         const esc = (s) => String(s ?? '').replace(/[&<>\"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+        const normalizeStatus = (status) => {
+          const normalized = String(status ?? '')
+            .trim()
+            .toLowerCase()
+            .replace(/[\s-]+/g, '_');
+          if (normalized === 'inprogress') return 'in_progress';
+          return normalized;
+        };
 
         function ageLabel(iso) {
           const t = Date.parse(iso);
@@ -379,28 +387,29 @@
 
         function statusActionButtons(task) {
           if (!task) return '';
-          if (task.status === 'proposed') {
+          const status = normalizeStatus(task.status);
+          if (status === 'proposed') {
             return `
               <button class="btn btn-small" data-action="approve" data-id="${task.id}">Approve</button>
               <button class="btn btn-small btn-danger" data-action="reject" data-id="${task.id}">Reject</button>
             `;
           }
-          if (task.status === 'backlog') {
+          if (status === 'backlog') {
             return `<button class="btn btn-small" data-action="start" data-id="${task.id}">Start</button>`;
           }
-          if (task.status === 'in_progress') {
+          if (status === 'in_progress') {
             return `<button class="btn btn-small" data-action="complete" data-id="${task.id}">Complete</button>`;
           }
-          if (task.status === 'review') {
+          if (status === 'review') {
             return `
               <button class="btn btn-small" data-action="approve-review" data-id="${task.id}">Approve</button>
               <button class="btn btn-small" data-action="return-review" data-id="${task.id}">Return</button>
             `;
           }
-          if (task.status === 'done') {
+          if (status === 'done') {
             return `<button class="btn btn-small" data-action="archive" data-id="${task.id}">Archive</button>`;
           }
-          if (task.status === 'archive') {
+          if (status === 'archive') {
             return `<button class="btn btn-small" data-action="restore" data-id="${task.id}">Restore</button>`;
           }
           return '';
