@@ -366,14 +366,7 @@
           return String(value);
         };
         const esc = (s) => String(s ?? '').replace(/[&<>\"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
-        const normalizeStatus = (status) => {
-          const normalized = String(status ?? '')
-            .trim()
-            .toLowerCase()
-            .replace(/[\s-]+/g, '_');
-          if (normalized === 'inprogress') return 'in_progress';
-          return normalized;
-        };
+        function normalizeStatus(s) { return (s || '').toLowerCase().replace(/[- ]/g, '_'); }
 
         function ageLabel(iso) {
           const t = Date.parse(iso);
