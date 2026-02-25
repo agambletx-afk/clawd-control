@@ -566,7 +566,7 @@
         return `
           <tr>
             <td>${job.name}</td>
-            <td>${job.schedule}</td>
+            <td title="${job.schedule.replace(/\"/g, '&quot;')}">${job.description || job.schedule}</td>
             <td title="${cmd}">${job.command.slice(0, 60)}</td>
             <td>${job.source}</td>
             <td>

@@ -338,7 +338,7 @@ function mergeHealthData() {
 }
 
 
-const OPS_SERVICES = ['openclaw', 'clawd-control', 'clawmetry'];
+const OPS_SERVICES = ['openclaw', 'clawd-control', 'clawmetry', 'cloudflared', 'tailscaled'];
 
 function truncateOutput(value, max = 2000) {
   if (value == null) return '';
@@ -362,6 +362,94 @@ function parseMemoryMb(value) {
   return Math.round((bytes / (1024 * 1024)) * 10) / 10;
 }
 
+function formatCronTime(hourRaw, minuteRaw) {
+  const hour = Number.parseInt(hourRaw, 10);
+  const minute = Number.parseInt(minuteRaw, 10);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+  const suffix = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 || 12;
+  return `${hour12}:${String(minute).padStart(2, '0')} ${suffix}`;
+}
+
+function describeCron(schedule) {
+  if (!schedule) return '';
+  if (schedule === '@reboot') return 'On reboot';
+  if (schedule === '@hourly') return 'Every hour';
+  if (schedule === '@daily' || schedule === '@midnight') return 'Daily at midnight';
+  if (schedule === '@weekly') return 'Weekly (Sunday midnight)';
+  if (schedule === '@monthly') return 'Monthly (1st at midnight)';
+
+  const everyNMinutes = schedule.match(/^\*\/(\d+) \* \* \* \*$/);
+  if (everyNMinutes) return `Every ${Number.parseInt(everyNMinutes[1], 10)} minutes`;
+  if (schedule === '* * * * *') return 'Every minute';
+
+  const parts = schedule.trim().split(/\s+/);
+  if (parts.length !== 5) return schedule;
+
+  const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
+  if (/^\d+$/.test(minute) && hour === '*' && dayOfMonth === '*' && month === '*' && dayOfWeek === '*') {
+    return `Once per hour at :${String(Number.parseInt(minute, 10)).padStart(2, '0')}`;
+  }
+
+  if (/^\d+$/.test(minute) && /^\d+$/.test(hour) && dayOfMonth === '*' && month === '*') {
+    const time = formatCronTime(hour, minute);
+    if (!time) return schedule;
+    if (dayOfWeek === '0' || dayOfWeek === '7') return `Sundays at ${time}`;
+    if (dayOfWeek === '1') return `Mondays at ${time}`;
+    if (dayOfWeek === '1-5') return `Weekdays at ${time}`;
+    if (dayOfWeek === '*') return `Daily at ${time}`;
+  }
+
+  if (/^\d+$/.test(minute) && /^\d+$/.test(hour) && /^\d+$/.test(dayOfMonth) && month === '*' && dayOfWeek === '*') {
+    const time = formatCronTime(hour, minute);
+    if (!time) return schedule;
+    return `Monthly on day ${Number.parseInt(dayOfMonth, 10)} at ${time}`;
+  }
+
+  return schedule;
+}
+
+function parseCronLine(line, { source, defaultUser, fileName, expectsUserColumn }) {
+  const parts = line.split(/\s+/);
+  let schedule = '';
+  let user = defaultUser;
+  let command = '';
+
+  if (line.startsWith('@')) {
+    if (expectsUserColumn) {
+      if (parts.length < 3) return null;
+      schedule = parts[0];
+      user = parts[1];
+      command = parts.slice(2).join(' ');
+    } else {
+      if (parts.length < 2) return null;
+      schedule = parts[0];
+      command = parts.slice(1).join(' ');
+    }
+  } else if (expectsUserColumn) {
+    if (parts.length < 7) return null;
+    schedule = parts.slice(0, 5).join(' ');
+    user = parts[5];
+    command = parts.slice(6).join(' ');
+  } else {
+    if (parts.length < 6) return null;
+    schedule = parts.slice(0, 5).join(' ');
+    command = parts.slice(5).join(' ');
+  }
+
+  const suffix = command.split('/').pop() || command.split(' ')[0] || 'job';
+  const name = fileName ? `${fileName.replace(/\.[^.]+$/, '')}:${suffix}` : `user:${suffix}`;
+  return {
+    name,
+    schedule,
+    description: describeCron(schedule),
+    command,
+    source,
+    user,
+    last_run: null,
+  };
+}
+
 function parseCronEntries() {
   const jobs = [];
   const cronDir = '/etc/cron.d';
@@ -373,15 +461,19 @@ function parseCronEntries() {
       for (const raw of lines) {
         const line = raw.trim();
         if (!line || line.startsWith('#') || line.includes('=')) continue;
-        const parts = line.split(/\s+/);
-        if (parts.length < 7) continue;
-        const schedule = parts.slice(0, 5).join(' ');
-        const user = parts[5];
-        const command = parts.slice(6).join(' ');
-        if (!/(openclaw|clawd|clawmetry|heartbeat|api-health|workspace|backup|check)/i.test(command + ' ' + file.name)) continue;
-        const name = file.name.replace(/\.[^.]+$/, '') + ':' + (command.split('/').pop() || command.split(' ')[0]);
-        jobs.push({ name, schedule, command, source: 'system', user, last_run: null });
+        const job = parseCronLine(line, { source: 'system', fileName: file.name, expectsUserColumn: true });
+        if (job) jobs.push(job);
       }
+    }
+  } catch {}
+
+  try {
+    const lines = readFileSync('/etc/crontab', 'utf8').split('\n');
+    for (const raw of lines) {
+      const line = raw.trim();
+      if (!line || line.startsWith('#') || line.includes('=')) continue;
+      const job = parseCronLine(line, { source: 'system', fileName: 'crontab', expectsUserColumn: true });
+      if (job) jobs.push(job);
     }
   } catch {}
 
@@ -392,13 +484,21 @@ function parseCronEntries() {
       for (const raw of lines) {
         const line = raw.trim();
         if (!line || line.startsWith('#')) continue;
-        const parts = line.split(/\s+/);
-        if (parts.length < 6) continue;
-        const schedule = parts.slice(0, 5).join(' ');
-        const command = parts.slice(5).join(' ');
-        if (!/(openclaw|clawd|clawmetry|heartbeat|api-health|workspace|backup|check)/i.test(command)) continue;
-        const name = 'user:' + (command.split('/').pop() || command.split(' ')[0]);
-        jobs.push({ name, schedule, command, source: 'user', user: 'openclaw', last_run: null });
+        const job = parseCronLine(line, { source: 'user', defaultUser: 'openclaw', expectsUserColumn: false });
+        if (job) jobs.push(job);
+      }
+    }
+  } catch {}
+
+  try {
+    const result = spawnSync('crontab', ['-u', 'root', '-l'], { encoding: 'utf8', timeout: 10000 });
+    if (result.status === 0) {
+      const lines = result.stdout.split('\n');
+      for (const raw of lines) {
+        const line = raw.trim();
+        if (!line || line.startsWith('#')) continue;
+        const job = parseCronLine(line, { source: 'system', defaultUser: 'root', expectsUserColumn: false });
+        if (job) jobs.push(job);
       }
     }
   } catch {}
