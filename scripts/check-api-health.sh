@@ -4,6 +4,7 @@ set -u
 CONFIG_PATH="/home/openclaw/clawd-control/apis-config.json"
 PRIMARY_ENV_PATH="/home/openclaw/clawd-control/.env"
 SECONDARY_ENV_PATH="/home/openclaw/.openclaw/workspace/.env"
+TERTIARY_ENV_PATH="/opt/openclaw.env"
 OUT_PATH="/tmp/api-health-results.json"
 
 SERVICE_FILTER="${1:-}"
@@ -86,6 +87,7 @@ write_error_payload() {
 
 load_env_file "$PRIMARY_ENV_PATH"
 load_env_file "$SECONDARY_ENV_PATH"
+load_env_file "$TERTIARY_ENV_PATH"
 
 if [[ ! -f "$CONFIG_PATH" ]]; then
   write_error_payload "Config file not found: $CONFIG_PATH"
