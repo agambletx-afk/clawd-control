@@ -32,6 +32,8 @@
           ? 'agents'
           : path === '/sessions.html'
             ? 'sessions'
+            : path === '/tasks.html'
+              ? 'tasks'
             : path === '/create.html'
         ? 'create'
         : path === '/analytics.html'
@@ -446,6 +448,10 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
       <a href="/sessions.html" class="nav-item${isActive('sessions')}">
         <span class="nav-emoji">📋</span>
         <span class="nav-label">Sessions</span>
+      </a>
+      <a href="/tasks.html" class="nav-item${isActive('tasks')}">
+        <span class="nav-emoji">📋</span>
+        <span class="nav-label">Tasks</span>
       </a>
 
       <div class="sidebar-section">Agents</div>
