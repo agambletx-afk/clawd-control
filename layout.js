@@ -23,36 +23,25 @@
   // ════════════════════════════════════════════════════
 
   const path = window.location.pathname;
-  const activePage =
-    path === '/' || path === '/dashboard.html'
-      ? 'dashboard'
-      : path === '/costs.html'
-        ? 'costs'
-        : path === '/agents.html'
-          ? 'agents'
-          : path === '/sessions.html'
-            ? 'sessions'
-            : path === '/tasks.html'
-              ? 'tasks'
-            : path === '/create.html'
-        ? 'create'
-        : path === '/analytics.html'
-          ? 'analytics'
-          : path === '/tokens.html'
-            ? 'tokens'
-            : path === '/waterfall.html'
-              ? 'waterfall'
-              : path === '/traces.html'
-                ? 'traces'
-                : path === '/crons.html'
-                  ? 'crons'
-                  : path === '/fleet.html'
-                    ? 'fleet'
-                    : path.startsWith('/agent/')
-                      ? 'agent-detail'
-                      : path === '/gandalf-view.html'
-                        ? 'gandalf'
-                        : 'other';
+  const PAGE_MAP = {
+    '/': 'dashboard',
+    '/dashboard.html': 'dashboard',
+    '/costs.html': 'costs',
+    '/agents.html': 'agents',
+    '/sessions.html': 'sessions',
+    '/tasks.html': 'tasks',
+    '/apis.html': 'apis',
+    '/create.html': 'create',
+    '/analytics.html': 'analytics',
+    '/tokens.html': 'tokens',
+    '/waterfall.html': 'waterfall',
+    '/traces.html': 'traces',
+    '/crons.html': 'crons',
+    '/fleet.html': 'fleet',
+    '/gandalf-view.html': 'gandalf',
+  };
+
+  const activePage = PAGE_MAP[path] || (path.startsWith('/agent/') ? 'agent-detail' : 'other');
   const activeAgentId =
     activePage === 'agent-detail'
       ? decodeURIComponent(path.split('/').filter(Boolean).pop())
@@ -452,6 +441,10 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
       <a href="/tasks.html" class="nav-item${isActive('tasks')}">
         <span class="nav-emoji">📋</span>
         <span class="nav-label">Tasks</span>
+      </a>
+      <a href="/apis.html" class="nav-item${isActive('apis')}">
+        <span class="nav-emoji">📡</span>
+        <span class="nav-label">APIs</span>
       </a>
 
       <div class="sidebar-section">Agents</div>
