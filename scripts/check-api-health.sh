@@ -142,6 +142,7 @@ while IFS= read -r service; do
   error_msg='Malformed service config'
 
   method="$(jq -r '.health_check.method // empty' <<< "$service")"
+  on_demand="$(jq -r '.on_demand // false' <<< "$service")"
 
   if [[ -z "$service_id" || -z "$method" ]]; then
     :
@@ -156,10 +157,15 @@ while IFS= read -r service; do
       http_status=200
       error_msg=''
     else
-      status="down"
+      if [[ "$on_demand" == "true" || "$service_id" == "camoufox" ]]; then
+        status="standby"
+        error_msg='Available on demand (not currently running)'
+      else
+        status="down"
+        error_msg='Process not running'
+      fi
       response_ms=0
       http_status=0
-      error_msg='Process not running'
     fi
   else
     url_raw="$(jq -r '.health_check.url // empty' <<< "$service")"
