@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Operations — Clawd Control</title>
+  <style>
+    /* =========================================================
+       Page Layout
+       ========================================================= */
+
+    .page-header {
+      margin-bottom: 14px;
+    }
+
+    .page-header h1 {
+      font-size: 1.9rem;
+    }
+
+    .subtitle {
+      color: var(--text-secondary);
+      font-size: 0.88rem;
+    }
+
+    .section {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 14px;
+    }
+
+    .section h2 {
+      font-size: 1rem;
+      margin-bottom: 10px;
+    }
+
+    .row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    /* =========================================================
+       Service Cards
+       ========================================================= */
+
+    .services {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .card {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+      background: var(--bg-tertiary);
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .ok {
+      background: #22c55e;
+    }
+
+    .bad {
+      background: #ef4444;
+    }
+
+    .muted {
+      color: var(--text-tertiary);
+      font-size: 0.78rem;
+    }
+
+    .mono {
+      font-family: var(--font-mono);
+      font-size: 0.76rem;
+    }
+
+    /* =========================================================
+       Tables
+       ========================================================= */
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th,
+    td {
+      padding: 8px;
+      border-bottom: 1px solid var(--border-subtle);
+      font-size: 0.8rem;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--text-tertiary);
+    }
+
+    /* =========================================================
+       Buttons
+       ========================================================= */
+
+    .btn {
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text-primary);
+      padding: 6px 10px;
+      border-radius: 7px;
+      cursor: pointer;
+      font-size: 0.78rem;
+    }
+
+    .btn:hover {
+      background: var(--surface-hover);
+    }
+
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: wait;
+    }
+
+    .btn-green {
+      border-color: rgba(34, 197, 94, 0.4);
+      color: #4ade80;
+    }
+
+    .btn-amber {
+      border-color: rgba(245, 158, 11, 0.45);
+      color: #fbbf24;
+    }
+
+    .btn-red {
+      border-color: rgba(239, 68, 68, 0.45);
+      color: #f87171;
+    }
+
+    .btn-outline-red {
+      background: transparent;
+      border-color: rgba(239, 68, 68, 0.45);
+      color: #f87171;
+    }
+
+    /* =========================================================
+       Toast
+       ========================================================= */
+
+    .toast {
+      position: fixed;
+      right: 12px;
+      bottom: 12px;
+      background: #111827;
+      color: #e5e7eb;
+      border: 1px solid var(--border);
+      padding: 10px;
+      border-radius: 8px;
+      z-index: 9999;
+      display: none;
+      max-width: 420px;
+    }
+
+    /* =========================================================
+       Pills and Status Tags
+       ========================================================= */
+
+    .pill {
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 0.68rem;
+      border: 1px solid transparent;
+    }
+
+    .service {
+      color: #93c5fd;
+      border-color: #60a5fa66;
+      background: #1e3a8a33;
+    }
+
+    .cron {
+      color: #c4b5fd;
+      border-color: #a78bfa66;
+      background: #6d28d933;
+    }
+
+    .backup {
+      color: #5eead4;
+      border-color: #2dd4bf66;
+      background: #134e4a44;
+    }
+
+    .cleanup {
+      color: #fdba74;
+      border-color: #fb923c66;
+      background: #9a341233;
+    }
+
+    .session {
+      color: #fde047;
+      border-color: #facc1566;
+      background: #713f1244;
+    }
+
+    .status-success {
+      color: #4ade80;
+    }
+
+    .status-failed {
+      color: #f87171;
+    }
+
+    .inputs input,
+    .inputs select {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      padding: 6px;
+      border-radius: 6px;
+    }
+
+    /* =========================================================
+       Manifest Modal
+       ========================================================= */
+
+    .manifest-modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      display: none;
+      z-index: 5000;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .manifest-modal-backdrop.open {
+      display: flex;
+    }
+
+    .manifest-modal-card {
+      width: min(900px, 100%);
+      max-height: 85vh;
+      display: grid;
+      grid-template-rows: auto auto 1fr auto;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: var(--bg-secondary);
+      box-shadow: var(--shadow-lg);
+      overflow: hidden;
+    }
+
+    .manifest-modal-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .manifest-modal-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+    }
+
+    .manifest-modal-meta {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+      font-size: 0.78rem;
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+
+    .manifest-file-list {
+      margin: 0;
+      padding: 10px 14px;
+      list-style: none;
+      overflow-y: auto;
+      display: grid;
+      gap: 6px;
+      font-size: 0.78rem;
+    }
+
+    .manifest-file-item {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 8px;
+      background: var(--bg-tertiary);
+    }
+
+    .manifest-file-path {
+      overflow-wrap: anywhere;
+      color: var(--text-primary);
+    }
+
+    .manifest-file-size {
+      color: var(--text-tertiary);
+      white-space: nowrap;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+    }
+
+    .manifest-modal-foot {
+      padding: 10px 14px;
+      border-top: 1px solid var(--border-subtle);
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    /* =========================================================
+       Responsive
+       ========================================================= */
+
+    @media (max-width: 900px) {
+      .services {
+        grid-template-columns: 1fr;
+      }
+
+      .manifest-file-item {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="main">
+    <div class="page-header">
+      <h1>⚙️ Operations</h1>
+      <div class="subtitle">Service controls, cron triggers, backups, and full audit trail.</div>
+    </div>
+
+    <!-- Service Controls -->
+    <section class="section">
+      <h2>Service Controls</h2>
+      <div id="serviceCards" class="services"></div>
+      <div style="margin-top: 10px;">
+        <button id="freshSessionBtn" class="btn btn-outline-red">Fresh Session</button>
+      </div>
+    </section>
+
+    <!-- Cron Jobs -->
+    <section class="section">
+      <h2>Cron Jobs</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Schedule</th>
+            <th>Command</th>
+            <th>Source</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="cronRows"></tbody>
+      </table>
+    </section>
+
+    <!-- Backups -->
+    <section class="section">
+      <h2>Backups</h2>
+      <div class="row" id="backupStats"></div>
+      <div class="row" style="margin: 10px 0;">
+        <button id="createBackupBtn" class="btn btn-green">Create Backup</button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Filename</th>
+            <th>Size</th>
+            <th>Age</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="backupRows"></tbody>
+      </table>
+      <div class="row inputs" style="margin-top: 10px;">
+        <span class="muted">Keep last</span>
+        <input id="maxBackups" type="number" value="10" min="1" style="width: 80px;" />
+        <span class="muted">older than</span>
+        <input id="maxAgeDays" type="number" value="30" min="1" style="width: 80px;" />
+        <span class="muted">days</span>
+        <button id="cleanupBtn" class="btn btn-amber">Run Cleanup</button>
+      </div>
+    </section>
+
+    <!-- Activity Log -->
+    <section class="section">
+      <h2>Activity Log</h2>
+      <div class="row inputs" style="margin-bottom: 8px;">
+        <select id="logCategory">
+          <option value="">All</option>
+          <option>service</option>
+          <option>cron</option>
+          <option>backup</option>
+          <option>cleanup</option>
+          <option>session</option>
+        </select>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Timestamp</th>
+            <th>Category</th>
+            <th>Action</th>
+            <th>Target</th>
+            <th>Status</th>
+            <th>Duration</th>
+            <th>Detail</th>
+          </tr>
+        </thead>
+        <tbody id="logRows"></tbody>
+      </table>
+      <div style="margin-top: 10px;">
+        <button id="loadMoreLogBtn" class="btn">Load more</button>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast"></div>
+
+  <div id="manifestModal" class="manifest-modal-backdrop" aria-hidden="true">
+    <div class="manifest-modal-card" role="dialog" aria-modal="true" aria-labelledby="manifestTitle">
+      <div class="manifest-modal-head">
+        <div id="manifestTitle" class="manifest-modal-title">Backup Manifest</div>
+        <button id="manifestCloseBtn" class="btn">Close</button>
+      </div>
+      <div id="manifestMeta" class="manifest-modal-meta"></div>
+      <ul id="manifestFileList" class="manifest-file-list"></ul>
+      <div class="manifest-modal-foot">
+        <button id="manifestCloseBtnBottom" class="btn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/layout.js"></script>
+  <script>
+    const state = {
+      logOffset: 0,
+      logCategory: ''
+    };
+
+    const $ = (id) => document.getElementById(id);
+
+    // Show toast notification.
+    const toast = (msg) => {
+      const t = $('toast');
+      t.textContent = msg;
+      t.style.display = 'block';
+      setTimeout(() => {
+        t.style.display = 'none';
+      }, 3500);
+    };
+
+    // Format byte size for display.
+    const fmtBytes = (bytes) => {
+      if (!bytes) return '0 B';
+      const units = ['B', 'KB', 'MB', 'GB'];
+      let value = bytes;
+      let unitIndex = 0;
+      while (value > 1024 && unitIndex < units.length - 1) {
+        value /= 1024;
+        unitIndex += 1;
+      }
+      return `${value.toFixed(value > 100 ? 0 : 1)} ${units[unitIndex]}`;
+    };
+
+    // Format relative time from ISO timestamp.
+    const rel = (iso) => {
+      if (!iso) return '—';
+      const delta = (Date.now() - new Date(iso).getTime()) / 1000;
+      if (delta < 60) return `${Math.floor(delta)}s ago`;
+      if (delta < 3600) return `${Math.floor(delta / 60)}m ago`;
+      if (delta < 86400) return `${Math.floor(delta / 3600)}h ago`;
+      return `${Math.floor(delta / 86400)}d ago`;
+    };
+
+    // Perform JSON API request.
+    async function api(path, options = {}) {
+      const response = await fetch(path, {
+        headers: { 'Content-Type': 'application/json' },
+        ...options
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || 'Request failed');
+      }
+      return payload;
+    }
+
+    // Load and render service cards.
+    async function loadServices() {
+      const data = await api('/api/ops/services/status');
+      const html = data.services.map((service) => {
+        return `
+          <div class="card">
+            <div class="row" style="justify-content: space-between;">
+              <strong>${service.name}</strong>
+              <span>
+                <span class="dot ${service.active ? 'ok' : 'bad'}"></span>
+                ${service.active ? 'Running' : 'Stopped'}
+              </span>
+            </div>
+            <div class="muted">
+              PID ${service.pid || '—'} · ${service.uptime_since ? new Date(service.uptime_since).toLocaleString() : '—'}
+            </div>
+            <div class="muted">${service.memory_mb ?? '—'} MB</div>
+            <button class="btn btn-amber" onclick="restartService('${service.name}', this)">Restart</button>
+          </div>
+        `;
+      }).join('');
+      $('serviceCards').innerHTML = html;
+    }
+
+    // Restart an individual service.
+    async function restartService(name, btn) {
+      if (!confirm(`Restart ${name}?`)) return;
+      btn.disabled = true;
+      btn.textContent = 'Restarting...';
+      try {
+        await api(`/api/ops/services/${encodeURIComponent(name)}/restart`, { method: 'POST' });
+        toast(`Restarted ${name}`);
+        await loadServices();
+        await resetLogs();
+      } catch (error) {
+        toast(error.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Restart';
+      }
+    }
+
+    // Trigger fresh session flow.
+    $('freshSessionBtn').onclick = async () => {
+      if (!confirm('This will clear the active agent session. Continue?')) return;
+      try {
+        await api('/api/ops/sessions/fresh', {
+          method: 'POST',
+          body: JSON.stringify({ confirm: true })
+        });
+        toast('Fresh session requested');
+        await loadServices();
+        await resetLogs();
+      } catch (error) {
+        toast(error.message);
+      }
+    };
+
+    // Load cron entries.
+    async function loadCrons() {
+      const data = await api('/api/ops/crons');
+      const rows = data.jobs.map((job) => {
+        const cmd = job.command.replace(/"/g, '&quot;');
+        return `
+          <tr>
+            <td>${job.name}</td>
+            <td>${job.schedule}</td>
+            <td title="${cmd}">${job.command.slice(0, 60)}</td>
+            <td>${job.source}</td>
+            <td>
+              <button class="btn" onclick="triggerCron('${encodeURIComponent(job.name)}', this)">Run Now</button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      $('cronRows').innerHTML = rows || `
+        <tr>
+          <td colspan="5" class="muted">No matching cron jobs found.</td>
+        </tr>
+      `;
+    }
+
+    // Execute a cron command immediately.
+    async function triggerCron(name, btn) {
+      btn.disabled = true;
+      btn.textContent = 'Running...';
+      try {
+        const data = await api(`/api/ops/crons/${name}/trigger`, { method: 'POST' });
+        toast(`Exit ${data.exit_code}: ${data.output.slice(0, 120)}`);
+        await resetLogs();
+      } catch (error) {
+        toast(error.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Run Now';
+      }
+    }
+
+    // Load and render backups table + summary stats.
+    async function loadBackups() {
+      const data = await api('/api/ops/backups');
+      const backups = data.snapshots || [];
+      const totalBytes = backups.reduce((sum, backup) => sum + backup.size_bytes, 0);
+
+      $('backupStats').innerHTML = `
+        <div class="muted">Total: <strong>${backups.length}</strong></div>
+        <div class="muted">Storage: <strong>${fmtBytes(totalBytes)}</strong></div>
+        <div class="muted">Oldest: <strong>${backups.length ? backups[backups.length - 1].age_days + 'd' : '—'}</strong></div>
+        <div class="muted">Newest: <strong>${backups.length ? backups[0].age_days + 'd' : '—'}</strong></div>
+      `;
+
+      const rows = backups.map((backup) => {
+        const filename = backup.filename.replace(/'/g, "\\'");
+        return `
+          <tr>
+            <td>
+              <button class="btn" onclick="showManifest('${filename}')">${backup.filename}</button>
+            </td>
+            <td>${fmtBytes(backup.size_bytes)}</td>
+            <td>${backup.age_days}d</td>
+            <td>
+              <button class="btn btn-amber" onclick="restoreBackup('${filename}', this)">Restore</button>
+              <button class="btn btn-red" onclick="deleteBackup('${filename}', this)">Delete</button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      $('backupRows').innerHTML = rows || `
+        <tr>
+          <td colspan="4" class="muted">No backups yet.</td>
+        </tr>
+      `;
+    }
+
+    // Create a new backup snapshot.
+    $('createBackupBtn').onclick = async (event) => {
+      const btn = event.target;
+      btn.disabled = true;
+      btn.textContent = 'Creating...';
+      try {
+        const data = await api('/api/ops/backups', { method: 'POST' });
+        toast(`Created ${data.filename}`);
+        await loadBackups();
+        await resetLogs();
+      } catch (error) {
+        toast(error.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Create Backup';
+      }
+    };
+
+    // Open manifest modal and render file list.
+    async function showManifest(filename) {
+      try {
+        const manifest = await api(`/api/ops/backups/${encodeURIComponent(filename)}/manifest`);
+        $('manifestTitle').textContent = `Manifest: ${filename}`;
+        $('manifestMeta').innerHTML = `
+          <span>Files: <strong>${manifest.file_count ?? 0}</strong></span>
+          <span>Total size: <strong>${fmtBytes(manifest.total_size_bytes ?? 0)}</strong></span>
+          <span>Timestamp: <strong>${manifest.timestamp || '—'}</strong></span>
+        `;
+
+        const files = Array.isArray(manifest.files) ? manifest.files : [];
+        $('manifestFileList').innerHTML = files.map((file) => {
+          return `
+            <li class="manifest-file-item">
+              <span class="manifest-file-path">${file.path}</span>
+              <span class="manifest-file-size">${fmtBytes(file.size_bytes)}</span>
+            </li>
+          `;
+        }).join('') || '<li class="muted">No files listed in manifest.</li>';
+
+        $('manifestModal').classList.add('open');
+        $('manifestModal').setAttribute('aria-hidden', 'false');
+      } catch (error) {
+        toast(error.message);
+      }
+    }
+
+    // Restore selected backup.
+    async function restoreBackup(filename, btn) {
+      if (!confirm('This will overwrite current workspace files with this backup. Continue?')) return;
+      if (!confirm(`Restore ${filename}?`)) return;
+      btn.disabled = true;
+      btn.textContent = 'Restoring...';
+      try {
+        const data = await api(`/api/ops/backups/${encodeURIComponent(filename)}/restore`, {
+          method: 'POST',
+          body: JSON.stringify({ confirm: true })
+        });
+        toast(`Restored ${data.restored_files} files`);
+        await loadBackups();
+        await resetLogs();
+      } catch (error) {
+        toast(error.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Restore';
+      }
+    }
+
+    // Delete selected backup.
+    async function deleteBackup(filename, btn) {
+      if (!confirm(`Delete ${filename}?`)) return;
+      btn.disabled = true;
+      btn.textContent = 'Deleting...';
+      try {
+        await api(`/api/ops/backups/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+        toast('Backup deleted');
+        await loadBackups();
+        await resetLogs();
+      } catch (error) {
+        toast(error.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Delete';
+      }
+    }
+
+    // Run retention cleanup operation.
+    $('cleanupBtn').onclick = async (event) => {
+      const btn = event.target;
+      btn.disabled = true;
+      btn.textContent = 'Running...';
+      try {
+        const data = await api('/api/ops/cleanup', {
+          method: 'POST',
+          body: JSON.stringify({
+            maxBackups: Number($('maxBackups').value) || 10,
+            maxAgeDays: Number($('maxAgeDays').value) || 30
+          })
+        });
+        toast(`Deleted ${data.backups_deleted} backups, pruned ${data.log_entries_pruned} log entries`);
+        await loadBackups();
+        await resetLogs();
+      } catch (error) {
+        toast(error.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Run Cleanup';
+      }
+    };
+
+    // Get CSS class for category pill.
+    function catClass(category) {
+      if (category === 'service') return 'service';
+      if (category === 'cron') return 'cron';
+      if (category === 'backup') return 'backup';
+      if (category === 'cleanup') return 'cleanup';
+      return 'session';
+    }
+
+    // Load activity log rows.
+    async function loadLog(append = false) {
+      const data = await api(`/api/ops/log?limit=50&offset=${state.logOffset}&category=${encodeURIComponent(state.logCategory)}`);
+      if (!append) {
+        $('logRows').innerHTML = '';
+      }
+
+      const rows = (data.entries || []).map((entry) => {
+        const safeDetail = (entry.detail || '').replace(/"/g, '&quot;');
+        return `
+          <tr>
+            <td title="${entry.timestamp}">${rel(entry.timestamp)}</td>
+            <td><span class="pill ${catClass(entry.category)}">${entry.category}</span></td>
+            <td>${entry.action}</td>
+            <td>${entry.target}</td>
+            <td class="status-${entry.status}">${entry.status}</td>
+            <td>${entry.duration_ms ? `${entry.duration_ms}ms` : '—'}</td>
+            <td title="${safeDetail}">${(entry.detail || '').slice(0, 90)}</td>
+          </tr>
+        `;
+      }).join('');
+
+      $('logRows').insertAdjacentHTML('beforeend', rows);
+      state.logOffset += (data.entries || []).length;
+      $('loadMoreLogBtn').disabled = (data.entries || []).length === 0;
+    }
+
+    // Reset activity log pagination and reload.
+    async function resetLogs() {
+      state.logOffset = 0;
+      await loadLog(false);
+    }
+
+    // Load next log page.
+    $('loadMoreLogBtn').onclick = () => loadLog(true);
+
+    // Filter log by selected category.
+    $('logCategory').onchange = async (event) => {
+      state.logCategory = event.target.value;
+      await resetLogs();
+    };
+
+    // Close manifest modal.
+    function closeManifestModal() {
+      $('manifestModal').classList.remove('open');
+      $('manifestModal').setAttribute('aria-hidden', 'true');
+    }
+
+    $('manifestCloseBtn').onclick = closeManifestModal;
+    $('manifestCloseBtnBottom').onclick = closeManifestModal;
+    $('manifestModal').onclick = (event) => {
+      if (event.target.id === 'manifestModal') {
+        closeManifestModal();
+      }
+    };
+
+    // Initialize page data and auto-refresh services.
+    (async function init() {
+      try {
+        await Promise.all([loadServices(), loadCrons(), loadBackups()]);
+        await resetLogs();
+        setInterval(loadServices, 30000);
+      } catch (error) {
+        toast(error.message);
+      }
+    })();
+  </script>
+</body>
+</html>
