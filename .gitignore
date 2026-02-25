@@ -19,3 +19,5 @@ MVP-PLAN.md
 # OS
 .DS_Store
 Thumbs.db
+tasks.db-shm
+tasks.db-wal

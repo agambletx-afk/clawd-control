@@ -34,6 +34,13 @@ import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 const PORT = parseInt(process.argv.find((_, i, a) => a[i - 1] === '--port') || '3100');
 const DIR = new URL('.', import.meta.url).pathname;
 const AUTH_DISABLED = String(process.env.AUTH_DISABLED || '').toLowerCase() === 'true';
+const APIS_CONFIG_PATH = join(DIR, 'apis-config.json');
+const HEALTH_RESULTS_PATH = '/tmp/api-health-results.json';
+const CLI_USAGE_PATH = '/tmp/cli-usage.json';
+const PRIMARY_ENV_PATH = join(DIR, '.env');
+const SECONDARY_ENV_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', '.env');
+const LOCAL_HEALTH_SCRIPT_PATH = join(DIR, 'scripts', 'check-api-health.sh');
+const SYSTEM_HEALTH_SCRIPT_PATH = '/usr/local/bin/check-api-health.sh';
 
 // ── Security constants ──
 const MAX_BODY_SIZE = 1024 * 1024; // 1MB max POST body
@@ -137,6 +144,194 @@ function readJsonBody(req) {
     });
     req.on('error', (err) => reject(err));
   });
+}
+
+function parseEnvFile(filePath) {
+  if (!existsSync(filePath)) return {};
+  const env = {};
+  for (const rawLine of readFileSync(filePath, 'utf8').split('\n')) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+    const cleaned = line.startsWith('export ') ? line.slice(7).trim() : line;
+    const eqIndex = cleaned.indexOf('=');
+    if (eqIndex <= 0) continue;
+    const key = cleaned.slice(0, eqIndex).trim();
+    let value = cleaned.slice(eqIndex + 1).trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    env[key] = value;
+  }
+  return env;
+}
+
+function getMergedEnvMap() {
+  return {
+    ...parseEnvFile(SECONDARY_ENV_PATH),
+    ...parseEnvFile(PRIMARY_ENV_PATH),
+    ...process.env,
+  };
+}
+
+function loadApisConfig() {
+  const raw = readFileSync(APIS_CONFIG_PATH, 'utf8');
+  const parsed = JSON.parse(raw);
+  if (!parsed || !Array.isArray(parsed.services)) {
+    throw new Error('Invalid apis-config.json (missing services[])');
+  }
+  return parsed;
+}
+
+function loadHealthResults() {
+  if (!existsSync(HEALTH_RESULTS_PATH)) {
+    return { checked_at: null, results: {} };
+  }
+  const parsed = JSON.parse(readFileSync(HEALTH_RESULTS_PATH, 'utf8'));
+  return {
+    checked_at: parsed.checked_at || null,
+    results: parsed.results && typeof parsed.results === 'object' ? parsed.results : {},
+  };
+}
+
+function loadCliUsage() {
+  if (!existsSync(CLI_USAGE_PATH)) {
+    return {
+      checked_at: null,
+      providers: {
+        codex: {
+          name: 'Codex CLI',
+          session_pct: null,
+          session_reset: null,
+          weekly_pct: null,
+          weekly_reset: null,
+          credits: null,
+          status: 'not_connected',
+          error: 'Usage data not available yet',
+        },
+        claude: {
+          name: 'Claude Code',
+          session_pct: null,
+          session_reset: null,
+          weekly_pct: null,
+          weekly_reset: null,
+          credits: null,
+          status: 'not_connected',
+          error: 'Usage data not available yet',
+        },
+      },
+    };
+  }
+
+  const parsed = JSON.parse(readFileSync(CLI_USAGE_PATH, 'utf8'));
+  return {
+    checked_at: parsed.checked_at || null,
+    providers: parsed.providers && typeof parsed.providers === 'object' ? parsed.providers : {},
+  };
+}
+
+function calculateApiKeyStatus(service, envMap) {
+  const apiKey = service.api_key;
+  if (!apiKey) {
+    return {
+      configured: false,
+      env_var: null,
+      last_rotated: null,
+      age_days: null,
+      rotation_warning: false,
+      rotation_warning_days: null,
+    };
+  }
+
+  const configured = Boolean(envMap[apiKey.env_var] || process.env[apiKey.env_var]);
+  let ageDays = null;
+  if (typeof apiKey.last_rotated === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(apiKey.last_rotated)) {
+    const then = Date.parse(`${apiKey.last_rotated}T00:00:00Z`);
+    if (!Number.isNaN(then)) {
+      ageDays = Math.floor((Date.now() - then) / 86400000);
+    }
+  }
+  const warningDays = Number.isFinite(apiKey.rotation_warning_days) ? apiKey.rotation_warning_days : null;
+
+  return {
+    configured,
+    env_var: apiKey.env_var || null,
+    last_rotated: apiKey.last_rotated ?? null,
+    age_days: ageDays,
+    rotation_warning: ageDays != null && warningDays != null ? ageDays > warningDays : false,
+    rotation_warning_days: warningDays,
+  };
+}
+
+function serviceStatusPriority(status) {
+  if (status === 'down') return 0;
+  if (status === 'error') return 1;
+  if (status === 'not_checked') return 2;
+  if (status === 'healthy') return 3;
+  return 4;
+}
+
+function mergeHealthData() {
+  const config = loadApisConfig();
+  const health = loadHealthResults();
+  const envMap = getMergedEnvMap();
+  const services = config.services.map((svc) => {
+    const result = health.results[svc.id] || null;
+    const status = result?.status || 'not_checked';
+    return {
+      id: svc.id,
+      name: svc.name,
+      provider: svc.provider,
+      description: svc.description,
+      capabilities: Array.isArray(svc.capabilities) ? svc.capabilities : [],
+      status,
+      response_ms: Number.isFinite(result?.response_ms) ? result.response_ms : null,
+      http_status: Number.isFinite(result?.http_status) ? result.http_status : null,
+      checked_at: result?.checked_at || null,
+      error: result?.error ?? null,
+      health_check: svc.health_check || null,
+      api_key_status: calculateApiKeyStatus(svc, envMap),
+    };
+  });
+
+  services.sort((a, b) => {
+    const statusCmp = serviceStatusPriority(a.status) - serviceStatusPriority(b.status);
+    if (statusCmp !== 0) return statusCmp;
+    return a.name.localeCompare(b.name);
+  });
+
+  const total = services.length;
+  const healthy = services.filter((s) => s.status === 'healthy').length;
+  const down = services.filter((s) => s.status === 'down' || s.status === 'error').length;
+  const notChecked = services.filter((s) => s.status === 'not_checked').length;
+  const totalCapabilities = services.reduce((sum, svc) => sum + svc.capabilities.length, 0);
+
+  let overallStatus = 'NOT CHECKED';
+  if (!existsSync(HEALTH_RESULTS_PATH)) {
+    overallStatus = 'NOT CHECKED';
+  } else if (down > 0) {
+    overallStatus = 'DEGRADED';
+  } else if (total > 0 && healthy === total) {
+    overallStatus = 'ALL OK';
+  } else {
+    overallStatus = 'NOT CHECKED';
+  }
+
+  return {
+    checked_at: health.checked_at,
+    summary: {
+      total,
+      healthy,
+      down,
+      not_checked: notChecked,
+      total_capabilities: totalCapabilities,
+      overall_status: overallStatus,
+    },
+    services,
+  };
 }
 
 const MIME = {
@@ -1830,7 +2025,7 @@ const server = createServer((req, res) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-XSS-Protection', '1; mode=block');
   res.setHeader('Referrer-Policy', 'same-origin');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self';");
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self';");
 
   // CORS — restrict to same origin (no cross-origin API access)
   const origin = req.headers.origin;
@@ -1839,7 +2034,7 @@ const server = createServer((req, res) => {
     const allowedLocal = `http://localhost:${PORT}`;
     if (origin === allowed || origin === allowedLocal) {
       res.setHeader('Access-Control-Allow-Origin', origin);
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
       res.setHeader('Access-Control-Allow-Credentials', 'true');
     }
@@ -1942,6 +2137,134 @@ const server = createServer((req, res) => {
   if (!requireAuth(req, res)) return;
 
   // ── API Routes ──
+
+  if (path === '/api/health' && req.method === 'GET') {
+    try {
+      const payload = mergeHealthData();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(payload));
+    } catch (e) {
+      console.error('[API] /api/health error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to load health data' }));
+    }
+    return;
+  }
+
+  if (path === '/api/cli-usage' && req.method === 'GET') {
+    try {
+      const payload = loadCliUsage();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(payload));
+    } catch (e) {
+      console.error('[API] /api/cli-usage error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to load CLI usage data' }));
+    }
+    return;
+  }
+
+  if (path === '/api/health/check' && req.method === 'POST') {
+    readJsonBody(req).then((body) => {
+      try {
+        const scriptPath = existsSync(SYSTEM_HEALTH_SCRIPT_PATH)
+          ? SYSTEM_HEALTH_SCRIPT_PATH
+          : LOCAL_HEALTH_SCRIPT_PATH;
+        if (!existsSync(scriptPath)) {
+          throw new Error('Health check script not found');
+        }
+        const service = typeof body.service === 'string' ? body.service.trim() : '';
+        const args = service ? [service] : [];
+        execFileSync(scriptPath, args, { encoding: 'utf8', stdio: 'pipe', timeout: 120000 });
+        const payload = mergeHealthData();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(payload));
+      } catch (e) {
+        console.error('[API] /api/health/check error:', e.message);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Health check failed' }));
+      }
+    }).catch((e) => {
+      const code = e.message === 'Payload too large' ? 413 : 400;
+      res.writeHead(code, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message === 'Payload too large' ? 'Payload too large' : 'Invalid JSON body' }));
+    });
+    return;
+  }
+
+  if (path.startsWith('/api/health/') && path.endsWith('/key-rotation') && req.method === 'PATCH') {
+    const parts = path.split('/').filter(Boolean);
+    const serviceId = parts[2];
+    if (!serviceId) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid service id' }));
+      return;
+    }
+
+    readJsonBody(req).then((body) => {
+      try {
+        const nextLastRotated = body.last_rotated;
+        if (nextLastRotated !== null && (typeof nextLastRotated !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(nextLastRotated))) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'last_rotated must be YYYY-MM-DD or null' }));
+          return;
+        }
+
+        const config = loadApisConfig();
+        const service = config.services.find((svc) => svc.id === serviceId);
+        if (!service) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Service not found' }));
+          return;
+        }
+        if (!service.api_key) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Service does not have API key tracking' }));
+          return;
+        }
+
+        service.api_key.last_rotated = nextLastRotated;
+        writeFileSync(APIS_CONFIG_PATH, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
+        const merged = mergeHealthData();
+        const updated = merged.services.find((svc) => svc.id === serviceId);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ service: updated }));
+      } catch (e) {
+        console.error('[API] /api/health/:id/key-rotation error:', e.message);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Failed to update key rotation' }));
+      }
+    }).catch((e) => {
+      const code = e.message === 'Payload too large' ? 413 : 400;
+      res.writeHead(code, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message === 'Payload too large' ? 'Payload too large' : 'Invalid JSON body' }));
+    });
+    return;
+  }
+
+  if (path.startsWith('/api/health/') && path.split('/').length === 4 && req.method === 'GET') {
+    try {
+      const serviceId = path.split('/')[3];
+      const payload = mergeHealthData();
+      const service = payload.services.find((svc) => svc.id === serviceId);
+      if (!service) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Service not found' }));
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        checked_at: payload.checked_at,
+        summary: payload.summary,
+        service,
+      }));
+    } catch (e) {
+      console.error('[API] /api/health/:id error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to load service health' }));
+    }
+    return;
+  }
 
   if (path === '/api/snapshot') {
     const snapshot = collector.getSnapshot();
