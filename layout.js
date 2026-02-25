@@ -582,7 +582,7 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
         <div class="cli-usage-bars">
           <button class="cli-usage-bar" id="cliUsageBar-codex" data-provider="codex" aria-expanded="false">
             <div class="cli-usage-row">
-              <span>CX</span>
+              <span>Codex</span>
               <span id="cliUsageLabel-codex">-</span>
             </div>
             <div class="cli-usage-track">
@@ -591,7 +591,7 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
           </button>
           <button class="cli-usage-bar" id="cliUsageBar-claude" data-provider="claude" aria-expanded="false">
             <div class="cli-usage-row">
-              <span>CC</span>
+              <span>Claude Code</span>
               <span id="cliUsageLabel-claude">-</span>
             </div>
             <div class="cli-usage-track">
