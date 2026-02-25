@@ -97,6 +97,13 @@ if [[ -z "${GEMINI_API_KEY:-}" && -r "$AUTH_PROFILES_PATH" ]]; then
   fi
 fi
 
+if [[ -z "${OPENAI_API_KEY:-}" && -r "$AUTH_PROFILES_PATH" ]]; then
+  openai_fallback_token="$(jq -r '.profiles["openai:manual"].token // empty' "$AUTH_PROFILES_PATH" 2>/dev/null)"
+  if [[ -n "$openai_fallback_token" ]]; then
+    export OPENAI_API_KEY="$openai_fallback_token"
+  fi
+fi
+
 if [[ ! -f "$CONFIG_PATH" ]]; then
   write_error_payload "Config file not found: $CONFIG_PATH"
   exit 1
