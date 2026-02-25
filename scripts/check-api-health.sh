@@ -91,7 +91,7 @@ load_env_file "$SECONDARY_ENV_PATH"
 load_env_file "$TERTIARY_ENV_PATH"
 
 if [[ -z "${GEMINI_API_KEY:-}" && -r "$AUTH_PROFILES_PATH" ]]; then
-  gemini_fallback_token="$(jq -r '.profiles.google.manual.token // empty' "$AUTH_PROFILES_PATH" 2>/dev/null)"
+  gemini_fallback_token="$(jq -r '.profiles["google:manual"].token // empty' "$AUTH_PROFILES_PATH" 2>/dev/null)"
   if [[ -n "$gemini_fallback_token" ]]; then
     export GEMINI_API_KEY="$gemini_fallback_token"
   fi
