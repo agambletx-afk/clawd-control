@@ -2088,7 +2088,10 @@ const server = createServer((req, res) => {
       res.end();
       return;
     }
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+    });
     res.end(LOGIN_HTML);
     return;
   }
@@ -2723,7 +2726,10 @@ const server = createServer((req, res) => {
   if (path.startsWith('/agent/')) {
     const fullPath = join(DIR, 'agent-detail.html');
     if (existsSync(fullPath)) {
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.writeHead(200, {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+      });
       res.end(readFileSync(fullPath));
     } else {
       res.writeHead(404); res.end('Not found');
@@ -2787,9 +2793,12 @@ const server = createServer((req, res) => {
     const ext = extname(fullPath);
     const contentType = MIME[ext] || 'application/octet-stream';
 
-    // Smart caching: cache JS/CSS assets, not HTML
+    // Smart caching: cache JS/CSS assets, force revalidation for HTML
     const isAsset = ['.js', '.mjs', '.css', '.png', '.svg', '.ico'].includes(ext);
-    const cacheControl = isAsset ? 'public, max-age=3600' : 'no-cache';
+    const isHtml = ext === '.html';
+    const cacheControl = isAsset
+      ? 'public, max-age=3600'
+      : (isHtml ? 'no-cache, no-store, must-revalidate' : 'no-cache');
 
     // Gzip text responses > 1KB
     const isText = ['.html', '.js', '.mjs', '.css', '.json', '.svg'].includes(ext);
