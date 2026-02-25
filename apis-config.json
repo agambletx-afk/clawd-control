@@ -128,6 +128,7 @@
       "name": "Camoufox",
       "provider": "Local",
       "description": "Anti-detection Firefox fork for stealth browser automation. Bot detection bypass at C++ engine level.",
+      "on_demand": true,
       "capabilities": ["Stealth Browsing", "Bot Detection Bypass", "Cookie Import", "Form Automation"],
       "health_check": {
         "method": "process_check",

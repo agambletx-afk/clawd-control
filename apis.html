@@ -115,6 +115,7 @@
     }
     .status-dot.healthy { background: #4ade80; box-shadow: 0 0 0 6px rgba(74, 222, 128, 0.12); }
     .status-dot.down { background: #f87171; box-shadow: 0 0 0 6px rgba(248, 113, 113, 0.12); }
+    .status-dot.standby { background: #f59e0b; box-shadow: 0 0 0 6px rgba(245, 158, 11, 0.12); }
 
     .health-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .health-badge {
@@ -134,6 +135,11 @@
       background: rgba(248, 113, 113, 0.12);
       border-color: rgba(248, 113, 113, 0.4);
       color: #f87171;
+    }
+    .health-badge.standby {
+      background: rgba(245, 158, 11, 0.12);
+      border-color: rgba(245, 158, 11, 0.4);
+      color: #f59e0b;
     }
     .health-badge.not_checked {
       background: rgba(107, 114, 128, 0.18);
@@ -361,12 +367,14 @@
 
         function badgeLabel(status) {
           if (status === 'healthy') return 'HEALTHY';
+          if (status === 'standby') return 'STANDBY';
           if (status === 'down' || status === 'error') return 'DOWN';
           return 'NOT CHECKED';
         }
 
         function statusClass(status) {
           if (status === 'healthy') return 'healthy';
+          if (status === 'standby') return 'standby';
           if (status === 'down' || status === 'error') return 'down';
           return 'not_checked';
         }
