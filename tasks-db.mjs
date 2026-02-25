@@ -31,7 +31,6 @@ function sanitizeCreateData(data = {}) {
   if (typeof data.assigned_agent === 'string') out.assigned_agent = data.assigned_agent.trim() || null;
   if (data.assigned_agent === null) out.assigned_agent = null;
   if (Object.hasOwn(data, 'depends_on')) out.depends_on = normalizeDependsOn(data.depends_on);
-  if (Object.hasOwn(data, 'blocked_by')) out.blocked_by = normalizeDependsOn(data.blocked_by);
   if (Object.hasOwn(data, 'handoff_payload')) {
     out.handoff_payload = data.handoff_payload == null ? null : String(data.handoff_payload);
   }
@@ -94,8 +93,13 @@ function computeBlockedByIds(task, statusById) {
   });
 }
 
-function attachBlockedBy(tasks) {
-  const statusById = new Map(tasks.map((task) => [task.id, task.status]));
+function getStatusByIdMap() {
+  const conn = getDb();
+  const rows = conn.prepare('SELECT id, status FROM tasks').all();
+  return new Map(rows.map((row) => [row.id, row.status]));
+}
+
+function attachBlockedBy(tasks, statusById = getStatusByIdMap()) {
   return tasks.map((task) => ({
     ...task,
     blocked_by: computeBlockedByIds(task, statusById),
@@ -117,7 +121,6 @@ export function getDb() {
       priority TEXT NOT NULL DEFAULT 'medium' CHECK(priority IN ('critical','high','medium','low')),
       assigned_agent TEXT DEFAULT NULL,
       depends_on TEXT DEFAULT NULL,
-      blocked_by TEXT DEFAULT NULL,
       handoff_payload TEXT DEFAULT NULL CHECK(handoff_payload IS NULL OR length(handoff_payload) <= 2000),
       created_by TEXT NOT NULL DEFAULT 'adam',
       source TEXT NOT NULL DEFAULT 'dashboard' CHECK(source IN ('dashboard','telegram','cron','agent')),
@@ -187,15 +190,15 @@ function listTasksRaw(filters = {}) {
 }
 
 export function getAllTasks(filters = {}) {
-  return attachBlockedBy(listTasksRaw(filters));
+  const rows = listTasksRaw(filters);
+  return attachBlockedBy(rows);
 }
 
 export function getTaskById(id) {
   const conn = getDb();
   const task = conn.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
   if (!task) return null;
-  const tasks = listTasksRaw({});
-  const statusById = new Map(tasks.map((t) => [t.id, t.status]));
+  const statusById = getStatusByIdMap();
   return { ...task, blocked_by: computeBlockedByIds(task, statusById) };
 }
 
@@ -210,8 +213,7 @@ export function getInProgressTask(agent) {
   sql += ' ORDER BY datetime(updated_at) DESC, id DESC LIMIT 1';
   const task = conn.prepare(sql).get(...params);
   if (!task) return null;
-  const allTasks = listTasksRaw({});
-  const statusById = new Map(allTasks.map((t) => [t.id, t.status]));
+  const statusById = getStatusByIdMap();
   return { ...task, blocked_by: computeBlockedByIds(task, statusById) };
 }
 
@@ -280,7 +282,7 @@ export function createTask(data) {
   const tx = conn.transaction(() => {
     const stmt = conn.prepare(`
       INSERT INTO tasks (
-        title, description, status, priority, assigned_agent, depends_on, blocked_by,
+        title, description, status, priority, assigned_agent, depends_on,
         handoff_payload, created_by, source, token_estimate, token_actual
       ) VALUES (
         @title,
@@ -289,7 +291,6 @@ export function createTask(data) {
         @priority,
         @assigned_agent,
         @depends_on,
-        @blocked_by,
         @handoff_payload,
         @created_by,
         @source,
@@ -305,7 +306,6 @@ export function createTask(data) {
       priority: payload.priority ?? 'medium',
       assigned_agent: payload.assigned_agent ?? null,
       depends_on: payload.depends_on ?? null,
-      blocked_by: payload.blocked_by ?? null,
       handoff_payload: payload.handoff_payload ?? null,
       created_by: payload.created_by ?? 'adam',
       source: payload.source ?? 'dashboard',
@@ -427,7 +427,7 @@ export function getProposalCount(date) {
   const conn = getDb();
   return conn
     .prepare(`SELECT COUNT(*) AS c FROM tasks
-              WHERE source = 'agent' AND status = 'proposed' AND date(created_at) = date(?)`)
+              WHERE source = 'agent' AND status = 'proposed' AND date(datetime(created_at, '-6 hours')) = date(?)`)
     .get(date).c;
 }
 
@@ -438,7 +438,6 @@ export function getCurrentTaskSummary(agent) {
 }
 
 export function computeBlockedByForTask(task) {
-  const allTasks = listTasksRaw({});
-  const statusById = new Map(allTasks.map((t) => [t.id, t.status]));
+  const statusById = getStatusByIdMap();
   return computeBlockedByIds(task, statusById);
 }

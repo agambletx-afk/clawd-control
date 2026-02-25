@@ -15,6 +15,19 @@ import { execFileSync } from 'child_process';
 import { AgentCollector } from './collector.mjs';
 import { createAgent } from './create-agent.mjs';
 import { discoverAgents } from './discover.mjs';
+import {
+  getDb,
+  getAllTasks,
+  getTaskById,
+  getNextTask,
+  createTask,
+  updateTask,
+  addHistory,
+  getHistory,
+  getTaskStats,
+  getProposalCount,
+  getCurrentTaskSummary,
+} from './tasks-db.mjs';
 
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 
@@ -103,6 +116,27 @@ function requireAuth(req, res) {
   res.writeHead(302, { Location: '/login' });
   res.end();
   return false;
+}
+
+function readJsonBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', (chunk) => {
+      body += chunk;
+      if (body.length > MAX_BODY_SIZE) {
+        reject(new Error('Payload too large'));
+        req.destroy();
+      }
+    });
+    req.on('end', () => {
+      try {
+        resolve(body ? JSON.parse(body) : {});
+      } catch {
+        reject(new Error('Invalid JSON'));
+      }
+    });
+    req.on('error', (err) => reject(err));
+  });
 }
 
 const MIME = {
@@ -526,6 +560,13 @@ function getCachedOrCompute(cacheKey, computeFn) {
 function toCstDate(isoString) {
   const d = new Date(isoString);
   return new Date(d.getTime() + CST_OFFSET_MS).toISOString().split('T')[0];
+}
+
+function parseDependsOnIds(value) {
+  if (typeof value !== 'string' || !value.trim()) return [];
+  return [...new Set(value.split(',')
+    .map((part) => Number.parseInt(part.trim(), 10))
+    .filter((id) => Number.isInteger(id) && id > 0))];
 }
 
 function computeCostsData() {
@@ -1936,6 +1977,269 @@ const server = createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(state));
     return;
+  }
+
+  // ── Tasks ──
+  if (path === '/api/tasks' && req.method === 'GET') {
+    try {
+      getDb();
+      const status = url.searchParams.get('status') || undefined;
+      const priority = url.searchParams.get('priority') || undefined;
+      const assigned_agent = url.searchParams.get('assigned_agent') || undefined;
+      const tasks = getAllTasks({ status, priority, assigned_agent });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ tasks }));
+    } catch (e) {
+      console.error('[API] /api/tasks error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Internal server error' }));
+    }
+    return;
+  }
+
+  if (path === '/api/tasks/next' && req.method === 'GET') {
+    try {
+      getDb();
+      const agent = url.searchParams.get('agent') || null;
+      const task = getNextTask(agent);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ task: task || null }));
+    } catch (e) {
+      console.error('[API] /api/tasks/next error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Internal server error' }));
+    }
+    return;
+  }
+
+  if (path === '/api/tasks/stats' && req.method === 'GET') {
+    try {
+      getDb();
+      const stats = getTaskStats();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(stats));
+    } catch (e) {
+      console.error('[API] /api/tasks/stats error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Internal server error' }));
+    }
+    return;
+  }
+
+  if (path === '/api/tasks/scratch-summary' && req.method === 'GET') {
+    try {
+      getDb();
+      const agent = url.searchParams.get('agent') || null;
+      const summary = getCurrentTaskSummary(agent);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ summary }));
+    } catch (e) {
+      console.error('[API] /api/tasks/scratch-summary error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Internal server error' }));
+    }
+    return;
+  }
+
+  if (path === '/api/tasks' && req.method === 'POST') {
+    readJsonBody(req).then((body) => {
+      const title = typeof body.title === 'string' ? body.title.trim() : '';
+      if (!title || title.length > 100) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'title is required and must be <= 100 chars' }));
+        return;
+      }
+
+      if (body.source === 'agent' && body.status === 'proposed') {
+        const todayCst = toCstDate(new Date().toISOString());
+        const proposalCount = getProposalCount(todayCst);
+        if (proposalCount >= 3) {
+          res.writeHead(429, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Proposal limit reached (3/day)' }));
+          return;
+        }
+      }
+
+      try {
+        const task = createTask(body);
+        res.writeHead(201, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ task }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message || 'Invalid task payload' }));
+      }
+    }).catch((e) => {
+      const code = e.message === 'Payload too large' ? 413 : 400;
+      res.writeHead(code, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message === 'Payload too large' ? 'Payload too large' : 'Invalid JSON body' }));
+    });
+    return;
+  }
+
+  if (path.startsWith('/api/tasks/') && path.endsWith('/history')) {
+    const segments = path.split('/');
+    const taskId = Number.parseInt(segments[3], 10);
+    if (!Number.isInteger(taskId) || taskId <= 0) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid task id' }));
+      return;
+    }
+
+    if (req.method === 'GET') {
+      try {
+        const history = getHistory(taskId);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ history }));
+      } catch (e) {
+        console.error('[API] /api/tasks/:id/history error:', e.message);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Internal server error' }));
+      }
+      return;
+    }
+
+    if (req.method === 'POST') {
+      readJsonBody(req).then((body) => {
+        const actor = typeof body.actor === 'string' && body.actor.trim() ? body.actor.trim() : null;
+        const action = typeof body.action === 'string' && body.action.trim() ? body.action.trim() : null;
+        if (!actor || !action) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'actor and action are required' }));
+          return;
+        }
+        const task = getTaskById(taskId);
+        if (!task) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Task not found' }));
+          return;
+        }
+        const entry = addHistory(taskId, actor, action, body.detail ?? '');
+        res.writeHead(201, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ entry }));
+      }).catch((e) => {
+        const code = e.message === 'Payload too large' ? 413 : 400;
+        res.writeHead(code, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message === 'Payload too large' ? 'Payload too large' : 'Invalid JSON body' }));
+      });
+      return;
+    }
+  }
+
+  if (path.startsWith('/api/tasks/') && path.split('/').length === 4) {
+    const taskId = Number.parseInt(path.split('/')[3], 10);
+    if (!Number.isInteger(taskId) || taskId <= 0) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid task id' }));
+      return;
+    }
+
+    if (req.method === 'GET') {
+      try {
+        const task = getTaskById(taskId);
+        if (!task) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Task not found' }));
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ task }));
+      } catch (e) {
+        console.error('[API] /api/tasks/:id error:', e.message);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Internal server error' }));
+      }
+      return;
+    }
+
+    if (req.method === 'PATCH') {
+      readJsonBody(req).then((body) => {
+        const current = getTaskById(taskId);
+        if (!current) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Task not found' }));
+          return;
+        }
+
+        const allowedFields = new Set([
+          'title',
+          'description',
+          'status',
+          'priority',
+          'assigned_agent',
+          'depends_on',
+          'handoff_payload',
+          'token_estimate',
+          'token_actual',
+        ]);
+        const requestedKeys = Object.keys(body);
+        const hasInvalidField = requestedKeys.some((key) => !allowedFields.has(key));
+        if (hasInvalidField) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid fields in PATCH body' }));
+          return;
+        }
+        if (typeof body.title === 'string' && body.title.trim().length > 100) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'title must be <= 100 chars' }));
+          return;
+        }
+        if (typeof body.description === 'string' && body.description.length > 2000) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'description must be <= 2000 chars' }));
+          return;
+        }
+        if (body.handoff_payload != null && String(body.handoff_payload).length > 2000) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'handoff_payload must be <= 2000 chars' }));
+          return;
+        }
+
+        const targetStatus = typeof body.status === 'string' ? body.status : current.status;
+        const targetPriority = typeof body.priority === 'string' ? body.priority : current.priority;
+        const targetDepends = Object.hasOwn(body, 'depends_on') ? body.depends_on : current.depends_on;
+        const depIds = parseDependsOnIds(targetDepends);
+        if (depIds.includes(taskId)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Task cannot depend on itself' }));
+          return;
+        }
+
+        if (targetStatus === 'in_progress') {
+          const allTasks = getAllTasks();
+          const statusById = new Map(allTasks.map((task) => [task.id, task.status]));
+          const blockedBy = depIds.filter((id) => {
+            const depStatus = statusById.get(id);
+            return depStatus !== 'done' && depStatus !== 'archive';
+          });
+          if (blockedBy.length) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Task is blocked by dependencies', blocked_by: blockedBy }));
+            return;
+          }
+        }
+
+        let task = updateTask(taskId, body);
+
+        if (current.status !== targetStatus) {
+          addHistory(taskId, 'system', 'status_changed', `${current.status} -> ${targetStatus}`);
+        }
+
+        if (current.status !== 'review' && targetStatus === 'review' && (targetPriority === 'low' || targetPriority === 'medium')) {
+          addHistory(taskId, 'system', 'review_entered', 'Task moved to review');
+          task = updateTask(taskId, { status: 'done' });
+          addHistory(taskId, 'system', 'auto_approved', `Auto-approved (${targetPriority} priority): review -> done`);
+          addHistory(taskId, 'system', 'status_changed', 'review -> done');
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ task }));
+      }).catch((e) => {
+        const code = e.message === 'Payload too large' ? 413 : 400;
+        res.writeHead(code, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message === 'Payload too large' ? 'Payload too large' : 'Invalid JSON body' }));
+      });
+      return;
+    }
   }
 
   // ── Create Agent ──
