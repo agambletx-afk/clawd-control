@@ -46,7 +46,7 @@ else
 fi
 
 if have_cmd claude; then
-  claude_json="$(provider_json "Claude Code" "ok" "")"
+  claude_json="$(provider_json "Claude Code" "not_connected" "Claude Code not authenticated. Run: claude login")"
 else
   claude_json="$(provider_json "Claude Code" "not_connected" "Claude Code not installed")"
 fi
