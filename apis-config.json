@@ -110,7 +110,7 @@
       "capabilities": ["Agent Runtime", "Memory", "Tools", "Cron Jobs"],
       "health_check": {
         "method": "GET",
-        "url": "http://localhost:3120/api/health",
+        "url": "http://localhost:18789/health",
         "timeout_ms": 3000,
         "expected_status": 200
       },
