@@ -36,6 +36,7 @@ const DIR = new URL('.', import.meta.url).pathname;
 const AUTH_DISABLED = String(process.env.AUTH_DISABLED || '').toLowerCase() === 'true';
 const APIS_CONFIG_PATH = join(DIR, 'apis-config.json');
 const HEALTH_RESULTS_PATH = '/tmp/api-health-results.json';
+const CLI_USAGE_PATH = '/tmp/cli-usage.json';
 const PRIMARY_ENV_PATH = join(DIR, '.env');
 const SECONDARY_ENV_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', '.env');
 const LOCAL_HEALTH_SCRIPT_PATH = join(DIR, 'scripts', 'check-api-health.sh');
@@ -193,6 +194,42 @@ function loadHealthResults() {
   return {
     checked_at: parsed.checked_at || null,
     results: parsed.results && typeof parsed.results === 'object' ? parsed.results : {},
+  };
+}
+
+function loadCliUsage() {
+  if (!existsSync(CLI_USAGE_PATH)) {
+    return {
+      checked_at: null,
+      providers: {
+        codex: {
+          name: 'Codex CLI',
+          session_pct: null,
+          session_reset: null,
+          weekly_pct: null,
+          weekly_reset: null,
+          credits: null,
+          status: 'not_connected',
+          error: 'Usage data not available yet',
+        },
+        claude: {
+          name: 'Claude Code',
+          session_pct: null,
+          session_reset: null,
+          weekly_pct: null,
+          weekly_reset: null,
+          credits: null,
+          status: 'not_connected',
+          error: 'Usage data not available yet',
+        },
+      },
+    };
+  }
+
+  const parsed = JSON.parse(readFileSync(CLI_USAGE_PATH, 'utf8'));
+  return {
+    checked_at: parsed.checked_at || null,
+    providers: parsed.providers && typeof parsed.providers === 'object' ? parsed.providers : {},
   };
 }
 
@@ -2110,6 +2147,19 @@ const server = createServer((req, res) => {
       console.error('[API] /api/health error:', e.message);
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Failed to load health data' }));
+    }
+    return;
+  }
+
+  if (path === '/api/cli-usage' && req.method === 'GET') {
+    try {
+      const payload = loadCliUsage();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(payload));
+    } catch (e) {
+      console.error('[API] /api/cli-usage error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to load CLI usage data' }));
     }
     return;
   }
