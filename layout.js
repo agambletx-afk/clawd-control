@@ -301,6 +301,40 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
   padding: 8px 12px 10px;
   border-top: 1px solid var(--border-subtle);
 }
+.cli-usage-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  color: var(--text-tertiary);
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.cli-usage-refresh {
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-tertiary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: color var(--transition-fast), background-color var(--transition-fast), transform var(--transition-fast);
+}
+.cli-usage-refresh:hover {
+  color: var(--text-primary);
+  background: var(--surface);
+}
+.cli-usage-refresh.spinning i {
+  animation: cli-usage-refresh-spin 0.5s linear;
+}
+@keyframes cli-usage-refresh-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
 .cli-usage-bars {
   display: flex;
   flex-direction: column;
@@ -584,6 +618,12 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
       <div class="sidebar-spacer"></div>
 
       <div class="sidebar-cli-usage">
+        <div class="cli-usage-header">
+          <span>CLI Usage</span>
+          <button class="cli-usage-refresh" id="cliUsageRefreshBtn" type="button" aria-label="Refresh CLI usage" title="Refresh CLI usage">
+            <i data-lucide="refresh-cw" style="width:12px;height:12px"></i>
+          </button>
+        </div>
         <div class="cli-usage-bars">
           <button class="cli-usage-bar" id="cliUsageBar-codex" data-provider="codex" aria-expanded="false">
             <div class="cli-usage-row">
@@ -731,17 +771,26 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
   function initCliUsage() {
     const codexBar = document.getElementById('cliUsageBar-codex');
     const claudeBar = document.getElementById('cliUsageBar-claude');
+    const refreshBtn = document.getElementById('cliUsageRefreshBtn');
     if (!codexBar || !claudeBar) return;
 
     codexBar.addEventListener('click', () => toggleCliDetail('codex'));
     claudeBar.addEventListener('click', () => toggleCliDetail('claude'));
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', (event) => {
+        event.stopPropagation();
+        refreshCliUsage(true);
+      });
+    }
 
     refreshCliUsage();
     if (cliUsagePollTimer) clearInterval(cliUsagePollTimer);
-    cliUsagePollTimer = setInterval(refreshCliUsage, 60000);
+    cliUsagePollTimer = setInterval(() => refreshCliUsage(), 60000);
   }
 
-  async function refreshCliUsage() {
+  async function refreshCliUsage(withSpin = false) {
+    const refreshBtn = document.getElementById('cliUsageRefreshBtn');
+    if (withSpin && refreshBtn) refreshBtn.classList.add('spinning');
     try {
       const res = await fetch('/api/cli-usage', { cache: 'no-store' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -777,6 +826,10 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
       };
       renderCliUsageBars();
       renderCliUsageDetail();
+    } finally {
+      if (withSpin && refreshBtn) {
+        setTimeout(() => refreshBtn.classList.remove('spinning'), 500);
+      }
     }
   }
 
@@ -828,6 +881,7 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
     fillEl.style.width = `${state.fill}%`;
     fillEl.style.backgroundColor = state.color;
     labelEl.textContent = state.label;
+    barEl.title = `${provider.name}: ${state.label}`;
     barEl.setAttribute('aria-expanded', expandedCliProvider === id ? 'true' : 'false');
   }
 
@@ -1292,9 +1346,25 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
       // Re-render icons
       refreshIcons();
 
+      runPageInitForPath(href);
+
     } catch (e) {
       console.warn('[SPA] navigation failed, falling back:', e);
       window.location.href = href;
+    }
+  }
+
+  function runPageInitForPath(href) {
+    const pathname = (() => {
+      try {
+        return new URL(href, window.location.origin).pathname;
+      } catch {
+        return href;
+      }
+    })();
+
+    if (pathname === '/ops.html' && typeof window.initOpsTab === 'function') {
+      window.initOpsTab();
     }
   }
 
@@ -1335,4 +1405,5 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
   // ════════════════════════════════════════════════════
 
   init();
+  runPageInitForPath(window.location.pathname);
 })();

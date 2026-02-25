@@ -428,23 +428,22 @@
         <button id="loadMoreLogBtn" class="btn">Load more</button>
       </div>
     </section>
-  </main>
+    <div id="toast" class="toast"></div>
 
-  <div id="toast" class="toast"></div>
-
-  <div id="manifestModal" class="manifest-modal-backdrop" aria-hidden="true">
-    <div class="manifest-modal-card" role="dialog" aria-modal="true" aria-labelledby="manifestTitle">
-      <div class="manifest-modal-head">
-        <div id="manifestTitle" class="manifest-modal-title">Backup Manifest</div>
-        <button id="manifestCloseBtn" class="btn">Close</button>
-      </div>
-      <div id="manifestMeta" class="manifest-modal-meta"></div>
-      <ul id="manifestFileList" class="manifest-file-list"></ul>
-      <div class="manifest-modal-foot">
-        <button id="manifestCloseBtnBottom" class="btn">Close</button>
+    <div id="manifestModal" class="manifest-modal-backdrop" aria-hidden="true">
+      <div class="manifest-modal-card" role="dialog" aria-modal="true" aria-labelledby="manifestTitle">
+        <div class="manifest-modal-head">
+          <div id="manifestTitle" class="manifest-modal-title">Backup Manifest</div>
+          <button id="manifestCloseBtn" class="btn">Close</button>
+        </div>
+        <div id="manifestMeta" class="manifest-modal-meta"></div>
+        <ul id="manifestFileList" class="manifest-file-list"></ul>
+        <div class="manifest-modal-foot">
+          <button id="manifestCloseBtnBottom" class="btn">Close</button>
+        </div>
       </div>
     </div>
-  </div>
+  </main>
 
   <script src="/layout.js"></script>
   <script>
@@ -544,7 +543,7 @@
     }
 
     // Trigger fresh session flow.
-    $('freshSessionBtn').onclick = async () => {
+    async function handleFreshSession() {
       if (!confirm('This will clear the active agent session. Continue?')) return;
       try {
         await api('/api/ops/sessions/fresh', {
@@ -557,7 +556,7 @@
       } catch (error) {
         toast(error.message);
       }
-    };
+    }
 
     // Load cron entries.
     async function loadCrons() {
@@ -724,7 +723,7 @@
     }
 
     // Run retention cleanup operation.
-    $('cleanupBtn').onclick = async (event) => {
+    async function handleCleanup(event) {
       const btn = event.target;
       btn.disabled = true;
       btn.textContent = 'Running...';
@@ -745,7 +744,7 @@
         btn.disabled = false;
         btn.textContent = 'Run Cleanup';
       }
-    };
+    }
 
     // Get CSS class for category pill.
     function catClass(category) {
@@ -789,39 +788,44 @@
       await loadLog(false);
     }
 
-    // Load next log page.
-    $('loadMoreLogBtn').onclick = () => loadLog(true);
-
-    // Filter log by selected category.
-    $('logCategory').onchange = async (event) => {
-      state.logCategory = event.target.value;
-      await resetLogs();
-    };
-
     // Close manifest modal.
     function closeManifestModal() {
       $('manifestModal').classList.remove('open');
       $('manifestModal').setAttribute('aria-hidden', 'true');
     }
 
-    $('manifestCloseBtn').onclick = closeManifestModal;
-    $('manifestCloseBtnBottom').onclick = closeManifestModal;
-    $('manifestModal').onclick = (event) => {
-      if (event.target.id === 'manifestModal') {
-        closeManifestModal();
-      }
-    };
+    async function initOpsTab() {
+      const initRoot = $('serviceCards');
+      if (!initRoot || window.__opsInitRoot === initRoot) return;
+      window.__opsInitRoot = initRoot;
 
-    // Initialize page data and auto-refresh services.
-    (async function init() {
+      $('freshSessionBtn').onclick = handleFreshSession;
+      $('cleanupBtn').onclick = handleCleanup;
+      $('loadMoreLogBtn').onclick = () => loadLog(true);
+      $('logCategory').onchange = async (event) => {
+        state.logCategory = event.target.value;
+        await resetLogs();
+      };
+      $('manifestCloseBtn').onclick = closeManifestModal;
+      $('manifestCloseBtnBottom').onclick = closeManifestModal;
+      $('manifestModal').onclick = (event) => {
+        if (event.target.id === 'manifestModal') {
+          closeManifestModal();
+        }
+      };
+
       try {
         await Promise.all([loadServices(), loadCrons(), loadBackups()]);
         await resetLogs();
-        setInterval(loadServices, 30000);
+        if (window.__opsServicesRefreshTimer) clearInterval(window.__opsServicesRefreshTimer);
+        window.__opsServicesRefreshTimer = setInterval(loadServices, 30000);
       } catch (error) {
         toast(error.message);
       }
-    })();
+    }
+
+    window.initOpsTab = initOpsTab;
+    initOpsTab();
   </script>
 </body>
 </html>
