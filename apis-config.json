@@ -5,7 +5,12 @@
       "name": "Telegram Bot",
       "provider": "Telegram",
       "description": "Primary messaging channel. Commands, reports, voice messages.",
-      "capabilities": ["Send Messages", "Voice Messages", "Inline Buttons", "File Sharing"],
+      "capabilities": [
+        "Send Messages",
+        "Voice Messages",
+        "Inline Buttons",
+        "File Sharing"
+      ],
       "health_check": {
         "method": "GET",
         "url": "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getMe",
@@ -23,7 +28,12 @@
       "name": "Anthropic Claude",
       "provider": "Anthropic API",
       "description": "Primary LLM. Haiku for everyday tasks, Sonnet for complex work, Opus for security and system code.",
-      "capabilities": ["Haiku 4.5", "Sonnet 4.5", "Opus 4.5", "Opus 4.6 (Guard)"],
+      "capabilities": [
+        "Haiku 4.5",
+        "Sonnet 4.5",
+        "Opus 4.5",
+        "Opus 4.6 (Guard)"
+      ],
       "health_check": {
         "method": "POST",
         "url": "https://api.anthropic.com/v1/messages",
@@ -47,7 +57,11 @@
       "name": "Gemini Flash",
       "provider": "Google AI Studio",
       "description": "Free-tier LLM for agent tasks. 250 RPD, 10 RPM limits.",
-      "capabilities": ["Gemini 2.5 Flash", "Free Tier", "Multimodal"],
+      "capabilities": [
+        "Gemini 2.5 Flash",
+        "Free Tier",
+        "Multimodal"
+      ],
       "health_check": {
         "method": "GET",
         "url": "https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}",
@@ -65,7 +79,11 @@
       "name": "OpenAI / Codex",
       "provider": "OpenAI API",
       "description": "Codex CLI for code generation tasks. Runs under ChatGPT Plus subscription.",
-      "capabilities": ["GPT-5.3 Codex", "Code Generation", "Full-Auto Mode"],
+      "capabilities": [
+        "GPT-5.3 Codex",
+        "Code Generation",
+        "Full-Auto Mode"
+      ],
       "health_check": {
         "method": "GET",
         "url": "https://api.openai.com/v1/models",
@@ -86,7 +104,12 @@
       "name": "OpenClaw Gateway",
       "provider": "Local",
       "description": "Agent gateway managing Jarvis and future agents.",
-      "capabilities": ["Agent Runtime", "Memory", "Tools", "Cron Jobs"],
+      "capabilities": [
+        "Agent Runtime",
+        "Memory",
+        "Tools",
+        "Cron Jobs"
+      ],
       "health_check": {
         "method": "GET",
         "url": "http://localhost:18789/health",
@@ -100,7 +123,11 @@
       "name": "Clawd Control",
       "provider": "Local",
       "description": "Dashboard and task management API.",
-      "capabilities": ["Dashboard", "Tasks API", "Cost Tracking"],
+      "capabilities": [
+        "Dashboard",
+        "Tasks API",
+        "Cost Tracking"
+      ],
       "health_check": {
         "method": "GET",
         "url": "http://localhost:3100/api/tasks/stats",
@@ -114,7 +141,11 @@
       "name": "Brave/DDG Search Shim",
       "provider": "Local (DuckDuckGo proxy)",
       "description": "Local proxy emulating Brave Search API via DuckDuckGo. No API key required. Free unlimited web search.",
-      "capabilities": ["Web Search", "Local Search", "RAG Compatible"],
+      "capabilities": [
+        "Web Search",
+        "Local Search",
+        "RAG Compatible"
+      ],
       "health_check": {
         "method": "GET",
         "url": "http://localhost:8000/res/v1/web/search?q=ping&count=1",
@@ -128,14 +159,19 @@
       "name": "Camoufox",
       "provider": "Local",
       "description": "Anti-detection Firefox fork for stealth browser automation. Bot detection bypass at C++ engine level.",
-      "on_demand": true,
-      "capabilities": ["Stealth Browsing", "Bot Detection Bypass", "Cookie Import", "Form Automation"],
+      "capabilities": [
+        "Stealth Browsing",
+        "Bot Detection Bypass",
+        "Cookie Import",
+        "Form Automation"
+      ],
       "health_check": {
         "method": "process_check",
         "process_name": "camoufox",
         "timeout_ms": 1000
       },
-      "api_key": null
+      "api_key": null,
+      "on_demand": true
     }
   ]
 }
