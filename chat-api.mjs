@@ -126,18 +126,19 @@ export function getChatMessages({ limit = 100, after = null } = {}) {
   const root = findSessionRoot();
   const sessionsPath = join(root, 'sessions.json');
   if (!existsSync(sessionsPath)) {
-    return { messages: [], sessionId: null, sourcePath: sessionsPath };
+    return { messages: [], sessionId: null };
   }
 
   const sessions = safeParseJson(readFileSync(sessionsPath, 'utf8')) || {};
-  const sessionId = sessions[MAIN_SESSION_KEY] || sessions.main || sessions.default || null;
+  const entry = sessions[MAIN_SESSION_KEY] || sessions.main || sessions.default || null;
+  const sessionId = typeof entry === 'string' ? entry : entry?.sessionId || entry?.id || null;
   if (!sessionId) {
-    return { messages: [], sessionId: null, sourcePath: sessionsPath };
+    return { messages: [], sessionId: null };
   }
 
   const transcriptPath = join(root, `${sessionId}.jsonl`);
   if (!existsSync(transcriptPath)) {
-    return { messages: [], sessionId, sourcePath: transcriptPath };
+    return { messages: [], sessionId };
   }
 
   const afterTs = after ? Date.parse(after) : null;
