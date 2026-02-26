@@ -25,7 +25,7 @@
 
 /* ── Stats Grid ────────────────────────── */
 .stats-grid {
-  display: grid; grid-template-columns: repeat(4, 1fr);
+  display: grid; grid-template-columns: repeat(6, 1fr);
   gap: 12px; margin-bottom: 16px;
 }
 .stat-card {
@@ -67,6 +67,16 @@
   font-size: 0.8rem; cursor: pointer;
 }
 .control-select:focus { border-color: var(--accent); outline: none; }
+
+.time-pills { display: flex; gap: 2px; background: var(--bg-primary); border-radius: var(--radius-sm); padding: 2px; }
+.time-pill {
+  padding: 5px 12px; border: none; border-radius: var(--radius-sm);
+  background: transparent; color: var(--text-tertiary); cursor: pointer;
+  font-size: 0.75rem; font-weight: 700; font-family: var(--font-sans);
+  transition: all 0.2s; text-transform: uppercase; letter-spacing: 0.03em;
+}
+.time-pill:hover { color: var(--text-secondary); }
+.time-pill.active { background: var(--surface); color: var(--text-primary); box-shadow: 0 1px 3px rgba(0,0,0,.2); }
 
 /* ── Gemini Quota ──────────────────────── */
 .quota-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -162,6 +172,32 @@
 .token-fill.output { background: #22c55e; }
 .token-fill.cache { background: #c9a44a; }
 
+.cost-breakdown { display: flex; flex-direction: column; gap: 10px; min-height: 200px; }
+.cost-component {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; background: var(--bg-primary);
+  border-radius: var(--radius-sm);
+}
+.cost-component-color { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+.cost-component-info { flex: 1; }
+.cost-component-label { font-size: 0.78rem; font-weight: 700; color: var(--text-secondary); }
+.cost-component-desc { font-size: 0.65rem; color: var(--text-tertiary); margin-top: 2px; }
+.cost-component-right { text-align: right; }
+.cost-component-amount { font-size: 0.85rem; font-weight: 800; color: var(--accent); font-variant-numeric: tabular-nums; }
+.cost-component-pct { font-size: 0.65rem; color: var(--text-tertiary); }
+
+.by-source { display: flex; flex-direction: column; gap: 10px; min-height: 200px; }
+.source-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; background: var(--bg-primary);
+  border-radius: var(--radius-sm);
+}
+.source-color { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+.source-name { flex: 1; font-size: 0.78rem; font-weight: 700; color: var(--text-secondary); }
+.source-stats { text-align: right; }
+.source-cost { font-size: 0.82rem; font-weight: 800; color: var(--accent); font-variant-numeric: tabular-nums; }
+.source-meta { font-size: 0.65rem; color: var(--text-tertiary); }
+
 /* ── Session List ──────────────────────── */
 .session-list { display: flex; flex-direction: column; gap: 6px; }
 .session-list-item {
@@ -187,6 +223,23 @@
 .session-tokens {
   font-variant-numeric: tabular-nums;
 }
+.session-badge {
+  display: inline-block; padding: 2px 6px; border-radius: 3px;
+  font-size: 0.6rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.source-cron { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+.source-telegram { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
+.source-direct { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
+.model-badge { background: rgba(139, 92, 246, 0.15); color: #8b5cf6; }
+
+.insight-box {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 14px 16px; background: var(--bg-primary);
+  border-radius: var(--radius-md); border-left: 3px solid var(--accent);
+  font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5;
+}
+.insight-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
 
 /* ── Model Distribution (CSS Donut) ────── */
 .model-distribution { display: flex; flex-direction: column; gap: 8px; }
@@ -291,7 +344,7 @@
 
 /* ── Responsive ────────────────────────── */
 @media (max-width: 900px) {
-  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .stats-grid { grid-template-columns: repeat(3, 1fr); }
   .chart-row { grid-template-columns: 1fr; }
   .projection-grid { grid-template-columns: 1fr; }
   .quota-grid { grid-template-columns: 1fr; }
@@ -312,12 +365,13 @@
   <div class="controls fade-up" style="animation-delay:.05s">
     <div class="control-group">
       <span class="control-label">Time Range</span>
-      <select class="control-select" id="rangeSelect" onchange="loadAnalytics()">
-        <option value="7">Last 7 Days</option>
-        <option value="30">Last 30 Days</option>
-        <option value="90">Last 90 Days</option>
-        <option value="all">All Time</option>
-      </select>
+      <div class="time-pills">
+        <button class="time-pill" data-range="1">24h</button>
+        <button class="time-pill" data-range="3">3d</button>
+        <button class="time-pill active" data-range="7">7d</button>
+        <button class="time-pill" data-range="30">30d</button>
+        <button class="time-pill" data-range="all">All</button>
+      </div>
     </div>
     <div class="control-group">
       <span class="control-label">Agent</span>
@@ -374,6 +428,48 @@
       <div class="stat-value" style="color: var(--accent)" id="statProjected">—</div>
       <div class="stat-sub" id="statProjectedSub">At current rate</div>
     </div>
+    <div class="stat-card">
+      <div class="stat-label">Avg / Session</div>
+      <div class="stat-value" id="statAvgSession">—</div>
+      <div class="stat-sub" id="statAvgSessionSub">Per session</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Avg / Message</div>
+      <div class="stat-value" id="statAvgMsg">—</div>
+      <div class="stat-sub" id="statAvgMsgSub">Per message</div>
+    </div>
+  </div>
+
+  <div class="chart-row fade-up" style="animation-delay:.13s">
+    <div class="chart-card">
+      <div class="chart-header">
+        <div class="chart-title">
+          <i data-lucide="receipt"></i>
+          Cost Breakdown
+        </div>
+        <div class="chart-subtitle">LLM cost components</div>
+      </div>
+      <div id="costBreakdownChart" class="cost-breakdown">
+        <div class="loading-state"><div class="icon">⏳</div><p>Loading...</p></div>
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-header">
+        <div class="chart-title">
+          <i data-lucide="git-branch"></i>
+          By Source
+        </div>
+        <div class="chart-subtitle">Where spend originates</div>
+      </div>
+      <div id="bySourceChart" class="by-source">
+        <div class="loading-state"><div class="icon">⏳</div><p>Loading...</p></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="chart-card-full fade-up" id="insightCard" style="animation-delay:.14s;display:none">
+    <div id="insightContent" class="insight-box"></div>
   </div>
 
   <div class="chart-row fade-up" style="animation-delay:.15s">
@@ -473,6 +569,17 @@
     </div>
   </div>
 
+  <div class="chart-card-full fade-up" id="topCronSection" style="animation-delay:.38s;display:none">
+    <div class="chart-header">
+      <div class="chart-title">
+        <i data-lucide="clock"></i>
+        Top Cron Jobs
+      </div>
+      <div class="chart-subtitle">Highest-cost scheduled tasks</div>
+    </div>
+    <div id="topCronList" class="session-list"></div>
+  </div>
+
   <div class="chart-card-full fade-up" id="agentCostSection" style="animation-delay:.35s;display:none">
     <div class="chart-header">
       <div class="chart-title">
@@ -509,6 +616,15 @@ const ANALYTICS_THROTTLE_MS = 10000;
 document.addEventListener('layout:snapshot', () => {
   populateAgentSelect();
   throttledLoadAnalytics();
+});
+
+
+document.querySelectorAll('.time-pill').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.time-pill').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    loadAnalytics();
+  });
 });
 
 // Visibility-aware polling: pause when tab is hidden, resume when visible
@@ -605,8 +721,13 @@ async function loadQuota() {
 // LOAD DATA (both endpoints)
 // ═══════════════════════════════════════════
 
+function getSelectedRange() {
+  const active = document.querySelector('.time-pill.active');
+  return active ? active.dataset.range : '7';
+}
+
 async function loadAnalytics() {
-  const range = $('#rangeSelect').value;
+  const range = getSelectedRange();
   const agent = $('#agentSelect').value;
 
   try {
@@ -631,6 +752,9 @@ function renderAll() {
   if (!analyticsData) return;
 
   renderStats();
+  renderCostBreakdown();
+  renderBySource();
+  renderInsight();
   renderCostByAgent();
   renderTokenBreakdown();
   renderCostOverTime();
@@ -638,6 +762,7 @@ function renderAll() {
   renderCostByModel();
   renderProjections();
   renderAgentCostChart();
+  renderTopCrons();
 
   refreshIcons();
 }
@@ -660,6 +785,108 @@ function renderStats() {
   const monthly = dailyAvg * 30;
   $('#statProjected').textContent = monthly > 0 ? `$${monthly.toFixed(2)}` : '$0.00';
   $('#statProjectedSub').textContent = `$${dailyAvg.toFixed(3)}/day avg`;
+
+  const avgSession = d.totalSessions > 0 ? (d.totalCost / d.totalSessions) : 0;
+  $('#statAvgSession').textContent = `$${avgSession.toFixed(3)}`;
+  $('#statAvgSessionSub').textContent = `${d.totalSessions || 0} sessions`;
+
+  const avgMsg = d.totalMessages > 0 ? (d.totalCost / d.totalMessages) : 0;
+  $('#statAvgMsg').textContent = `$${avgMsg.toFixed(4)}`;
+  $('#statAvgMsgSub').textContent = `${d.totalMessages || 0} messages`;
+}
+
+
+function renderCostBreakdown() {
+  const container = $('#costBreakdownChart');
+  const cc = analyticsData.costComponents;
+  if (!cc) { container.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>No data</p></div>'; return; }
+
+  const items = [
+    { label: 'Cache Write', desc: 'First msg per session', color: '#ef4444', value: cc.cacheWrite || 0 },
+    { label: 'Output', desc: "Agent's responses", color: '#22c55e', value: cc.output || 0 },
+    { label: 'Cache Read', desc: 'Cached context (90% off)', color: '#c9a44a', value: cc.cacheRead || 0 },
+    { label: 'Input', desc: 'Your messages', color: '#3b82f6', value: cc.input || 0 }
+  ];
+
+  const total = items.reduce((sum, item) => sum + item.value, 0);
+  items.sort((a, b) => b.value - a.value);
+
+  container.innerHTML = items.map(item => {
+    const pct = total > 0 ? (item.value / total * 100) : 0;
+    return `
+      <div class="cost-component">
+        <div class="cost-component-color" style="background:${item.color}"></div>
+        <div class="cost-component-info">
+          <div class="cost-component-label">${item.label}</div>
+          <div class="cost-component-desc">${item.desc}</div>
+        </div>
+        <div class="cost-component-right">
+          <div class="cost-component-amount">$${item.value.toFixed(2)}</div>
+          <div class="cost-component-pct">(${pct.toFixed(0)}%)</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderBySource() {
+  const container = $('#bySourceChart');
+  const sources = analyticsData.bySource || [];
+
+  if (sources.length === 0) {
+    container.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>No source data</p></div>';
+    return;
+  }
+
+  const sourceColors = { 'Cron': '#f59e0b', 'Telegram': '#3b82f6', 'Direct': '#22c55e' };
+  const total = sources.reduce((sum, src) => sum + src.cost, 0);
+
+  container.innerHTML = sources.map(src => {
+    const pct = total > 0 ? (src.cost / total * 100) : 0;
+    const color = sourceColors[src.source] || '#8b5cf6';
+    return `
+      <div class="source-item">
+        <div class="source-color" style="background:${color}"></div>
+        <div class="source-name">${escapeHtml(src.source)}</div>
+        <div class="source-stats">
+          <div class="source-cost">$${src.cost.toFixed(2)} (${pct.toFixed(0)}%)</div>
+          <div class="source-meta">${src.sessions}s</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderInsight() {
+  const card = $('#insightCard');
+  const container = $('#insightContent');
+  const cc = analyticsData.costComponents;
+  const d = analyticsData;
+
+  if (!cc || d.totalCost === 0) { card.style.display = 'none'; return; }
+
+  const total = (cc.input || 0) + (cc.output || 0) + (cc.cacheRead || 0) + (cc.cacheWrite || 0);
+  if (total === 0) { card.style.display = 'none'; return; }
+
+  let tip = '';
+  const cacheWritePct = ((cc.cacheWrite || 0) / total) * 100;
+  const cacheReadPct = ((cc.cacheRead || 0) / total) * 100;
+  const outputPct = ((cc.output || 0) / total) * 100;
+
+  if (cacheWritePct > 50) {
+    tip = `<span class="insight-icon">💡</span> Cache writes are ${cacheWritePct.toFixed(0)}% of your LLM costs. Longer sessions save money via cache reads, but watch session size.`;
+  } else if (outputPct > 60) {
+    tip = `<span class="insight-icon">💡</span> Output tokens are ${outputPct.toFixed(0)}% of your costs. Consider shorter responses or switching verbose tasks to a cheaper model.`;
+  } else if (cacheReadPct > 40) {
+    tip = `<span class="insight-icon">✅</span> Strong cache efficiency — ${cacheReadPct.toFixed(0)}% of costs are discounted cache reads. Your session strategy is working.`;
+  } else if (d.totalSessions > 0 && d.totalCost / d.totalSessions > 0.50) {
+    tip = `<span class="insight-icon">⚠️</span> Average session cost is $${(d.totalCost / d.totalSessions).toFixed(2)}. Consider breaking expensive sessions into smaller runs.`;
+  }
+
+  if (!tip) { card.style.display = 'none'; return; }
+
+  card.style.display = '';
+  container.innerHTML = tip;
 }
 
 function renderCostByAgent() {
@@ -858,6 +1085,49 @@ function renderTopSessions() {
     return;
   }
 
+  const sourceClass = (src) => {
+    if (src === 'Cron') return 'source-cron';
+    if (src === 'Telegram') return 'source-telegram';
+    return 'source-direct';
+  };
+
+  container.innerHTML = sessions.slice(0, 8).map(s => {
+    const agentInfo = agentState[s.agentId] || {};
+    const emoji = agentInfo.emoji || '🤖';
+    const name = agentInfo.name || s.agentId;
+    const badges = [
+      s.source ? `<span class="session-badge ${sourceClass(s.source)}">${escapeHtml(s.source)}</span>` : '',
+      s.model ? `<span class="session-badge model-badge">${escapeHtml(truncate(s.model, 16))}</span>` : ''
+    ].filter(Boolean).join('');
+
+    return `
+      <div class="session-list-item">
+        <div class="session-agent">
+          <span class="session-agent-emoji">${emoji}</span>
+          <span>${truncate(name, 12)}</span>
+          ${badges}
+        </div>
+        <div class="session-meta">
+          ${s.messages ? `<span>${s.messages} msgs</span>` : ''}
+          <span class="session-tokens">${formatNumber(s.tokens)} tok</span>
+          <span class="session-cost">$${s.cost.toFixed(3)}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderTopCrons() {
+  const section = $('#topCronSection');
+  const sessions = (analyticsData.topSessions || []).filter(s => s.source === 'Cron');
+
+  if (sessions.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = '';
+
+  const container = $('#topCronList');
   container.innerHTML = sessions.slice(0, 8).map(s => {
     const agentInfo = agentState[s.agentId] || {};
     const emoji = agentInfo.emoji || '🤖';
@@ -869,6 +1139,8 @@ function renderTopSessions() {
           <span>${truncate(name, 12)}</span>
         </div>
         <div class="session-meta">
+          <span class="session-badge source-cron">Cron</span>
+          ${s.model ? `<span class="session-badge model-badge">${truncate(s.model, 16)}</span>` : ''}
           <span class="session-tokens">${formatNumber(s.tokens)} tok</span>
           <span class="session-cost">$${s.cost.toFixed(3)}</span>
         </div>
