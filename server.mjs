@@ -1244,6 +1244,30 @@ function computeAgentMetrics() {
 
 function getAnalytics(rangeStr, agentFilter) {
   const AGENTS_DIR = join(homedir(), '.openclaw', 'agents');
+  const MODEL_PRICING = {
+    // [inputPer1M, outputPer1M, cacheReadPer1M, cacheWritePer1M]
+    'gemini-2.5-flash': [0.15, 0.60, 0.0375, 0.15],
+    'gemini-2.0-flash': [0.10, 0.40, 0.025, 0.10],
+    'claude-opus-4-5': [15.00, 75.00, 1.50, 15.00],
+    'claude-sonnet-4-5': [3.00, 15.00, 0.30, 3.00],
+    'claude-haiku-4-5': [0.80, 4.00, 0.08, 0.80],
+    'gpt-4o': [2.50, 10.00, 1.25, 2.50],
+    'gpt-4o-mini': [0.15, 0.60, 0.075, 0.15],
+  };
+  const DEFAULT_PRICING = [1.00, 3.00, 0.10, 1.00];
+  const computeComponentCosts = (model, input, output, cacheRead, cacheWrite) => {
+    const cleanModel = (model || '')
+      .replace('anthropic/', '')
+      .replace('openai/', '')
+      .replace('google/', '');
+    const rates = MODEL_PRICING[cleanModel] || DEFAULT_PRICING;
+    return {
+      input: (input / 1e6) * rates[0],
+      output: (output / 1e6) * rates[1],
+      cacheRead: (cacheRead / 1e6) * rates[2],
+      cacheWrite: (cacheWrite / 1e6) * rates[3],
+    };
+  };
   const range = rangeStr === 'all' ? Infinity : parseInt(rangeStr);
   const cutoffDate = rangeStr === 'all' ? 0 : Date.now() - (range * 86400000);
 
@@ -1253,11 +1277,19 @@ function getAnalytics(rangeStr, agentFilter) {
   let inputTokens = 0;
   let outputTokens = 0;
   let cacheReadTokens = 0;
+  let cacheWriteTokens = 0;
+  let costInput = 0;
+  let costOutput = 0;
+  let costCacheRead = 0;
+  let costCacheWrite = 0;
   let apiCalls = 0;
+  let totalSessions = 0;
+  let totalMessages = 0;
 
   const byAgent = new Map(); // agentId -> {cost, tokens}
   const byDate = new Map(); // date -> {cost, tokens}
   const byModel = new Map(); // model -> {cost, tokens}
+  const bySource = new Map(); // source -> {cost, tokens, sessions}
   const sessions = []; // [{agentId, sessionId, cost, tokens}]
 
   // Discover all agents
@@ -1303,8 +1335,11 @@ function getAnalytics(rangeStr, agentFilter) {
         let sessionInput = 0;
         let sessionOutput = 0;
         let sessionCache = 0;
+        let sessionCacheWrite = 0;
         let sessionCalls = 0;
+        let sessionMessages = 0;
         let sessionModel = null;
+        let isHeartbeatSession = false;
 
         try {
           const content = readFileSync(sessionPath, 'utf8');
@@ -1333,12 +1368,41 @@ function getAnalytics(rangeStr, agentFilter) {
                 const input = usage.input || 0;
                 const output = usage.output || 0;
                 const cache = usage.cacheRead || 0;
+                const cacheWrite = usage.cacheWrite || 0;
+
+                if (!isHeartbeatSession && msg.role === 'user') {
+                  if (line.includes('"conversation_label"') && line.toLowerCase().includes('heartbeat')) {
+                    isHeartbeatSession = true;
+                  }
+                }
+
+                if (cost > 0) sessionMessages++;
+
+                const hasCostComponents = usage.cost && typeof usage.cost === 'object' && (
+                  usage.cost.input !== undefined ||
+                  usage.cost.output !== undefined ||
+                  usage.cost.cacheRead !== undefined ||
+                  usage.cost.cacheWrite !== undefined
+                );
+                if (hasCostComponents) {
+                  costInput += usage.cost?.input || 0;
+                  costOutput += usage.cost?.output || 0;
+                  costCacheRead += usage.cost?.cacheRead || 0;
+                  costCacheWrite += usage.cost?.cacheWrite || 0;
+                } else {
+                  const parts = computeComponentCosts(sessionModel || msg.model, input, output, cache, cacheWrite);
+                  costInput += parts.input;
+                  costOutput += parts.output;
+                  costCacheRead += parts.cacheRead;
+                  costCacheWrite += parts.cacheWrite;
+                }
 
                 sessionCost += cost;
                 sessionTokens += input + output + cache;
                 sessionInput += input;
                 sessionOutput += output;
                 sessionCache += cache;
+                sessionCacheWrite += cacheWrite;
 
                 if (msg.role === 'user') {
                   sessionCalls++;
@@ -1379,7 +1443,18 @@ function getAnalytics(rangeStr, agentFilter) {
         inputTokens += sessionInput;
         outputTokens += sessionOutput;
         cacheReadTokens += sessionCache;
+        cacheWriteTokens += sessionCacheWrite;
         apiCalls += sessionCalls;
+        totalSessions++;
+        totalMessages += sessionMessages;
+        const source = isHeartbeatSession ? 'Cron' : 'Telegram';
+        if (!bySource.has(source)) {
+          bySource.set(source, { cost: 0, tokens: 0, sessions: 0 });
+        }
+        const sourceData = bySource.get(source);
+        sourceData.cost += sessionCost;
+        sourceData.tokens += sessionTokens;
+        sourceData.sessions++;
 
         // Track by agent
         if (!byAgent.has(agentId)) {
@@ -1396,6 +1471,9 @@ function getAnalytics(rangeStr, agentFilter) {
             sessionId,
             cost: sessionCost,
             tokens: sessionTokens,
+            model: (sessionModel || 'unknown').replace('anthropic/', '').replace('openai/', '').replace('google/', ''),
+            source,
+            messages: sessionMessages,
           });
         }
       }
@@ -1429,6 +1507,18 @@ function getAnalytics(rangeStr, agentFilter) {
     inputTokens,
     outputTokens,
     cacheReadTokens,
+    cacheWriteTokens,
+    costComponents: {
+      input: Math.round(costInput * 10000) / 10000,
+      output: Math.round(costOutput * 10000) / 10000,
+      cacheRead: Math.round(costCacheRead * 10000) / 10000,
+      cacheWrite: Math.round(costCacheWrite * 10000) / 10000,
+    },
+    totalSessions,
+    totalMessages,
+    bySource: Array.from(bySource.entries())
+      .map(([source, data]) => ({ source, ...data }))
+      .sort((a, b) => b.cost - a.cost),
     apiCalls,
     byAgent: byAgentArray,
     overTime: byDateArray,
