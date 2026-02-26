@@ -29,7 +29,6 @@
   const PAGE_MAP = {
     '/': 'dashboard',
     '/dashboard.html': 'dashboard',
-    '/costs.html': 'costs',
     '/agents.html': 'agents',
     '/sessions.html': 'sessions',
     '/tasks.html': 'tasks',
@@ -547,10 +546,6 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
       </a>
 
       <div class="sidebar-section">Monitoring</div>
-      <a href="/costs.html" class="nav-item${isActive('costs')}">
-        <span class="nav-emoji">📊</span>
-        <span class="nav-label">Costs</span>
-      </a>
       <a href="/agents.html" class="nav-item${isActive('agents')}">
         <span class="nav-emoji">🤖</span>
         <span class="nav-label">Agents</span>

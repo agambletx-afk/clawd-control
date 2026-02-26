@@ -68,6 +68,22 @@
 }
 .control-select:focus { border-color: var(--accent); outline: none; }
 
+/* ── Gemini Quota ──────────────────────── */
+.quota-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.quota-item { display: flex; flex-direction: column; gap: 6px; }
+.quota-label {
+  font-size: 0.75rem; font-weight: 600; color: var(--text-secondary);
+  display: flex; justify-content: space-between;
+}
+.quota-track {
+  height: 10px; border-radius: var(--radius-sm);
+  background: var(--bg-primary); overflow: hidden;
+}
+.quota-fill {
+  height: 100%; border-radius: var(--radius-sm);
+  transition: width 0.3s ease-out, background-color 0.3s ease-out;
+}
+
 /* ── Chart Containers ──────────────────── */
 .chart-row {
   display: grid; grid-template-columns: 1fr 1fr;
@@ -278,6 +294,7 @@
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
   .chart-row { grid-template-columns: 1fr; }
   .projection-grid { grid-template-columns: 1fr; }
+  .quota-grid { grid-template-columns: 1fr; }
 }
 
 @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
@@ -307,6 +324,32 @@
       <select class="control-select" id="agentSelect" onchange="loadAnalytics()">
         <option value="all">All Agents</option>
       </select>
+    </div>
+  </div>
+
+  <div class="chart-card-full fade-up" style="animation-delay:.08s">
+    <div class="chart-header">
+      <div class="chart-title">
+        <i data-lucide="gauge"></i>
+        Gemini Flash Quota
+      </div>
+      <div class="chart-subtitle">Free tier usage — resets daily (RPD) / per minute (RPM)</div>
+    </div>
+    <div class="quota-grid">
+      <div class="quota-item">
+        <div class="quota-label">
+          <span>Requests Today (RPD)</span>
+          <span id="quotaRpdLabel">0 / 0 (0%)</span>
+        </div>
+        <div class="quota-track"><div class="quota-fill" id="quotaRpdFill" style="width:0%;background:#4ade80"></div></div>
+      </div>
+      <div class="quota-item">
+        <div class="quota-label">
+          <span>Requests This Minute (RPM)</span>
+          <span id="quotaRpmLabel">0 / 0 (0%)</span>
+        </div>
+        <div class="quota-track"><div class="quota-fill" id="quotaRpmFill" style="width:0%;background:#4ade80"></div></div>
+      </div>
     </div>
   </div>
 
@@ -451,6 +494,7 @@
 'use strict';
 
 const $ = s => document.querySelector(s);
+const FETCH_OPTS = { credentials: 'same-origin' };
 let analyticsData = null;
 let tokenData = null;
 let costMode = 'daily';
@@ -460,11 +504,15 @@ let costMode = 'daily';
 // ═══════════════════════════════════════════
 
 document.addEventListener('layout:snapshot', () => {
+  loadQuota();
   populateAgentSelect();
   loadAnalytics();
 });
 
-setTimeout(() => { if (!analyticsData) loadAnalytics(); }, 500);
+setTimeout(() => {
+  loadQuota();
+  if (!analyticsData) loadAnalytics();
+}, 500);
 
 let resizeTimer;
 window.addEventListener('resize', () => {
@@ -487,6 +535,34 @@ function setCostMode(mode, btn) {
   document.querySelectorAll('.view-toggle button').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   renderCostOverTime();
+}
+
+function quotaColor(pct) {
+  if (pct >= 80) return '#f87171';
+  if (pct >= 60) return '#facc15';
+  return '#4ade80';
+}
+
+function updateQuotaBar(labelId, fillId, used = 0, limit = 0) {
+  const safeUsed = Number.isFinite(used) ? used : 0;
+  const safeLimit = Number.isFinite(limit) ? limit : 0;
+  const pct = safeLimit > 0 ? (safeUsed / safeLimit) * 100 : 0;
+  const boundedPct = Math.min(pct, 100);
+
+  $(labelId).textContent = `${safeUsed} / ${safeLimit} (${Math.round(pct)}%)`;
+  $(fillId).style.width = `${boundedPct}%`;
+  $(fillId).style.backgroundColor = quotaColor(pct);
+}
+
+async function loadQuota() {
+  try {
+    const res = await fetch('/api/costs/quota', FETCH_OPTS);
+    const data = await res.json();
+    updateQuotaBar('#quotaRpdLabel', '#quotaRpdFill', data?.rpd?.used, data?.rpd?.limit);
+    updateQuotaBar('#quotaRpmLabel', '#quotaRpmFill', data?.rpm?.used, data?.rpm?.limit);
+  } catch (e) {
+    console.error('Quota fetch failed:', e);
+  }
 }
 
 // ═══════════════════════════════════════════

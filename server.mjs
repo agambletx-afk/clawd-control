@@ -3041,32 +3041,6 @@ const server = createServer((req, res) => {
   }
 
   // ── Costs Analytics ──
-  if (path === '/api/costs/daily' && req.method === 'GET') {
-    try {
-      const costsData = computeCostsData();
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(costsData.daily));
-    } catch (e) {
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-      console.error('[API] /api/costs/daily error:', e.message);
-      res.end(JSON.stringify({ error: 'Internal server error' }));
-    }
-    return;
-  }
-
-  if (path === '/api/costs/sessions' && req.method === 'GET') {
-    try {
-      const costsData = computeCostsData();
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(costsData.sessions));
-    } catch (e) {
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-      console.error('[API] /api/costs/sessions error:', e.message);
-      res.end(JSON.stringify({ error: 'Internal server error' }));
-    }
-    return;
-  }
-
   if (path === '/api/costs/quota' && req.method === 'GET') {
     try {
       const costsData = computeCostsData();
