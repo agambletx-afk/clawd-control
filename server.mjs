@@ -33,6 +33,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 
 import { logAction, getLog, getLogStats, pruneLog } from './ops-log-db.mjs';
 import { createSnapshot, listSnapshots, getSnapshotManifest, restoreSnapshot, deleteSnapshot, enforceRetention } from './ops-backup.mjs';
+import { ChatGatewayClient, getChatMessages } from './chat-api.mjs';
 
 const PORT = parseInt(process.argv.find((_, i, a) => a[i - 1] === '--port') || '3100');
 const DIR = new URL('.', import.meta.url).pathname;
@@ -529,6 +530,12 @@ if (!existsSync(agentsJsonPath)) {
 }
 
 const collector = new AgentCollector(agentsJsonPath);
+const chatGatewayClient = new ChatGatewayClient({ configPath: agentsJsonPath });
+chatGatewayClient.start().then(() => {
+  console.log('✅ Chat gateway connected');
+}).catch((error) => {
+  console.warn('⚠️ Chat gateway init failed:', error.message);
+});
 const sseClients = new Set();
 
 collector.on('update', ({ id, state, removed }) => {
@@ -3174,6 +3181,64 @@ const server = createServer((req, res) => {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       console.error('[API] error:', e.message); res.end(JSON.stringify({ error: 'Internal server error' }));
     }
+    return;
+  }
+
+
+  // ── Chat Messages ──
+  if (path === '/api/chat/messages' && req.method === 'GET') {
+    try {
+      const limit = Number.parseInt(url.searchParams.get('limit') || '100', 10);
+      const after = url.searchParams.get('after');
+      const result = getChatMessages({
+        limit: Number.isFinite(limit) ? limit : 100,
+        after: after || null,
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      console.error('[API] /api/chat/messages error:', e.message);
+      res.end(JSON.stringify({ error: 'Failed to load chat messages' }));
+    }
+    return;
+  }
+
+  // ── Chat Send ──
+  if (path === '/api/chat/send' && req.method === 'POST') {
+    req.on('error', () => {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: 'Invalid request body' }));
+    });
+
+    let body = '';
+    req.on('data', (chunk) => {
+      body += chunk;
+      if (body.length > MAX_BODY_SIZE) {
+        req.destroy();
+      }
+    });
+
+    req.on('end', async () => {
+      try {
+        const parsed = body ? JSON.parse(body) : {};
+        const message = typeof parsed.message === 'string' ? parsed.message.trim() : '';
+        if (!message) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'Message is required' }));
+          return;
+        }
+
+        await chatGatewayClient.sendMessage(message);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+      } catch (e) {
+        console.error('[API] /api/chat/send error:', e.message, e.stack);
+        const status = e.message === 'Gateway not connected' ? 503 : 500;
+        res.writeHead(status, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
     return;
   }
 
