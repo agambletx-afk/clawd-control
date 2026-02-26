@@ -3192,6 +3192,7 @@ const server = createServer((req, res) => {
         limit: Number.isFinite(limit) ? limit : 100,
         after: after || null,
       });
+      result.agentStreaming = chatGatewayClient.isAgentStreaming();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(result));
     } catch (e) {
@@ -3228,9 +3229,11 @@ const server = createServer((req, res) => {
         }
 
         await chatGatewayClient.sendMessage(message);
+        console.log('✅ Chat message sent via gateway:', message.substring(0, 50));
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true }));
       } catch (e) {
+        console.error('❌ Chat send failed:', e.message);
         const status = e.message === 'Gateway not connected' ? 503 : 500;
         res.writeHead(status, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: false, error: e.message || 'Failed to send message' }));

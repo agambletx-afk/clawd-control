@@ -27,7 +27,7 @@ function firstDefined(...values) {
 function extractTimestamp(entry) {
   const message = entry?.message && typeof entry.message === 'object' ? entry.message : null;
   const meta = entry?.metadata && typeof entry.metadata === 'object' ? entry.metadata : null;
-  return firstDefined(
+  const raw = firstDefined(
     entry?.timestamp,
     entry?.ts,
     entry?.createdAt,
@@ -40,6 +40,16 @@ function extractTimestamp(entry) {
     meta?.ts,
     meta?.createdAt,
   );
+  if (!raw) return null;
+  // Normalize: if it's a number, treat as epoch (ms if > 1e12, else seconds)
+  if (typeof raw === 'number') {
+    const ms = raw > 1e12 ? raw : raw * 1000;
+    return new Date(ms).toISOString();
+  }
+  // If it's a string that parses to a valid date, return it
+  const d = new Date(raw);
+  if (!isNaN(d.getTime())) return d.toISOString();
+  return null;
 }
 
 function extractChannel(entry) {
@@ -122,6 +132,27 @@ function normalizeContent(role, content) {
   return '';
 }
 
+/** Strip plugin-injected metadata from displayed messages */
+function cleanDisplayContent(role, text) {
+  if (!text) return text;
+  let cleaned = text;
+  if (role === 'user') {
+    // Strip [STABILITY CONTEXT]..., [CONTINUITY CONTEXT]..., etc.
+    cleaned = cleaned.replace(/\[(?:STABILITY|CONTINUITY|MEMORY|CONTEXT)[^\]]*\][^\n]*(?:\n(?!\n)[^\n]*)*/g, '');
+    // Strip leading [timestamp] prefix like [Thu 2026-02-26 18:23 UTC]
+    cleaned = cleaned.replace(/^\[(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}\s*(?:UTC)?\]\s*/m, '');
+    // Strip <relevant-memories>...</relevant-memories> blocks
+    cleaned = cleaned.replace(/<relevant-memories>[\s\S]*?<\/relevant-memories>\s*/g, '');
+    // Strip [dashboard] prefix LAST (after other metadata removed)
+    cleaned = cleaned.replace(/^\s*\[dashboard\]\s*/i, '');
+  }
+  if (role === 'assistant') {
+    // Strip [[reply_to_current]], [[reply_to:<id>]] prefixes
+    cleaned = cleaned.replace(/^\[\[reply_to[^\]]*\]\]\s*/gm, '');
+  }
+  return cleaned.trim();
+}
+
 export function getChatMessages({ limit = 100, after = null } = {}) {
   const root = findSessionRoot();
   const sessionsPath = join(root, 'sessions.json');
@@ -156,8 +187,20 @@ export function getChatMessages({ limit = 100, after = null } = {}) {
     if (normalized.aborted) continue;
     if (normalized.role !== 'user' && normalized.role !== 'assistant') continue;
 
-    const text = normalizeContent(normalized.role, normalized.content);
+    const rawText = normalizeContent(normalized.role, normalized.content);
+    const text = cleanDisplayContent(normalized.role, rawText);
     if (!text) continue;
+
+    // Skip system-injected cron/heartbeat messages that have role "user"
+    if (normalized.role === 'user' && (
+      /^System:\s*\[/.test(rawText) ||
+      /Read HEARTBEAT\.md/i.test(rawText) ||
+      /^Conversation info \(untrusted metadata\)/m.test(rawText) ||
+      /Exec failed/i.test(rawText)
+    )) continue;
+
+    // Skip heartbeat responses
+    if (normalized.role === 'assistant' && /^(\[\[reply_to[^\]]*\]\]\s*)?HEARTBEAT_OK\b/.test(rawText)) continue;
 
     const timestamp = normalized.timestamp || null;
     if (afterTs && timestamp) {
@@ -190,6 +233,15 @@ export class ChatGatewayClient {
     this.connected = false;
     this.reconnectTimer = null;
     this.connectPromise = null;
+    // Agent streaming state for typing indicator
+    this.agentStreaming = false;
+    this._streamingTimeout = null;
+    this._keepalive = null;
+  }
+
+  /** True when the agent is actively generating a response for the main session */
+  isAgentStreaming() {
+    return this.agentStreaming;
   }
 
   start() {
@@ -212,6 +264,9 @@ export class ChatGatewayClient {
 
   _send(frame) {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return false;
+    if (frame.method !== 'connect') {
+      console.log('📤 Gateway send:', JSON.stringify(frame).substring(0, 200));
+    }
     this.ws.send(JSON.stringify(frame));
     return true;
   }
@@ -221,7 +276,7 @@ export class ChatGatewayClient {
     this.reconnectTimer = setTimeout(() => {
       this.connectPromise = null;
       this.start().catch(() => {});
-    }, 10000);
+    }, 5000);
   }
 
   _rejectPending(error) {
@@ -263,7 +318,7 @@ export class ChatGatewayClient {
             params: {
               minProtocol: 3,
               maxProtocol: 3,
-              client: { id: 'clawd-control-chat', version: '1.0.0', platform: 'linux', mode: 'dashboard' },
+              client: { id: 'openclaw-probe', version: '2.0.0', platform: 'linux', mode: 'probe' },
               auth: { token: this.token },
               role: 'operator',
               scopes: ['operator.read', 'operator.write'],
@@ -274,6 +329,14 @@ export class ChatGatewayClient {
 
         if (msg.type === 'res' && msg.ok && msg.payload?.type === 'hello-ok') {
           this.connected = true;
+          console.log('✅ Chat gateway connected to', `ws://${this.host}:${this.port}`);
+          // Start keepalive ping
+          clearInterval(this._keepalive);
+          this._keepalive = setInterval(() => {
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+              this.ws.ping();
+            }
+          }, 30000);
           if (!handshakeDone) {
             handshakeDone = true;
             resolve();
@@ -285,13 +348,58 @@ export class ChatGatewayClient {
           const pending = this.pending.get(msg.id);
           clearTimeout(pending.timer);
           this.pending.delete(msg.id);
-          if (msg.ok) pending.resolve(msg.payload || { ok: true });
-          else pending.reject(new Error(msg.error?.message || 'Gateway request failed'));
+          if (msg.ok) {
+            console.log('✅ Gateway request', msg.id, 'succeeded:', JSON.stringify(msg.payload || {}).substring(0, 100));
+            pending.resolve(msg.payload || { ok: true });
+          } else {
+            console.error('❌ Gateway request', msg.id, 'failed:', msg.error?.message || JSON.stringify(msg));
+            pending.reject(new Error(msg.error?.message || 'Gateway request failed'));
+          }
           return;
         }
 
         if (msg.type === 'res' && msg.ok === false && !handshakeDone) {
+          console.error('❌ Chat gateway handshake rejected:', msg.error?.message || JSON.stringify(msg));
           onHandshakeError(new Error(msg.error?.message || 'Gateway connect rejected'));
+          return;
+        }
+
+        // Track agent streaming state for typing indicator
+        // Actual events use: event:"chat", state:"delta" (streaming) / state:"final" (done)
+        if (msg.type === 'event' && msg.event === 'chat') {
+          const p = msg.payload;
+          if (p?.sessionKey === 'agent:main:main') {
+            if (p.state === 'delta' && !this.agentStreaming) {
+              this.agentStreaming = true;
+              
+              clearTimeout(this._streamingTimeout);
+              this._streamingTimeout = setTimeout(() => { this.agentStreaming = false; }, 180000);
+            } else if (p.state === 'delta') {
+              // Already streaming, just reset timeout
+              clearTimeout(this._streamingTimeout);
+              this._streamingTimeout = setTimeout(() => { this.agentStreaming = false; }, 180000);
+            } else if (p.state === 'final') {
+              this.agentStreaming = false;
+              
+              clearTimeout(this._streamingTimeout);
+            }
+          }
+          return;
+        }
+
+        // Also track agent lifecycle events if present
+        if (msg.type === 'event' && msg.event === 'agent') {
+          const p = msg.payload;
+          if (p?.sessionKey === 'agent:main:main' && p.stream === 'lifecycle' && p.data?.phase === 'end') {
+            this.agentStreaming = false;
+            clearTimeout(this._streamingTimeout);
+          }
+          return;
+        }
+
+        // Log any other unhandled messages for debugging
+        if (msg.type !== 'event' || !['health', 'presence', 'tick'].includes(msg.event)) {
+          console.log('📨 Gateway unhandled msg:', JSON.stringify(msg).substring(0, 200));
         }
       });
 
@@ -299,8 +407,11 @@ export class ChatGatewayClient {
 
       ws.on('close', () => {
         this.connected = false;
+        this.connectPromise = null;
+        clearInterval(this._keepalive);
         this._rejectPending(new Error('Gateway disconnected'));
         this._scheduleReconnect();
+        console.log('⚠️ Chat gateway disconnected, will reconnect');
       });
 
       ws.on('error', (err) => {
@@ -319,12 +430,19 @@ export class ChatGatewayClient {
       }
     }
 
+    // Mark streaming immediately: agent is processing from the moment gateway accepts
+    this.agentStreaming = true;
+    clearTimeout(this._streamingTimeout);
+    this._streamingTimeout = setTimeout(() => { this.agentStreaming = false; }, 180000); // 3 min safety
+
     const id = this._nextId();
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
+        this.agentStreaming = false; // Reset on timeout
+        clearTimeout(this._streamingTimeout);
         reject(new Error('Gateway request timeout'));
-      }, 10000);
+      }, 30000);
 
       this.pending.set(id, { resolve, reject, timer });
 
@@ -332,12 +450,18 @@ export class ChatGatewayClient {
         type: 'req',
         id,
         method: 'chat.send',
-        params: { text },
+        params: {
+          sessionKey: 'agent:main:main',
+          message: `[dashboard] ${text}`,
+          idempotencyKey: `dash-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        },
       });
 
       if (!sent) {
         clearTimeout(timer);
         this.pending.delete(id);
+        this.agentStreaming = false; // Reset on send failure
+        clearTimeout(this._streamingTimeout);
         reject(new Error('Gateway not connected'));
       }
     });
