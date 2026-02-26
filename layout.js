@@ -42,6 +42,7 @@
     '/crons.html': 'crons',
     '/fleet.html': 'fleet',
     '/gandalf-view.html': 'gandalf',
+    '/chat.html': 'chat',
   };
 
   const activePage = PAGE_MAP[path] || (path.startsWith('/agent/') ? 'agent-detail' : 'other');
@@ -540,6 +541,10 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
   function buildSidebarHTML() {
     const isActive = (page) => (activePage === page ? ' active' : '');
     return `
+      <a href="/chat.html" class="nav-item${isActive('chat')}">
+        <i data-lucide="message-circle" class="nav-icon"></i>
+        <span class="nav-label">Chat</span>
+      </a>
       <a href="/" class="nav-item${isActive('dashboard')}">
         <i data-lucide="layout-dashboard" class="nav-icon"></i>
         <span class="nav-label">Overview</span>
