@@ -1,0 +1,7 @@
+openclaw ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart openclaw
+openclaw ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart clawd-control
+openclaw ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart clawmetry
+openclaw ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart cloudflared
+openclaw ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart tailscaled
+openclaw ALL=(ALL) NOPASSWD: /usr/bin/systemctl is-active *
+openclaw ALL=(ALL) NOPASSWD: /usr/bin/systemctl show *

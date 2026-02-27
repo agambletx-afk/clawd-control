@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clawd Control — Chat</title>
+  <style>
+    .main { padding: 0 !important; overflow: hidden !important; }
+    .chat-shell {
+      height: calc(100dvh - 48px);
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg-primary);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+    .chat-list {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .empty-state {
+      margin: auto;
+      color: var(--text-tertiary);
+      text-align: center;
+      font-size: 0.9rem;
+    }
+    .msg-row {
+      display: flex;
+    }
+    .msg-row.user { justify-content: flex-end; }
+    .msg-row.assistant { justify-content: flex-start; }
+    .bubble {
+      max-width: min(85%, 760px);
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border-subtle);
+      background: var(--surface);
+      box-shadow: var(--shadow-sm);
+    }
+    .msg-row.user .bubble {
+      background: rgba(59, 130, 246, 0.15);
+      border-color: rgba(59, 130, 246, 0.3);
+    }
+    .bubble-text {
+      white-space: pre-wrap;
+      color: var(--text-primary);
+      font-size: 0.92rem;
+      line-height: 1.4;
+    }
+    .bubble-meta {
+      margin-top: 6px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: flex-end;
+      color: var(--text-tertiary);
+      font-size: 0.72rem;
+    }
+    .msg-row.assistant .bubble-meta { justify-content: flex-start; }
+    .channel-pill {
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 1px 6px;
+      font-size: 0.68rem;
+      letter-spacing: 0.02em;
+    }
+    .composer {
+      border-top: 1px solid var(--border-subtle);
+      padding: 12px;
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+      background: var(--bg-secondary);
+    }
+    .composer textarea {
+      flex: 1;
+      resize: none;
+      min-height: 44px;
+      max-height: 160px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text-primary);
+      font: inherit;
+      padding: 10px;
+      outline: none;
+    }
+    .composer button {
+      height: 44px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0 14px;
+      background: var(--accent);
+      color: var(--bg-primary);
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .composer button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .toast {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      background: var(--error-bg);
+      color: var(--error);
+      border: 1px solid rgba(239,68,68,0.3);
+      font-size: 0.82rem;
+      display: none;
+      z-index: 2000;
+    }
+    .typing-dots span {
+      animation: typingBlink 1.4s infinite both;
+      font-size: 1.5rem;
+      line-height: 0.5;
+      letter-spacing: 2px;
+    }
+    .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes typingBlink {
+      0%, 60%, 100% { opacity: 0.2; }
+      30% { opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <main class="main">
+    <section class="chat-shell">
+      <div id="chatList" class="chat-list"></div>
+      <form id="composer" class="composer">
+        <textarea id="messageInput" placeholder="Message agent..." rows="1"></textarea>
+        <button id="sendBtn" type="submit">Send</button>
+      </form>
+    </section>
+  </main>
+  <div id="toast" class="toast"></div>
+
+  <script>
+    const FETCH_OPTS = { credentials: 'same-origin' };
+    const state = {
+      messagesById: new Set(),
+      latestTimestamp: null,
+      pollTimer: null,
+      sending: false,
+    };
+
+    const chatList = document.getElementById('chatList');
+    const composer = document.getElementById('composer');
+    const input = document.getElementById('messageInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const toast = document.getElementById('toast');
+
+    function channelLabel(channel) {
+      if (!channel) return null;
+      const value = String(channel).toLowerCase();
+      if (value.includes('telegram') || value === 'tg') return 'TG';
+      if (value.includes('web')) return 'Web';
+      if (value.includes('dashboard')) return 'Web';
+      return channel;
+    }
+
+    function formatTime(ts) {
+      if (!ts) return '';
+      try {
+        let d;
+        if (typeof ts === 'number' || /^\d+$/.test(String(ts))) {
+          const n = Number(ts);
+          d = new Date(n > 1e12 ? n : n * 1000);
+        } else {
+          d = new Date(ts);
+        }
+        if (isNaN(d.getTime())) return '';
+        const now = new Date();
+        const hours = d.getHours();
+        const mins = String(d.getMinutes()).padStart(2, '0');
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        const h12 = hours % 12 || 12;
+        // If today, just show time. Otherwise show date + time.
+        if (d.toDateString() === now.toDateString()) {
+          return `${h12}:${mins} ${ampm}`;
+        }
+        return `${d.getMonth()+1}/${d.getDate()} ${h12}:${mins} ${ampm}`;
+      } catch { return ''; }
+    }
+
+    function shouldStickToBottom() {
+      const threshold = 60;
+      return chatList.scrollHeight - chatList.scrollTop - chatList.clientHeight < threshold;
+    }
+
+    function scrollToBottom() {
+      chatList.scrollTop = chatList.scrollHeight;
+    }
+
+    function showEmptyState() {
+      chatList.innerHTML = '<div class="empty-state">No messages yet. Send a message or chat via Telegram.</div>';
+    }
+
+    function showToast(message) {
+      toast.textContent = message;
+      toast.style.display = 'block';
+      clearTimeout(showToast._timer);
+      showToast._timer = setTimeout(() => { toast.style.display = 'none'; }, 2500);
+    }
+
+    function renderMessage(message) {
+      const row = document.createElement('div');
+      row.className = `msg-row ${message.role}`;
+
+      const bubble = document.createElement('article');
+      bubble.className = 'bubble';
+
+      const text = document.createElement('div');
+      text.className = 'bubble-text';
+      text.textContent = message.content;
+
+      const meta = document.createElement('div');
+      meta.className = 'bubble-meta';
+
+      const ts = document.createElement('span');
+      ts.dataset.ts = message.timestamp || '';
+      ts.textContent = formatTime(message.timestamp);
+      meta.appendChild(ts);
+
+      const channel = channelLabel(message.channel);
+      if (channel) {
+        const pill = document.createElement('span');
+        pill.className = 'channel-pill';
+        pill.textContent = channel;
+        meta.appendChild(pill);
+      }
+
+      bubble.appendChild(text);
+      bubble.appendChild(meta);
+      row.appendChild(bubble);
+      chatList.appendChild(row);
+    }
+
+    function showTypingIndicator() {
+      if (document.getElementById('typing-indicator')) return; // Already showing
+      const row = document.createElement('div');
+      row.className = 'msg-row assistant';
+      row.id = 'typing-indicator';
+      row.innerHTML = `
+        <div class="bubble" style="padding:12px 18px">
+          <span class="typing-dots"><span>.</span><span>.</span><span>.</span></span>
+        </div>`;
+      chatList.appendChild(row);
+      scrollToBottom();
+    }
+
+    function removeTypingIndicator() {
+      const el = document.getElementById('typing-indicator');
+      if (el) el.remove();
+    }
+
+    function appendMessages(messages) {
+      if (!Array.isArray(messages) || messages.length === 0) return;
+      const autoScroll = shouldStickToBottom();
+
+      if (chatList.querySelector('.empty-state')) chatList.innerHTML = '';
+      const hasAssistant = messages.some(m => m.role === 'assistant');
+      if (hasAssistant) removeTypingIndicator();
+
+      for (const message of messages) {
+        // Dedup: for user messages, key on role:content to catch optimistic + polled dupes
+        // For assistant messages, key on id:timestamp:role (content can change with streaming)
+        let key;
+        if (message.role === 'user') {
+          key = `user:${message.content}`;
+        } else {
+          key = `${message.id}:${message.timestamp || ''}:${message.role}`;
+        }
+        if (state.messagesById.has(key)) {
+          // Still update timestamp tracking for skipped dupes
+          if (message.timestamp && (!state.latestTimestamp || new Date(message.timestamp) > new Date(state.latestTimestamp))) {
+            state.latestTimestamp = message.timestamp;
+          }
+          continue;
+        }
+        state.messagesById.add(key);
+
+        renderMessage(message);
+        if (message.timestamp && (!state.latestTimestamp || new Date(message.timestamp) > new Date(state.latestTimestamp))) {
+          state.latestTimestamp = message.timestamp;
+        }
+      }
+
+      if (autoScroll) scrollToBottom();
+    }
+
+
+    function refreshRelativeTimes() {
+      document.querySelectorAll('[data-ts]').forEach((node) => {
+        node.textContent = formatTime(node.dataset.ts);
+      });
+    }
+
+    async function loadInitialMessages() {
+      const res = await fetch('/api/chat/messages?limit=100', FETCH_OPTS);
+      const data = await res.json();
+      if (!data.messages || data.messages.length === 0) {
+        showEmptyState();
+        return;
+      }
+      appendMessages(data.messages);
+      scrollToBottom();
+    }
+
+    async function pollMessages() {
+      try {
+        const qs = state.latestTimestamp
+          ? `/api/chat/messages?after=${encodeURIComponent(state.latestTimestamp)}`
+          : '/api/chat/messages?limit=100';
+        const res = await fetch(qs, FETCH_OPTS);
+        if (!res.ok) return;
+        const data = await res.json();
+        appendMessages(data.messages || []);
+        // Event-driven typing indicator: show only when agent is actively generating
+        if (data.agentStreaming) {
+          showTypingIndicator();
+        } else {
+          removeTypingIndicator();
+        }
+      } catch {}
+    }
+
+    async function sendMessage(text) {
+      if (state.sending) return;
+      state.sending = true;
+      sendBtn.disabled = true;
+      input.value = '';
+
+      const optimistic = {
+        id: `optimistic-${Date.now()}`,
+        role: 'user',
+        content: text,
+        timestamp: new Date().toISOString(),
+        channel: 'dashboard',
+      };
+      appendMessages([optimistic]);
+      scrollToBottom();
+
+      try {
+        const res = await fetch('/api/chat/send', {
+          ...FETCH_OPTS,
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: text }),
+        });
+
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.error || 'Failed to send message');
+      } catch (error) {
+        showToast(error.message || 'Failed to send message');
+        removeTypingIndicator(); // Clear stuck indicator on error
+      } finally {
+        state.sending = false;
+        sendBtn.disabled = false;
+      }
+    }
+
+    composer.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const text = input.value.trim();
+      if (!text) return;
+      sendMessage(text);
+    });
+
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        composer.requestSubmit();
+      }
+    });
+
+    input.addEventListener('input', () => {
+      input.style.height = 'auto';
+      input.style.height = `${Math.min(input.scrollHeight, 160)}px`;
+    });
+
+    (async function init() {
+      try {
+        await loadInitialMessages();
+      } catch {
+        showEmptyState();
+      }
+      state.pollTimer = setInterval(pollMessages, 2000);
+      setInterval(refreshRelativeTimes, 30000);
+    })();
+  </script>
+  <script src="/layout.js"></script>
+  <script src="/lucide.min.js"></script>
+  <script>lucide.createIcons();</script>
+</body>
+</html>

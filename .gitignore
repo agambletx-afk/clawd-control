@@ -8,6 +8,7 @@ node_modules/
 # Reports & generated data
 reports/
 *.report.json
+tasks.db
 
 # Local/personal files
 gandalf-report.json
@@ -18,3 +19,5 @@ MVP-PLAN.md
 # OS
 .DS_Store
 Thumbs.db
+tasks.db-shm
+tasks.db-wal

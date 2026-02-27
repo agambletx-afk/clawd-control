@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tasks — Clawd Control</title>
+  <style>
+    .page-header { margin-bottom: 16px; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .page-header h1 { font-size: 2rem; margin-bottom: 4px; color: var(--text-primary); }
+    .page-header .subtitle { font-size: 0.9rem; color: var(--text-secondary); }
+
+    .btn {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+      color: var(--text-primary);
+      padding: 6px 10px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: all var(--transition-fast);
+    }
+    .btn:hover { border-color: var(--accent); background: var(--surface-hover); }
+    .btn-primary { background: var(--accent); color: #0c0f14; border-color: var(--accent); font-weight: 700; }
+    .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+    .btn-danger { border-color: rgba(239,68,68,0.4); color: #fca5a5; }
+    .btn-danger:hover { border-color: #ef4444; }
+    .btn-small { padding: 4px 8px; font-size: 0.72rem; }
+
+    .stats-bar {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(140px, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .stat {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 10px 12px;
+    }
+    .stat .k { font-size: 0.72rem; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.06em; }
+    .stat .v { font-size: 1.1rem; font-weight: 700; margin-top: 2px; }
+    .stuck-alert .v { color: #f87171; }
+
+    .board-wrap {
+      overflow-x: auto;
+      padding-bottom: 4px;
+    }
+    .board {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(260px, 1fr));
+      gap: 10px;
+      min-width: 1560px;
+      align-items: start;
+    }
+    .column {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      min-height: 520px;
+      display: flex;
+      flex-direction: column;
+      max-height: calc(100vh - 220px);
+    }
+    .column-header {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.82rem;
+      font-weight: 700;
+      position: sticky;
+      top: 0;
+      background: var(--bg-secondary);
+      z-index: 1;
+    }
+    .column-body {
+      padding: 6px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .archive-collapsed .column-body { display: none; }
+
+    .task-card {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-subtle);
+      border-left: 4px solid var(--text-tertiary);
+      border-radius: 10px;
+      padding: 5px 6px;
+      cursor: pointer;
+      box-shadow: var(--shadow-sm);
+    }
+    .task-card:hover { border-color: var(--border); background: var(--surface); }
+    .task-title { font-size: 0.74rem; font-weight: 700; line-height: 1.12; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .meta-row { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; line-height: 1.1; }
+    .badge {
+      font-size: 0.61rem;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 1px 6px;
+      color: var(--text-secondary);
+      background: var(--bg-secondary);
+      white-space: nowrap;
+    }
+    .meta-sub { margin-top: 3px; display: flex; align-items: center; justify-content: space-between; color: var(--text-tertiary); font-size: 0.62rem; line-height: 1.1; }
+
+    .priority-critical { border-left-color: #f87171; }
+    .priority-high { border-left-color: #fb923c; }
+    .priority-medium { border-left-color: #60a5fa; }
+    .priority-low { border-left-color: #9ca3af; }
+
+    .panel-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(6, 8, 10, 0.55);
+      display: none;
+      z-index: 150;
+    }
+    .panel-backdrop.open { display: block; }
+    .detail-panel {
+      position: fixed;
+      right: -520px;
+      top: 0;
+      width: min(520px, 100vw);
+      height: 100dvh;
+      background: var(--bg-secondary);
+      border-left: 1px solid var(--border);
+      z-index: 160;
+      transition: right var(--transition-base);
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+    }
+    .detail-panel.open { right: 0; }
+    .panel-head {
+      padding: 12px;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+    .panel-body { padding: 12px; overflow-y: auto; min-height: 0; }
+    .panel-title { font-size: 1rem; font-weight: 700; }
+    .field { margin-bottom: 10px; }
+    .field .label { font-size: 0.7rem; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
+    .field .value { font-size: 0.83rem; color: var(--text-primary); word-break: break-word; }
+    .field pre {
+      font-size: 0.74rem;
+      padding: 8px;
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      background: var(--bg-tertiary);
+      overflow-x: auto;
+      white-space: pre-wrap;
+    }
+    .history-list {
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      background: var(--bg-tertiary);
+      max-height: 240px;
+      overflow-y: auto;
+    }
+    .history-entry {
+      padding: 8px;
+      border-bottom: 1px solid var(--border-subtle);
+      font-size: 0.74rem;
+    }
+    .history-entry:last-child { border-bottom: none; }
+    .history-entry .head { color: var(--text-secondary); margin-bottom: 2px; }
+    .panel-footer {
+      padding: 10px 12px;
+      border-top: 1px solid var(--border-subtle);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .comment-row { display: flex; gap: 8px; }
+    .comment-row input {
+      flex: 1;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      padding: 8px;
+      font-size: 0.8rem;
+    }
+    .action-row { display: flex; gap: 6px; flex-wrap: wrap; }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(6, 8, 10, 0.6);
+      display: none;
+      z-index: 170;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal {
+      width: min(560px, 100%);
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+    }
+    .modal h2 { font-size: 1rem; margin-bottom: 10px; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .form-grid .full { grid-column: 1 / -1; }
+    .form-field label { display: block; font-size: 0.72rem; color: var(--text-secondary); margin-bottom: 4px; }
+    .form-field input, .form-field textarea, .form-field select {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      padding: 8px;
+      font-size: 0.8rem;
+    }
+    .form-field textarea { min-height: 90px; resize: vertical; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+
+    @media (max-width: 980px) {
+      .stats-bar { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
+      .page-header h1 { font-size: 1.7rem; }
+      .column { min-height: 460px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="main">
+    <div class="page-header">
+      <div>
+        <h1>📋 Tasks</h1>
+        <p class="subtitle">Kanban board for human and agent work coordination</p>
+      </div>
+      <button class="btn btn-primary" id="newTaskBtn">+ New Task</button>
+    </div>
+
+    <section class="stats-bar" id="statsBar">
+      <div class="stat"><div class="k">Total Tasks</div><div class="v" id="statTotal">0</div></div>
+      <div class="stat"><div class="k">Completion Rate</div><div class="v" id="statCompletion">0%</div></div>
+      <div class="stat"><div class="k">Token Spend</div><div class="v" id="statTokens">0</div></div>
+      <div class="stat stuck-alert"><div class="k">Stuck (&gt;24h)</div><div class="v" id="statStuck">0</div></div>
+    </section>
+
+    <div class="board-wrap">
+      <section class="board">
+        <div class="column" data-status="proposed">
+          <div class="column-header"><span>Proposed</span><span id="count-proposed">0</span></div>
+          <div class="column-body" id="col-proposed"></div>
+        </div>
+        <div class="column" data-status="backlog">
+          <div class="column-header"><span>Backlog</span><span id="count-backlog">0</span></div>
+          <div class="column-body" id="col-backlog"></div>
+        </div>
+        <div class="column" data-status="in_progress">
+          <div class="column-header"><span>In Progress</span><span id="count-in_progress">0</span></div>
+          <div class="column-body" id="col-in_progress"></div>
+        </div>
+        <div class="column" data-status="review">
+          <div class="column-header"><span>Review</span><span id="count-review">0</span></div>
+          <div class="column-body" id="col-review"></div>
+        </div>
+        <div class="column" data-status="done">
+          <div class="column-header"><span>Done</span><span id="count-done">0</span></div>
+          <div class="column-body" id="col-done"></div>
+        </div>
+        <div class="column archive-collapsed" id="archiveColumn" data-status="archive">
+          <div class="column-header"><span>Archive</span><button class="btn btn-small" id="archiveToggle">Expand</button></div>
+          <div class="column-body" id="col-archive"></div>
+        </div>
+      </section>
+    </div>
+
+    <div class="panel-backdrop" id="panelBackdrop"></div>
+    <aside class="detail-panel" id="detailPanel">
+      <div class="panel-head">
+        <div class="panel-title" id="panelTitle">Task</div>
+        <button class="btn btn-small" id="closePanelBtn">Close</button>
+      </div>
+      <div class="panel-body" id="panelBody"></div>
+      <div class="panel-footer">
+        <div class="comment-row">
+          <input type="text" id="commentInput" placeholder="Add comment to history...">
+          <button class="btn btn-small" id="commentBtn">Comment</button>
+        </div>
+        <div class="action-row" id="panelActions"></div>
+      </div>
+    </aside>
+
+    <div class="modal-backdrop" id="taskModalBackdrop">
+      <div class="modal">
+        <h2>Create New Task</h2>
+        <form id="taskForm">
+          <div class="form-grid">
+            <div class="form-field full">
+              <label for="taskTitle">Title</label>
+              <input id="taskTitle" required maxlength="100" placeholder="Task title">
+            </div>
+            <div class="form-field full">
+              <label for="taskDescription">Description</label>
+              <textarea id="taskDescription" placeholder="Description"></textarea>
+            </div>
+            <div class="form-field">
+              <label for="taskPriority">Priority</label>
+              <select id="taskPriority">
+                <option value="critical">critical</option>
+                <option value="high">high</option>
+                <option value="medium" selected>medium</option>
+                <option value="low">low</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label for="taskAgent">Assigned Agent</label>
+              <select id="taskAgent">
+                <option value="">Unassigned</option>
+                <option value="jarvis">jarvis</option>
+              </select>
+            </div>
+            <div class="form-field full">
+              <label for="taskDepends">Depends On (IDs)</label>
+              <input id="taskDepends" placeholder="3,7,12">
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn" id="cancelTaskBtn">Cancel</button>
+            <button type="submit" class="btn btn-primary">Create Task</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script>
+      function initTasksTab() {
+        const FETCH_OPTS = { credentials: 'same-origin' };
+        const PRIORITY_RANK = { critical: 1, high: 2, medium: 3, low: 4 };
+        const STATUS_ORDER = ['proposed', 'backlog', 'in_progress', 'review', 'done', 'archive'];
+
+        const state = {
+          tasks: [],
+          stats: null,
+          selectedTaskId: null,
+          history: [],
+          archiveCollapsed: true,
+          pollTimer: null,
+        };
+
+        const cstFormatter = new Intl.DateTimeFormat('en-US', {
+          timeZone: 'America/Chicago',
+          year: 'numeric', month: '2-digit', day: '2-digit',
+          hour: '2-digit', minute: '2-digit', second: '2-digit',
+          hour12: false,
+        });
+
+        const fmtNum = (n) => Number(n || 0).toLocaleString('en-US');
+        const fmtPct = (n) => `${Math.round(Number(n || 0) * 100)}%`;
+        const fmtTokens = (n) => {
+          const value = Number(n);
+          if (!Number.isFinite(value)) return '';
+          if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
+          if (value >= 1000) return `${(value / 1000).toFixed(1)}K`;
+          return String(value);
+        };
+        const esc = (s) => String(s ?? '').replace(/[&<>\"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+        function normalizeStatus(s) { return (s || '').toLowerCase().replace(/[- ]/g, '_'); }
+
+        function ageLabel(iso) {
+          const t = Date.parse(iso);
+          if (!Number.isFinite(t)) return '--';
+          const diff = Date.now() - t;
+          if (diff < 60000) return 'now';
+          if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+          if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+          return `${Math.floor(diff / 86400000)}d ago`;
+        }
+
+        function statusActionButtons(task) {
+          if (!task) return '';
+          const status = normalizeStatus(task.status);
+          if (status === 'proposed') {
+            return `
+              <button class="btn btn-small" data-action="approve" data-id="${task.id}">Approve</button>
+              <button class="btn btn-small btn-danger" data-action="reject" data-id="${task.id}">Reject</button>
+            `;
+          }
+          if (status === 'backlog') {
+            return `<button class="btn btn-small" data-action="start" data-id="${task.id}">Start</button>`;
+          }
+          if (status === 'in_progress') {
+            return `<button class="btn btn-small" data-action="complete" data-id="${task.id}">Complete</button>`;
+          }
+          if (status === 'review') {
+            return `
+              <button class="btn btn-small" data-action="approve-review" data-id="${task.id}">Approve</button>
+              <button class="btn btn-small" data-action="return-review" data-id="${task.id}">Return</button>
+            `;
+          }
+          if (status === 'done') {
+            return `<button class="btn btn-small" data-action="archive" data-id="${task.id}">Archive</button>`;
+          }
+          if (status === 'archive') {
+            return `<button class="btn btn-small" data-action="restore" data-id="${task.id}">Restore</button>`;
+          }
+          return '';
+        }
+
+        function getBlockingTitle(task) {
+          if (!Array.isArray(task.blocked_by) || !task.blocked_by.length) return '';
+          const map = new Map(state.tasks.map((item) => [item.id, item.title]));
+          const names = task.blocked_by.map((id) => `#${id} ${map.get(id) || 'Unknown task'}`);
+          return names.join(', ');
+        }
+
+        function cardHtml(task) {
+          const agentLabel = task.assigned_agent ? `🤖 ${task.assigned_agent}` : '';
+          const blocked = Array.isArray(task.blocked_by) && task.blocked_by.length > 0;
+          const createdBy = task.created_by ? task.created_by[0].toUpperCase() + task.created_by.slice(1) : 'Unknown';
+          return `
+            <article class="task-card priority-${esc(task.priority)}" data-id="${task.id}">
+              <div class="task-title" title="${esc(task.title)}">${esc(task.title)}</div>
+              <div class="meta-row">
+                <span class="badge">${esc(task.priority)}</span>
+                ${agentLabel ? `<span class="badge">${esc(agentLabel)}</span>` : ''}
+                ${task.token_actual != null ? `<span class="badge">📊 ${esc(fmtTokens(task.token_actual))} tokens</span>` : ''}
+                <span class="badge">${esc(createdBy)}</span>
+              </div>
+              <div class="meta-sub">
+                <span>${ageLabel(task.created_at)}</span>
+                <span>${blocked ? `🔒` : ''}</span>
+              </div>
+              ${blocked ? `<div class="meta-sub" title="${esc(getBlockingTitle(task))}"><span>Blocked by: ${esc(task.blocked_by.join(','))}</span></div>` : ''}
+            </article>
+          `;
+        }
+
+        function getColumnTasks(status) {
+          const list = state.tasks.filter((task) => task.status === status);
+          if (status === 'backlog') {
+            list.sort((a, b) => {
+              const pa = PRIORITY_RANK[a.priority] || 9;
+              const pb = PRIORITY_RANK[b.priority] || 9;
+              if (pa !== pb) return pa - pb;
+              return Date.parse(a.created_at) - Date.parse(b.created_at);
+            });
+          } else {
+            list.sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at));
+          }
+          return list;
+        }
+
+        function renderStats() {
+          const stats = state.stats || {};
+          document.getElementById('statTotal').textContent = fmtNum(stats.total || 0);
+          document.getElementById('statCompletion').textContent = fmtPct(stats.completion_rate || 0);
+          document.getElementById('statTokens').textContent = fmtNum(stats.total_tokens_actual || 0);
+          document.getElementById('statStuck').textContent = fmtNum((stats.stuck_tasks || []).length);
+        }
+
+        function renderColumns() {
+          for (const status of STATUS_ORDER) {
+            const tasks = getColumnTasks(status);
+            const container = document.getElementById(`col-${status}`);
+            if (!container) continue;
+            container.innerHTML = tasks.map(cardHtml).join('') || `<div class="badge" style="display:inline-flex">No tasks</div>`;
+            if (status !== 'archive') {
+              const countEl = document.getElementById(`count-${status}`);
+              if (countEl) countEl.textContent = String(tasks.length);
+            }
+          }
+          const archiveTasks = getColumnTasks('archive');
+          const archiveToggle = document.getElementById('archiveToggle');
+          archiveToggle.textContent = state.archiveCollapsed ? `Expand (${archiveTasks.length})` : `Collapse (${archiveTasks.length})`;
+          document.getElementById('archiveColumn').classList.toggle('archive-collapsed', state.archiveCollapsed);
+        }
+
+        function closePanel() {
+          document.getElementById('panelBackdrop').classList.remove('open');
+          document.getElementById('detailPanel').classList.remove('open');
+          state.selectedTaskId = null;
+          state.history = [];
+        }
+
+        async function loadHistory(taskId) {
+          const res = await fetch(`/api/tasks/${taskId}/history`, FETCH_OPTS);
+          if (!res.ok) throw new Error('Failed to load history');
+          const data = await res.json();
+          state.history = Array.isArray(data.history) ? data.history : [];
+        }
+
+        function renderPanel() {
+          const task = state.tasks.find((item) => item.id === state.selectedTaskId);
+          if (!task) return;
+          document.getElementById('panelTitle').textContent = `#${task.id} ${task.title}`;
+          const blockedByText = task.blocked_by && task.blocked_by.length ? task.blocked_by.join(', ') : 'none';
+          const payloadText = task.handoff_payload ? (() => {
+            try { return JSON.stringify(JSON.parse(task.handoff_payload), null, 2); }
+            catch { return task.handoff_payload; }
+          })() : '';
+
+          const detailsHtml = `
+            <div class="field"><div class="label">Status</div><div class="value">${esc(task.status)}</div></div>
+            <div class="field"><div class="label">Priority</div><div class="value">${esc(task.priority)}</div></div>
+            <div class="field"><div class="label">Assigned Agent</div><div class="value">${esc(task.assigned_agent || 'unassigned')}</div></div>
+            <div class="field"><div class="label">Created By</div><div class="value">${esc(task.created_by || 'unknown')}</div></div>
+            <div class="field"><div class="label">Source</div><div class="value">${esc(task.source || 'dashboard')}</div></div>
+            <div class="field"><div class="label">Depends On</div><div class="value">${esc(task.depends_on || 'none')}</div></div>
+            <div class="field"><div class="label">Blocked By</div><div class="value">${esc(blockedByText)}</div></div>
+            <div class="field"><div class="label">Token Estimate</div><div class="value">${esc(task.token_estimate ?? '--')}</div></div>
+            <div class="field"><div class="label">Token Actual</div><div class="value">${esc(task.token_actual ?? '--')}</div></div>
+            <div class="field"><div class="label">Created At (CST)</div><div class="value">${esc(cstFormatter.format(new Date(task.created_at)))}</div></div>
+            <div class="field"><div class="label">Updated At (CST)</div><div class="value">${esc(cstFormatter.format(new Date(task.updated_at)))}</div></div>
+            <div class="field"><div class="label">Description</div><div class="value">${esc(task.description || '')}</div></div>
+            <div class="field"><div class="label">Handoff Payload</div><div class="value">${payloadText ? `<pre>${esc(payloadText)}</pre>` : 'None'}</div></div>
+            <div class="field"><div class="label">History</div>
+              <div class="history-list">
+                ${state.history.length ? state.history.map((entry) => `
+                  <div class="history-entry">
+                    <div class="head">${esc(cstFormatter.format(new Date(entry.created_at)))} | ${esc(entry.actor)} | ${esc(entry.action)}</div>
+                    <div>${esc(entry.detail || '')}</div>
+                  </div>
+                `).join('') : '<div class="history-entry">No history yet.</div>'}
+              </div>
+            </div>
+          `;
+          document.getElementById('panelBody').innerHTML = detailsHtml;
+          document.getElementById('panelActions').innerHTML = statusActionButtons(task);
+        }
+
+        async function openPanel(taskId) {
+          state.selectedTaskId = taskId;
+          await loadHistory(taskId);
+          renderPanel();
+          document.getElementById('panelBackdrop').classList.add('open');
+          document.getElementById('detailPanel').classList.add('open');
+        }
+
+        async function patchTask(id, body) {
+          const res = await fetch(`/api/tasks/${id}`, {
+            ...FETCH_OPTS,
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Failed to update task');
+          return data.task;
+        }
+
+        async function runAction(taskId, action) {
+          try {
+            if (action === 'approve') await patchTask(taskId, { status: 'backlog' });
+            if (action === 'reject') await patchTask(taskId, { status: 'archive' });
+            if (action === 'complete') await patchTask(taskId, { status: 'review' });
+            if (action === 'approve-review') await patchTask(taskId, { status: 'done' });
+            if (action === 'return-review') await patchTask(taskId, { status: 'backlog' });
+            if (action === 'archive') await patchTask(taskId, { status: 'archive' });
+            if (action === 'restore') await patchTask(taskId, { status: 'backlog' });
+            if (action === 'start') {
+              const task = state.tasks.find((item) => item.id === taskId);
+              const current = task?.assigned_agent || 'jarvis';
+              const agent = prompt('Assign agent before starting (leave blank for unassigned):', current);
+              if (agent === null) return;
+              await patchTask(taskId, { status: 'in_progress', assigned_agent: agent.trim() || null });
+            }
+            await refreshAll();
+            if (state.selectedTaskId === taskId) {
+              await openPanel(taskId);
+            }
+          } catch (err) {
+            alert(err.message);
+          }
+        }
+
+        async function postComment() {
+          if (!state.selectedTaskId) return;
+          const input = document.getElementById('commentInput');
+          const detail = input.value.trim();
+          if (!detail) return;
+          const res = await fetch(`/api/tasks/${state.selectedTaskId}/history`, {
+            ...FETCH_OPTS,
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ actor: 'adam', action: 'comment', detail }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            alert(data.error || 'Failed to add comment');
+            return;
+          }
+          input.value = '';
+          await loadHistory(state.selectedTaskId);
+          renderPanel();
+        }
+
+        function toggleCreateModal(open) {
+          document.getElementById('taskModalBackdrop').classList.toggle('open', !!open);
+        }
+
+        async function submitCreateTask(e) {
+          e.preventDefault();
+          const payload = {
+            title: document.getElementById('taskTitle').value.trim(),
+            description: document.getElementById('taskDescription').value,
+            priority: document.getElementById('taskPriority').value,
+            assigned_agent: document.getElementById('taskAgent').value || null,
+            depends_on: document.getElementById('taskDepends').value.trim() || null,
+            source: 'dashboard',
+            created_by: 'adam',
+            status: 'backlog',
+          };
+
+          const res = await fetch('/api/tasks', {
+            ...FETCH_OPTS,
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            alert(data.error || 'Failed to create task');
+            return;
+          }
+
+          document.getElementById('taskForm').reset();
+          document.getElementById('taskPriority').value = 'medium';
+          toggleCreateModal(false);
+          await refreshAll();
+        }
+
+        async function loadTasks() {
+          const res = await fetch('/api/tasks', FETCH_OPTS);
+          if (!res.ok) throw new Error('Failed to fetch tasks');
+          const data = await res.json();
+          state.tasks = Array.isArray(data.tasks) ? data.tasks : [];
+        }
+
+        async function loadStats() {
+          const res = await fetch('/api/tasks/stats', FETCH_OPTS);
+          if (!res.ok) throw new Error('Failed to fetch stats');
+          state.stats = await res.json();
+        }
+
+        async function refreshAll() {
+          await Promise.all([loadTasks(), loadStats()]);
+          renderStats();
+          renderColumns();
+        }
+
+        document.getElementById('archiveToggle').addEventListener('click', () => {
+          state.archiveCollapsed = !state.archiveCollapsed;
+          renderColumns();
+        });
+
+        document.getElementById('newTaskBtn').addEventListener('click', () => toggleCreateModal(true));
+        document.getElementById('cancelTaskBtn').addEventListener('click', () => toggleCreateModal(false));
+        document.getElementById('taskModalBackdrop').addEventListener('click', (e) => {
+          if (e.target.id === 'taskModalBackdrop') toggleCreateModal(false);
+        });
+        document.getElementById('taskForm').addEventListener('submit', submitCreateTask);
+
+        document.getElementById('panelBackdrop').addEventListener('click', closePanel);
+        document.getElementById('closePanelBtn').addEventListener('click', closePanel);
+        document.getElementById('commentBtn').addEventListener('click', postComment);
+        document.getElementById('commentInput').addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') postComment();
+        });
+
+        document.querySelector('.board').addEventListener('click', (e) => {
+          const actionBtn = e.target.closest('button[data-action]');
+          if (actionBtn) {
+            e.stopPropagation();
+            const taskId = Number(actionBtn.dataset.id);
+            const action = actionBtn.dataset.action;
+            if (Number.isInteger(taskId)) runAction(taskId, action);
+            return;
+          }
+
+          const card = e.target.closest('.task-card');
+          if (!card) return;
+          const taskId = Number(card.dataset.id);
+          if (Number.isInteger(taskId)) {
+            openPanel(taskId).catch((err) => alert(err.message));
+          }
+        });
+
+        document.getElementById('panelActions').addEventListener('click', (e) => {
+          const btn = e.target.closest('button[data-action]');
+          if (!btn || !state.selectedTaskId) return;
+          runAction(state.selectedTaskId, btn.dataset.action);
+        });
+
+        if (window.__tasksPollTimer) clearInterval(window.__tasksPollTimer);
+        refreshAll().catch((err) => {
+          console.error(err);
+          alert('Failed to load tasks board.');
+        });
+        window.__tasksPollTimer = setInterval(() => {
+          refreshAll().catch((err) => console.error('Tasks auto-refresh failed:', err));
+        }, 10000);
+      }
+
+      initTasksTab();
+    </script>
+  </main>
+  <script src="/layout.js"></script>
+</body>
+</html>

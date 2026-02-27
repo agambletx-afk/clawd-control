@@ -17,40 +17,35 @@
   const agentState = (window.agentState = window.agentState || {});
   window.hostState = window.hostState || {};
   let evtSource = null;
+  let cliUsagePollTimer = null;
+  let cliUsageState = null;
+  let expandedCliProvider = null;
 
   // ════════════════════════════════════════════════════
   // PAGE DETECTION
   // ════════════════════════════════════════════════════
 
   const path = window.location.pathname;
-  const activePage =
-    path === '/' || path === '/dashboard.html'
-      ? 'dashboard'
-      : path === '/costs.html'
-        ? 'costs'
-        : path === '/agents.html'
-          ? 'agents'
-          : path === '/sessions.html'
-            ? 'sessions'
-            : path === '/create.html'
-        ? 'create'
-        : path === '/analytics.html'
-          ? 'analytics'
-          : path === '/tokens.html'
-            ? 'tokens'
-            : path === '/waterfall.html'
-              ? 'waterfall'
-              : path === '/traces.html'
-                ? 'traces'
-                : path === '/crons.html'
-                  ? 'crons'
-                  : path === '/fleet.html'
-                    ? 'fleet'
-                    : path.startsWith('/agent/')
-                      ? 'agent-detail'
-                      : path === '/gandalf-view.html'
-                        ? 'gandalf'
-                        : 'other';
+  const PAGE_MAP = {
+    '/': 'dashboard',
+    '/dashboard.html': 'dashboard',
+    '/agents.html': 'agents',
+    '/sessions.html': 'sessions',
+    '/tasks.html': 'tasks',
+    '/apis.html': 'apis',
+    '/ops.html': 'ops',
+    '/create.html': 'create',
+    '/analytics.html': 'analytics',
+    '/tokens.html': 'tokens',
+    '/waterfall.html': 'waterfall',
+    '/traces.html': 'traces',
+    '/crons.html': 'crons',
+    '/fleet.html': 'fleet',
+    '/gandalf-view.html': 'gandalf',
+    '/chat.html': 'chat',
+  };
+
+  const activePage = PAGE_MAP[path] || (path.startsWith('/agent/') ? 'agent-detail' : 'other');
   const activeAgentId =
     activePage === 'agent-detail'
       ? decodeURIComponent(path.split('/').filter(Boolean).pop())
@@ -302,6 +297,120 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
   letter-spacing: -0.01em;
 }
 
+.sidebar-cli-usage {
+  padding: 8px 12px 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+.cli-usage-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  color: var(--text-tertiary);
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.cli-usage-refresh {
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-tertiary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: color var(--transition-fast), background-color var(--transition-fast), transform var(--transition-fast);
+}
+.cli-usage-refresh:hover {
+  color: var(--text-primary);
+  background: var(--surface);
+}
+.cli-usage-refresh.spinning i {
+  animation: cli-usage-refresh-spin 0.5s linear;
+}
+@keyframes cli-usage-refresh-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.cli-usage-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cli-usage-bar {
+  width: 100%;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+.cli-usage-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.62rem;
+  line-height: 1;
+  margin-bottom: 2px;
+  letter-spacing: 0.03em;
+}
+.cli-usage-track {
+  width: 100%;
+  height: 8px;
+  background: #374151;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.cli-usage-fill {
+  width: 0%;
+  height: 100%;
+  border-radius: 4px;
+  transition: width 220ms ease, background-color 220ms ease;
+}
+.cli-usage-detail {
+  margin-top: 8px;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  font-size: 0.68rem;
+  color: var(--text-secondary);
+}
+.cli-usage-detail[hidden] {
+  display: none;
+}
+.cli-usage-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.cli-usage-detail-title {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 0.72rem;
+}
+.cli-usage-detail-close {
+  border: 0;
+  background: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font-size: 0.85rem;
+  line-height: 1;
+}
+.cli-usage-detail-line {
+  margin-top: 3px;
+}
+.cli-usage-detail-error {
+  margin-top: 6px;
+  color: var(--warning);
+}
+
 /* ── Main Content ──────────────────────── */
 
 .main {
@@ -422,6 +531,9 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
     // Update theme icon
     updateThemeIcon();
 
+    // Start CLI usage polling
+    initCliUsage();
+
     // Refresh lucide icons if already loaded
     refreshIcons();
   }
@@ -433,12 +545,12 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
         <i data-lucide="layout-dashboard" class="nav-icon"></i>
         <span class="nav-label">Overview</span>
       </a>
+      <a href="/chat.html" class="nav-item${isActive('chat')}">
+        <i data-lucide="message-circle" class="nav-icon"></i>
+        <span class="nav-label">Chat</span>
+      </a>
 
       <div class="sidebar-section">Monitoring</div>
-      <a href="/costs.html" class="nav-item${isActive('costs')}">
-        <span class="nav-emoji">📊</span>
-        <span class="nav-label">Costs</span>
-      </a>
       <a href="/agents.html" class="nav-item${isActive('agents')}">
         <span class="nav-emoji">🤖</span>
         <span class="nav-label">Agents</span>
@@ -446,6 +558,18 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
       <a href="/sessions.html" class="nav-item${isActive('sessions')}">
         <span class="nav-emoji">📋</span>
         <span class="nav-label">Sessions</span>
+      </a>
+      <a href="/tasks.html" class="nav-item${isActive('tasks')}">
+        <span class="nav-emoji">📋</span>
+        <span class="nav-label">Tasks</span>
+      </a>
+      <a href="/apis.html" class="nav-item${isActive('apis')}">
+        <span class="nav-emoji">📡</span>
+        <span class="nav-label">APIs</span>
+      </a>
+      <a href="/ops.html" class="nav-item${isActive('ops')}">
+        <span class="nav-emoji">⚙️</span>
+        <span class="nav-label">Operations</span>
       </a>
 
       <div class="sidebar-section">Agents</div>
@@ -492,6 +616,36 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
       </div>
 
       <div class="sidebar-spacer"></div>
+
+      <div class="sidebar-cli-usage">
+        <div class="cli-usage-header">
+          <span>CLI Usage</span>
+          <button class="cli-usage-refresh" id="cliUsageRefreshBtn" type="button" aria-label="Refresh CLI usage" title="Refresh CLI usage">
+            <i data-lucide="refresh-cw" style="width:12px;height:12px"></i>
+          </button>
+        </div>
+        <div class="cli-usage-bars">
+          <button class="cli-usage-bar" id="cliUsageBar-codex" data-provider="codex" aria-expanded="false">
+            <div class="cli-usage-row">
+              <span>Codex</span>
+              <span id="cliUsageLabel-codex">-</span>
+            </div>
+            <div class="cli-usage-track">
+              <div class="cli-usage-fill" id="cliUsageFill-codex"></div>
+            </div>
+          </button>
+          <button class="cli-usage-bar" id="cliUsageBar-claude" data-provider="claude" aria-expanded="false">
+            <div class="cli-usage-row">
+              <span>Claude Code</span>
+              <span id="cliUsageLabel-claude">-</span>
+            </div>
+            <div class="cli-usage-track">
+              <div class="cli-usage-fill" id="cliUsageFill-claude"></div>
+            </div>
+          </button>
+        </div>
+        <div class="cli-usage-detail" id="cliUsageDetail" hidden></div>
+      </div>
 
       <div class="sidebar-footer">
         <button class="sf-btn" onclick="window.toggleSidebar()" title="Collapse sidebar [B]">
@@ -608,6 +762,224 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
       s.className = `seg ${h.level === 'healthy' ? 'ok' : h.level === 'degraded' ? 'warn' : h.level === 'down' ? 'err' : 'off'}`;
       fb.appendChild(s);
     });
+  }
+
+  // ════════════════════════════════════════════════════
+  // CLI USAGE FOOTER
+  // ════════════════════════════════════════════════════
+
+  function initCliUsage() {
+    const codexBar = document.getElementById('cliUsageBar-codex');
+    const claudeBar = document.getElementById('cliUsageBar-claude');
+    const refreshBtn = document.getElementById('cliUsageRefreshBtn');
+    if (!codexBar || !claudeBar) return;
+
+    codexBar.addEventListener('click', () => toggleCliDetail('codex'));
+    claudeBar.addEventListener('click', () => toggleCliDetail('claude'));
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', (event) => {
+        event.stopPropagation();
+        refreshCliUsage(true);
+      });
+    }
+
+    refreshCliUsage();
+    if (cliUsagePollTimer) clearInterval(cliUsagePollTimer);
+    cliUsagePollTimer = setInterval(() => refreshCliUsage(), 60000);
+  }
+
+  async function refreshCliUsage(withSpin = false) {
+    const refreshBtn = document.getElementById('cliUsageRefreshBtn');
+    if (withSpin && refreshBtn) refreshBtn.classList.add('spinning');
+    try {
+      const res = await fetch('/api/cli-usage', { cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const payload = await res.json();
+      cliUsageState = payload;
+      renderCliUsageBars();
+      renderCliUsageDetail();
+    } catch {
+      cliUsageState = {
+        checked_at: null,
+        providers: {
+          codex: {
+            name: 'Codex CLI',
+            session_pct: null,
+            session_reset: null,
+            weekly_pct: null,
+            weekly_reset: null,
+            credits: null,
+            status: 'error',
+            error: 'Failed to load usage data',
+          },
+          claude: {
+            name: 'Claude Code',
+            session_pct: null,
+            session_reset: null,
+            weekly_pct: null,
+            weekly_reset: null,
+            credits: null,
+            status: 'error',
+            error: 'Failed to load usage data',
+          },
+        },
+      };
+      renderCliUsageBars();
+      renderCliUsageDetail();
+    } finally {
+      if (withSpin && refreshBtn) {
+        setTimeout(() => refreshBtn.classList.remove('spinning'), 500);
+      }
+    }
+  }
+
+  function normalizeProvider(provider, fallbackName) {
+    const p = provider && typeof provider === 'object' ? provider : {};
+    return {
+      name: typeof p.name === 'string' && p.name ? p.name : fallbackName,
+      session_pct: Number.isFinite(p.session_pct) ? p.session_pct : null,
+      session_reset: typeof p.session_reset === 'string' ? p.session_reset : null,
+      weekly_pct: Number.isFinite(p.weekly_pct) ? p.weekly_pct : null,
+      weekly_reset: typeof p.weekly_reset === 'string' ? p.weekly_reset : null,
+      credits: Number.isFinite(p.credits) ? p.credits : null,
+      status: typeof p.status === 'string' ? p.status : 'error',
+      error: typeof p.error === 'string' ? p.error : null,
+    };
+  }
+
+  function getBarState(provider) {
+    const pctCandidates = [provider.session_pct, provider.weekly_pct].filter((v) => Number.isFinite(v));
+    const pct = pctCandidates.length ? Math.max(...pctCandidates) : null;
+
+    if (provider.status === 'not_connected') {
+      return { label: '-', fill: 100, color: '#4b5563' };
+    }
+    if (provider.status === 'error') {
+      return { label: '?', fill: 100, color: '#6b7280' };
+    }
+    if (!Number.isFinite(pct)) {
+      return { label: '?', fill: 100, color: '#6b7280' };
+    }
+    const color = pct <= 50 ? '#22c55e' : pct <= 80 ? '#eab308' : '#ef4444';
+    return { label: `${Math.round(pct)}%`, fill: Math.max(0, Math.min(100, pct)), color };
+  }
+
+  function renderCliUsageBars() {
+    const codex = normalizeProvider(cliUsageState?.providers?.codex, 'Codex CLI');
+    const claude = normalizeProvider(cliUsageState?.providers?.claude, 'Claude Code');
+    renderCliProviderBar('codex', codex);
+    renderCliProviderBar('claude', claude);
+  }
+
+  function renderCliProviderBar(id, provider) {
+    const fillEl = document.getElementById(`cliUsageFill-${id}`);
+    const labelEl = document.getElementById(`cliUsageLabel-${id}`);
+    const barEl = document.getElementById(`cliUsageBar-${id}`);
+    if (!fillEl || !labelEl || !barEl) return;
+
+    const state = getBarState(provider);
+    fillEl.style.width = `${state.fill}%`;
+    fillEl.style.backgroundColor = state.color;
+    labelEl.textContent = state.label;
+    barEl.title = `${provider.name}: ${state.label}`;
+    barEl.setAttribute('aria-expanded', expandedCliProvider === id ? 'true' : 'false');
+  }
+
+  function toggleCliDetail(providerId) {
+    expandedCliProvider = expandedCliProvider === providerId ? null : providerId;
+    renderCliUsageBars();
+    renderCliUsageDetail();
+  }
+
+  function renderCliUsageDetail() {
+    const detailEl = document.getElementById('cliUsageDetail');
+    if (!detailEl) return;
+    if (!expandedCliProvider) {
+      detailEl.hidden = true;
+      detailEl.innerHTML = '';
+      return;
+    }
+
+    const provider = normalizeProvider(
+      cliUsageState?.providers?.[expandedCliProvider],
+      expandedCliProvider === 'codex' ? 'Codex CLI' : 'Claude Code'
+    );
+
+    const statusText =
+      provider.status === 'ok' ? 'Connected'
+      : provider.status === 'rate_limited' ? 'Rate limited'
+      : provider.status === 'not_connected' ? 'Not connected'
+      : 'Error';
+
+    const sessionLine = Number.isFinite(provider.session_pct)
+      ? `${Math.round(provider.session_pct)}% used, resets in ${formatDurationFromNow(provider.session_reset)}`
+      : provider.status === 'not_connected'
+        ? 'Not connected'
+        : 'Unavailable';
+    const weeklyLine = Number.isFinite(provider.weekly_pct)
+      ? `${Math.round(provider.weekly_pct)}% used, resets ${formatDay(provider.weekly_reset)}`
+      : provider.status === 'not_connected'
+        ? 'Not connected'
+        : 'Unavailable';
+
+    const codexCredits = expandedCliProvider === 'codex'
+      ? `<div class="cli-usage-detail-line">Credits remaining: ${
+          Number.isFinite(provider.credits) ? `$${provider.credits.toFixed(2)}` : '—'
+        }</div>`
+      : '';
+
+    const claudeHint = expandedCliProvider === 'claude' && provider.status === 'not_connected'
+      ? '<div class="cli-usage-detail-error">Not authenticated. SSH to VPS and run: <code>claude login</code></div>'
+      : '';
+
+    const maybeError = provider.error && provider.status !== 'not_connected'
+      ? `<div class="cli-usage-detail-error">${escapeHtml(provider.error)}</div>`
+      : '';
+
+    detailEl.innerHTML = `
+      <div class="cli-usage-detail-header">
+        <div class="cli-usage-detail-title">${escapeHtml(provider.name)} · ${statusText}</div>
+        <button class="cli-usage-detail-close" type="button" id="cliUsageDetailClose" aria-label="Close usage details">×</button>
+      </div>
+      <div class="cli-usage-detail-line">Session: ${sessionLine}</div>
+      <div class="cli-usage-detail-line">Weekly: ${weeklyLine}</div>
+      ${codexCredits}
+      ${claudeHint}
+      ${maybeError}
+    `;
+    detailEl.hidden = false;
+
+    const closeBtn = document.getElementById('cliUsageDetailClose');
+    if (closeBtn) closeBtn.addEventListener('click', () => toggleCliDetail(expandedCliProvider));
+  }
+
+  function formatDurationFromNow(iso) {
+    if (!iso) return '—';
+    const ts = Date.parse(iso);
+    if (Number.isNaN(ts)) return '—';
+    const diffMs = ts - Date.now();
+    if (diffMs <= 0) return 'now';
+    const totalMin = Math.floor(diffMs / 60000);
+    const h = Math.floor(totalMin / 60);
+    const m = totalMin % 60;
+    if (h <= 0) return `${m}m`;
+    return `${h}h ${m}m`;
+  }
+
+  function formatDay(iso) {
+    if (!iso) return '—';
+    const ts = Date.parse(iso);
+    if (Number.isNaN(ts)) return '—';
+    return new Date(ts).toLocaleDateString([], { weekday: 'short' });
+  }
+
+  function escapeHtml(value) {
+    return String(value)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
   }
 
   // ════════════════════════════════════════════════════
@@ -974,9 +1346,25 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
       // Re-render icons
       refreshIcons();
 
+      runPageInitForPath(href);
+
     } catch (e) {
       console.warn('[SPA] navigation failed, falling back:', e);
       window.location.href = href;
+    }
+  }
+
+  function runPageInitForPath(href) {
+    const pathname = (() => {
+      try {
+        return new URL(href, window.location.origin).pathname;
+      } catch {
+        return href;
+      }
+    })();
+
+    if (pathname === '/ops.html' && typeof window.initOpsTab === 'function') {
+      window.initOpsTab();
     }
   }
 
@@ -1017,4 +1405,5 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
   // ════════════════════════════════════════════════════
 
   init();
+  runPageInitForPath(window.location.pathname);
 })();

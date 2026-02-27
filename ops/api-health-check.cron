@@ -1,0 +1,1 @@
+* * * * * root /usr/local/bin/check-api-health.sh > /dev/null 2>&1

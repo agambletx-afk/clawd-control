@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>APIs — Clawd Control</title>
+  <style>
+    .page-header { margin-bottom: 16px; }
+    .page-header h1 { font-size: 2rem; margin-bottom: 4px; color: var(--text-primary); }
+    .page-header .subtitle { font-size: 0.9rem; color: var(--text-secondary); }
+
+    .stats-bar {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(140px, 1fr));
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .stat {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 10px 12px;
+    }
+    .stat .k {
+      font-size: 0.72rem;
+      color: var(--text-tertiary);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .stat .v { font-size: 1.1rem; font-weight: 700; margin-top: 2px; }
+    .status-ok { color: #4ade80; }
+    .status-bad { color: #f87171; }
+    .status-idle { color: #9ca3af; }
+
+    .controls {
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) auto auto;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+    .search-input {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      padding: 9px 10px;
+      font-size: 0.84rem;
+      outline: none;
+    }
+    .search-input:focus { border-color: #22d3ee; }
+
+    .btn {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+      color: var(--text-primary);
+      padding: 8px 11px;
+      font-size: 0.78rem;
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      white-space: nowrap;
+    }
+    .btn:hover { border-color: #22d3ee; background: var(--surface-hover); }
+    .btn-primary {
+      background: rgba(6, 182, 212, 0.18);
+      border-color: rgba(34, 211, 238, 0.4);
+      color: #a5f3fc;
+      font-weight: 700;
+    }
+    .btn-primary:hover { border-color: #22d3ee; background: rgba(6, 182, 212, 0.26); }
+
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .api-card {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      background: var(--bg-secondary);
+      box-shadow: var(--shadow-sm);
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      min-height: 230px;
+    }
+    .api-card:hover {
+      border-color: #22d3ee;
+      transform: translateY(-2px);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+    }
+
+    .card-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8px;
+    }
+    .card-title { font-size: 0.96rem; font-weight: 700; color: var(--text-primary); margin-bottom: 2px; }
+    .card-provider { font-size: 0.74rem; color: var(--text-tertiary); }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-top: 3px;
+      flex: 0 0 auto;
+      background: #6b7280;
+    }
+    .status-dot.healthy { background: #4ade80; box-shadow: 0 0 0 6px rgba(74, 222, 128, 0.12); }
+    .status-dot.down { background: #f87171; box-shadow: 0 0 0 6px rgba(248, 113, 113, 0.12); }
+    .status-dot.standby { background: #f59e0b; box-shadow: 0 0 0 6px rgba(245, 158, 11, 0.12); }
+
+    .health-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .health-badge {
+      border-radius: 999px;
+      padding: 4px 9px;
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      border: 1px solid transparent;
+    }
+    .health-badge.healthy {
+      background: rgba(74, 222, 128, 0.12);
+      border-color: rgba(74, 222, 128, 0.4);
+      color: #4ade80;
+    }
+    .health-badge.down {
+      background: rgba(248, 113, 113, 0.12);
+      border-color: rgba(248, 113, 113, 0.4);
+      color: #f87171;
+    }
+    .health-badge.standby {
+      background: rgba(245, 158, 11, 0.12);
+      border-color: rgba(245, 158, 11, 0.4);
+      color: #f59e0b;
+    }
+    .health-badge.not_checked {
+      background: rgba(107, 114, 128, 0.18);
+      border-color: rgba(107, 114, 128, 0.35);
+      color: #d1d5db;
+    }
+    .response-time { font-size: 0.72rem; color: var(--text-tertiary); }
+
+    .card-desc {
+      font-size: 0.79rem;
+      color: var(--text-secondary);
+      line-height: 1.45;
+      min-height: 50px;
+    }
+
+    .cap-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; }
+    .cap-pill {
+      font-size: 0.68rem;
+      border-radius: 999px;
+      border: 1px solid rgba(34, 211, 238, 0.42);
+      color: #a5f3fc;
+      background: rgba(15, 23, 42, 0.8);
+      padding: 3px 8px;
+      white-space: nowrap;
+    }
+
+    .empty {
+      border: 1px dashed var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      color: var(--text-tertiary);
+      font-size: 0.82rem;
+      text-align: center;
+      background: var(--bg-secondary);
+    }
+
+    .panel-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(6, 8, 10, 0.55);
+      display: none;
+      z-index: 160;
+    }
+    .panel-backdrop.open { display: block; }
+
+    .detail-panel {
+      position: fixed;
+      right: -520px;
+      top: 0;
+      width: min(520px, 100vw);
+      height: 100vh;
+      background: var(--bg-secondary);
+      border-left: 1px solid var(--border);
+      z-index: 170;
+      transition: right var(--transition-base);
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+    }
+    .detail-panel.open { right: 0; }
+    .panel-head {
+      padding: 12px;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+    .panel-title { font-size: 1rem; font-weight: 700; }
+    .panel-body { padding: 12px; overflow-y: auto; }
+    .panel-footer {
+      padding: 10px 12px;
+      border-top: 1px solid var(--border-subtle);
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .field { margin-bottom: 11px; }
+    .field .label {
+      font-size: 0.7rem;
+      color: var(--text-tertiary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 3px;
+    }
+    .field .value { font-size: 0.82rem; color: var(--text-primary); word-break: break-word; }
+    .history-box {
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      background: var(--bg-tertiary);
+      padding: 9px;
+      font-size: 0.77rem;
+      color: var(--text-secondary);
+    }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(6, 8, 10, 0.6);
+      display: none;
+      z-index: 180;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal {
+      width: min(720px, 100%);
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      max-height: min(80vh, 720px);
+      overflow-y: auto;
+    }
+    .modal-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+      gap: 8px;
+    }
+    .modal-title { font-size: 0.98rem; font-weight: 700; }
+
+    .rotation-row {
+      border: 1px solid var(--border-subtle);
+      border-radius: 9px;
+      padding: 10px;
+      background: var(--bg-tertiary);
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .rotation-name { font-size: 0.82rem; font-weight: 700; }
+    .rotation-meta { font-size: 0.74rem; color: var(--text-secondary); margin-top: 3px; }
+    .warn { color: #fca5a5; }
+    .ok { color: #86efac; }
+
+    @media (max-width: 1180px) {
+      .cards-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 900px) {
+      .stats-bar { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
+      .controls { grid-template-columns: 1fr; }
+      .cards-grid { grid-template-columns: 1fr; }
+      .btn { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <main class="main">
+    <section class="page-header">
+      <h1>📡 APIs</h1>
+      <div class="subtitle">External service health, response performance, and key-rotation tracking.</div>
+    </section>
+
+    <section class="stats-bar">
+      <div class="stat"><div class="k">Total APIs</div><div class="v" id="statTotal">0</div></div>
+      <div class="stat"><div class="k">Connected</div><div class="v" id="statConnected">0/0</div></div>
+      <div class="stat"><div class="k">Capabilities</div><div class="v" id="statCaps">0</div></div>
+      <div class="stat"><div class="k">Status</div><div class="v status-idle" id="statStatus">NOT CHECKED</div></div>
+    </section>
+
+    <section class="controls">
+      <input class="search-input" id="searchInput" type="search" placeholder="Search by service, provider, or capability...">
+      <button class="btn" id="rotationBtn">API Key Rotation</button>
+      <button class="btn btn-primary" id="checkNowBtn">Check Now</button>
+    </section>
+
+    <section class="cards-grid" id="cardsGrid"></section>
+
+    <div class="panel-backdrop" id="detailBackdrop"></div>
+    <aside class="detail-panel" id="detailPanel">
+      <div class="panel-head">
+        <div class="panel-title" id="detailTitle">Service Detail</div>
+        <button class="btn" id="closeDetailBtn">Close</button>
+      </div>
+      <div class="panel-body" id="detailBody"></div>
+      <div class="panel-footer">
+        <button class="btn" id="detailRotateBtn">Mark Key Rotated</button>
+        <button class="btn btn-primary" id="detailCheckBtn">Check Now</button>
+      </div>
+    </aside>
+
+    <div class="modal-backdrop" id="rotationModalBackdrop">
+      <div class="modal">
+        <div class="modal-head">
+          <div class="modal-title">API Key Rotation Tracker</div>
+          <button class="btn" id="rotationCloseBtn">Close</button>
+        </div>
+        <div id="rotationList"></div>
+      </div>
+    </div>
+
+    <script>
+      (function initApisTab() {
+        const FETCH_OPTS = { credentials: 'include', headers: { Accept: 'application/json' } };
+        const state = {
+          payload: { checked_at: null, summary: {}, services: [] },
+          query: '',
+          selectedId: null,
+        };
+
+        const cardsGrid = document.getElementById('cardsGrid');
+        const searchInput = document.getElementById('searchInput');
+        const rotationBtn = document.getElementById('rotationBtn');
+        const checkNowBtn = document.getElementById('checkNowBtn');
+        const detailBackdrop = document.getElementById('detailBackdrop');
+        const detailPanel = document.getElementById('detailPanel');
+        const detailTitle = document.getElementById('detailTitle');
+        const detailBody = document.getElementById('detailBody');
+        const closeDetailBtn = document.getElementById('closeDetailBtn');
+        const detailRotateBtn = document.getElementById('detailRotateBtn');
+        const detailCheckBtn = document.getElementById('detailCheckBtn');
+        const rotationModalBackdrop = document.getElementById('rotationModalBackdrop');
+        const rotationCloseBtn = document.getElementById('rotationCloseBtn');
+        const rotationList = document.getElementById('rotationList');
+
+        const statTotal = document.getElementById('statTotal');
+        const statConnected = document.getElementById('statConnected');
+        const statCaps = document.getElementById('statCaps');
+        const statStatus = document.getElementById('statStatus');
+
+        function badgeLabel(status) {
+          if (status === 'healthy') return 'HEALTHY';
+          if (status === 'standby') return 'STANDBY';
+          if (status === 'down' || status === 'error') return 'DOWN';
+          return 'NOT CHECKED';
+        }
+
+        function statusClass(status) {
+          if (status === 'healthy') return 'healthy';
+          if (status === 'standby') return 'standby';
+          if (status === 'down' || status === 'error') return 'down';
+          return 'not_checked';
+        }
+
+        function sortServices(items) {
+          const rank = (status) => {
+            if (status === 'down' || status === 'error') return 0;
+            if (status === 'not_checked') return 1;
+            return 2;
+          };
+          return [...items].sort((a, b) => {
+            const score = rank(a.status) - rank(b.status);
+            if (score !== 0) return score;
+            return a.name.localeCompare(b.name);
+          });
+        }
+
+        function filteredServices() {
+          const q = state.query.trim().toLowerCase();
+          const sorted = sortServices(state.payload.services || []);
+          if (!q) return sorted;
+          return sorted.filter((service) => {
+            const fields = [
+              service.name,
+              service.provider,
+              ...(service.capabilities || []),
+            ].join(' ').toLowerCase();
+            return fields.includes(q);
+          });
+        }
+
+        function renderStats() {
+          const summary = state.payload.summary || {};
+          const total = summary.total || 0;
+          const healthy = summary.healthy || 0;
+          const caps = summary.total_capabilities || 0;
+          const status = summary.overall_status || 'NOT CHECKED';
+
+          statTotal.textContent = String(total);
+          statConnected.textContent = `${healthy}/${total}`;
+          statCaps.textContent = String(caps);
+          statStatus.textContent = status;
+          statStatus.className = 'v';
+          if (status === 'ALL OK') {
+            statStatus.classList.add('status-ok');
+          } else if (status === 'DEGRADED') {
+            statStatus.classList.add('status-bad');
+          } else {
+            statStatus.classList.add('status-idle');
+          }
+        }
+
+        function cardHtml(service) {
+          const caps = (service.capabilities || []).map((cap) => `<span class="cap-pill">${cap}</span>`).join('');
+          const responseText = service.response_ms == null ? 'n/a' : `${service.response_ms}ms`;
+          return `
+            <article class="api-card" data-id="${service.id}">
+              <div class="card-head">
+                <div>
+                  <div class="card-title">${service.name}</div>
+                  <div class="card-provider">${service.provider}</div>
+                </div>
+                <span class="status-dot ${statusClass(service.status)}"></span>
+              </div>
+              <div class="health-row">
+                <span class="health-badge ${statusClass(service.status)}">${badgeLabel(service.status)}</span>
+                <span class="response-time">${responseText}</span>
+              </div>
+              <div class="card-desc">${service.description}</div>
+              <div class="cap-row">${caps}</div>
+            </article>
+          `;
+        }
+
+        function renderCards() {
+          const services = filteredServices();
+          if (!services.length) {
+            cardsGrid.innerHTML = '<div class="empty">No services match your search.</div>';
+            return;
+          }
+          cardsGrid.innerHTML = services.map(cardHtml).join('');
+        }
+
+        function humanDate(iso) {
+          if (!iso) return 'Never';
+          const date = new Date(iso);
+          if (Number.isNaN(date.getTime())) return String(iso);
+          return date.toLocaleString();
+        }
+
+        function renderDetail(service) {
+          if (!service) {
+            detailBody.innerHTML = '<div class="empty">Service not found.</div>';
+            detailRotateBtn.style.display = 'none';
+            return;
+          }
+
+          detailTitle.textContent = `${service.name} (${badgeLabel(service.status)})`;
+          const key = service.api_key_status || {};
+          const rotationStatus = key.rotation_warning ? '<span class="warn">Rotation overdue</span>' : '<span class="ok">Rotation OK</span>';
+
+          detailBody.innerHTML = `
+            <div class="field"><div class="label">Provider</div><div class="value">${service.provider}</div></div>
+            <div class="field"><div class="label">Description</div><div class="value">${service.description}</div></div>
+            <div class="field"><div class="label">Health</div><div class="value">${badgeLabel(service.status)} · Response ${service.response_ms == null ? 'n/a' : `${service.response_ms}ms`} · Last check ${humanDate(service.checked_at)}</div></div>
+            <div class="field"><div class="label">Capabilities</div><div class="value">${(service.capabilities || []).join(', ') || 'None'}</div></div>
+            <div class="field"><div class="label">API Key Env</div><div class="value">${key.env_var || 'N/A'}</div></div>
+            <div class="field"><div class="label">API Key Status</div><div class="value">Configured: ${key.configured ? 'Yes' : 'No'} · Last rotated: ${key.last_rotated || 'Never'} · Age: ${key.age_days == null ? 'n/a' : `${key.age_days} days`} · ${rotationStatus}</div></div>
+            <div class="field">
+              <div class="label">Health Check History</div>
+              <div class="history-box">History storage is not enabled yet. Showing current check only: ${humanDate(service.checked_at)}.</div>
+            </div>
+            <div class="field">
+              <div class="label">Response Trend</div>
+              <div class="history-box">Trend chart unavailable until historical samples are persisted. Current response: ${service.response_ms == null ? 'n/a' : `${service.response_ms}ms`}.</div>
+            </div>
+          `;
+
+          detailRotateBtn.style.display = key.env_var ? 'inline-block' : 'none';
+          detailRotateBtn.disabled = !key.env_var;
+        }
+
+        async function openDetail(serviceId) {
+          try {
+            const res = await fetch(`/api/health/${encodeURIComponent(serviceId)}`, FETCH_OPTS);
+            if (!res.ok) throw new Error(`Detail request failed: ${res.status}`);
+            const data = await res.json();
+            state.selectedId = serviceId;
+            renderDetail(data.service);
+            detailBackdrop.classList.add('open');
+            detailPanel.classList.add('open');
+          } catch (err) {
+            console.error('Failed to open service detail:', err);
+          }
+        }
+
+        function closeDetail() {
+          state.selectedId = null;
+          detailBackdrop.classList.remove('open');
+          detailPanel.classList.remove('open');
+        }
+
+        function openRotationModal() {
+          const items = (state.payload.services || []).filter((service) => {
+            return service.api_key_status && service.api_key_status.env_var;
+          });
+
+          if (!items.length) {
+            rotationList.innerHTML = '<div class="empty">No API-key services configured.</div>';
+          } else {
+            rotationList.innerHTML = sortServices(items).map((service) => {
+              const key = service.api_key_status;
+              const ageText = key.age_days == null ? 'n/a' : `${key.age_days} days`;
+              const warn = key.rotation_warning;
+              return `
+                <div class="rotation-row">
+                  <div>
+                    <div class="rotation-name">${service.name}</div>
+                    <div class="rotation-meta">${key.env_var} · Configured: ${key.configured ? 'Yes' : 'No'} · Last rotated: ${key.last_rotated || 'Never'} · Age: ${ageText} · <span class="${warn ? 'warn' : 'ok'}">${warn ? 'Overdue' : 'OK'}</span></div>
+                  </div>
+                  <button class="btn" data-rotate-id="${service.id}">Mark Rotated</button>
+                </div>
+              `;
+            }).join('');
+          }
+
+          rotationModalBackdrop.classList.add('open');
+        }
+
+        function closeRotationModal() {
+          rotationModalBackdrop.classList.remove('open');
+        }
+
+        async function markRotated(serviceId) {
+          const today = new Date().toISOString().slice(0, 10);
+          const res = await fetch(`/api/health/${encodeURIComponent(serviceId)}/key-rotation`, {
+            method: 'PATCH',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ last_rotated: today }),
+          });
+          if (!res.ok) {
+            const text = await res.text();
+            throw new Error(`Rotation update failed: ${res.status} ${text}`);
+          }
+          await loadHealth();
+          if (state.selectedId === serviceId) {
+            await openDetail(serviceId);
+          }
+        }
+
+        async function checkNow(serviceId) {
+          const body = serviceId ? { service: serviceId } : {};
+          const res = await fetch('/api/health/check', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          if (!res.ok) {
+            const text = await res.text();
+            throw new Error(`Health check failed: ${res.status} ${text}`);
+          }
+          const data = await res.json();
+          state.payload = data;
+          renderStats();
+          renderCards();
+          if (state.selectedId) {
+            await openDetail(state.selectedId);
+          }
+        }
+
+        async function loadHealth() {
+          const res = await fetch('/api/health', FETCH_OPTS);
+          if (!res.ok) throw new Error(`Health fetch failed: ${res.status}`);
+          const data = await res.json();
+          state.payload = data;
+          renderStats();
+          renderCards();
+        }
+
+        cardsGrid.addEventListener('click', (event) => {
+          const card = event.target.closest('.api-card');
+          if (!card) return;
+          openDetail(card.dataset.id);
+        });
+
+        searchInput.addEventListener('input', () => {
+          state.query = searchInput.value || '';
+          renderCards();
+        });
+
+        rotationBtn.addEventListener('click', () => openRotationModal());
+        rotationCloseBtn.addEventListener('click', () => closeRotationModal());
+        rotationModalBackdrop.addEventListener('click', (event) => {
+          if (event.target === rotationModalBackdrop) closeRotationModal();
+        });
+
+        rotationList.addEventListener('click', async (event) => {
+          const button = event.target.closest('[data-rotate-id]');
+          if (!button) return;
+          const serviceId = button.getAttribute('data-rotate-id');
+          button.disabled = true;
+          try {
+            await markRotated(serviceId);
+            openRotationModal();
+          } catch (err) {
+            console.error('Mark rotated failed:', err);
+          } finally {
+            button.disabled = false;
+          }
+        });
+
+        closeDetailBtn.addEventListener('click', () => closeDetail());
+        detailBackdrop.addEventListener('click', () => closeDetail());
+
+        detailRotateBtn.addEventListener('click', async () => {
+          if (!state.selectedId) return;
+          detailRotateBtn.disabled = true;
+          try {
+            await markRotated(state.selectedId);
+          } catch (err) {
+            console.error('Detail rotation update failed:', err);
+          } finally {
+            detailRotateBtn.disabled = false;
+          }
+        });
+
+        detailCheckBtn.addEventListener('click', async () => {
+          detailCheckBtn.disabled = true;
+          try {
+            await checkNow(state.selectedId || undefined);
+          } catch (err) {
+            console.error('Service check failed:', err);
+          } finally {
+            detailCheckBtn.disabled = false;
+          }
+        });
+
+        checkNowBtn.addEventListener('click', async () => {
+          checkNowBtn.disabled = true;
+          try {
+            await checkNow();
+          } catch (err) {
+            console.error('Global health check failed:', err);
+          } finally {
+            checkNowBtn.disabled = false;
+          }
+        });
+
+        loadHealth().catch((err) => {
+          console.error('Initial APIs load failed:', err);
+          cardsGrid.innerHTML = '<div class="empty">Failed to load API health data.</div>';
+        });
+
+        setInterval(() => {
+          loadHealth().catch((err) => console.error('APIs auto-refresh failed:', err));
+        }, 30000);
+      })();
+    </script>
+  </main>
+  <script src="/layout.js"></script>
+</body>
+</html>

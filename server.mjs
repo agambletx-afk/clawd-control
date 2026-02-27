@@ -11,16 +11,40 @@ const { createServer } = http;
 import { readFileSync, existsSync, writeFileSync, copyFileSync, readdirSync, statSync } from 'fs';
 import { join, extname, resolve, sep } from 'path';
 import { gzipSync } from 'zlib';
-import { execFileSync } from 'child_process';
+import { execFileSync, execSync, spawnSync } from 'child_process';
 import { AgentCollector } from './collector.mjs';
 import { createAgent } from './create-agent.mjs';
 import { discoverAgents } from './discover.mjs';
+import {
+  getDb,
+  getAllTasks,
+  getTaskById,
+  getNextTask,
+  createTask,
+  updateTask,
+  addHistory,
+  getHistory,
+  getTaskStats,
+  getProposalCount,
+  getCurrentTaskSummary,
+} from './tasks-db.mjs';
 
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
+
+import { logAction, getLog, getLogStats, pruneLog } from './ops-log-db.mjs';
+import { createSnapshot, listSnapshots, getSnapshotManifest, restoreSnapshot, deleteSnapshot, enforceRetention } from './ops-backup.mjs';
+import { ChatGatewayClient, getChatMessages } from './chat-api.mjs';
 
 const PORT = parseInt(process.argv.find((_, i, a) => a[i - 1] === '--port') || '3100');
 const DIR = new URL('.', import.meta.url).pathname;
 const AUTH_DISABLED = String(process.env.AUTH_DISABLED || '').toLowerCase() === 'true';
+const APIS_CONFIG_PATH = join(DIR, 'apis-config.json');
+const HEALTH_RESULTS_PATH = '/tmp/api-health-results.json';
+const CLI_USAGE_PATH = '/tmp/cli-usage.json';
+const PRIMARY_ENV_PATH = join(DIR, '.env');
+const SECONDARY_ENV_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', '.env');
+const LOCAL_HEALTH_SCRIPT_PATH = join(DIR, 'scripts', 'check-api-health.sh');
+const SYSTEM_HEALTH_SCRIPT_PATH = '/usr/local/bin/check-api-health.sh';
 
 // ── Security constants ──
 const MAX_BODY_SIZE = 1024 * 1024; // 1MB max POST body
@@ -105,6 +129,384 @@ function requireAuth(req, res) {
   return false;
 }
 
+function readJsonBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', (chunk) => {
+      body += chunk;
+      if (body.length > MAX_BODY_SIZE) {
+        reject(new Error('Payload too large'));
+        req.destroy();
+      }
+    });
+    req.on('end', () => {
+      try {
+        resolve(body ? JSON.parse(body) : {});
+      } catch {
+        reject(new Error('Invalid JSON'));
+      }
+    });
+    req.on('error', (err) => reject(err));
+  });
+}
+
+function parseEnvFile(filePath) {
+  if (!existsSync(filePath)) return {};
+  const env = {};
+  for (const rawLine of readFileSync(filePath, 'utf8').split('\n')) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+    const cleaned = line.startsWith('export ') ? line.slice(7).trim() : line;
+    const eqIndex = cleaned.indexOf('=');
+    if (eqIndex <= 0) continue;
+    const key = cleaned.slice(0, eqIndex).trim();
+    let value = cleaned.slice(eqIndex + 1).trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    env[key] = value;
+  }
+  return env;
+}
+
+function getMergedEnvMap() {
+  return {
+    ...parseEnvFile(SECONDARY_ENV_PATH),
+    ...parseEnvFile(PRIMARY_ENV_PATH),
+    ...process.env,
+  };
+}
+
+function loadApisConfig() {
+  const raw = readFileSync(APIS_CONFIG_PATH, 'utf8');
+  const parsed = JSON.parse(raw);
+  if (!parsed || !Array.isArray(parsed.services)) {
+    throw new Error('Invalid apis-config.json (missing services[])');
+  }
+  return parsed;
+}
+
+function loadHealthResults() {
+  if (!existsSync(HEALTH_RESULTS_PATH)) {
+    return { checked_at: null, results: {} };
+  }
+  const parsed = JSON.parse(readFileSync(HEALTH_RESULTS_PATH, 'utf8'));
+  return {
+    checked_at: parsed.checked_at || null,
+    results: parsed.results && typeof parsed.results === 'object' ? parsed.results : {},
+  };
+}
+
+function loadCliUsage() {
+  if (!existsSync(CLI_USAGE_PATH)) {
+    return {
+      checked_at: null,
+      providers: {
+        codex: {
+          name: 'Codex CLI',
+          session_pct: null,
+          session_reset: null,
+          weekly_pct: null,
+          weekly_reset: null,
+          credits: null,
+          status: 'not_connected',
+          error: 'Usage data not available yet',
+        },
+        claude: {
+          name: 'Claude Code',
+          session_pct: null,
+          session_reset: null,
+          weekly_pct: null,
+          weekly_reset: null,
+          credits: null,
+          status: 'not_connected',
+          error: 'Usage data not available yet',
+        },
+      },
+    };
+  }
+
+  const parsed = JSON.parse(readFileSync(CLI_USAGE_PATH, 'utf8'));
+  return {
+    checked_at: parsed.checked_at || null,
+    providers: parsed.providers && typeof parsed.providers === 'object' ? parsed.providers : {},
+  };
+}
+
+function calculateApiKeyStatus(service, envMap) {
+  const apiKey = service.api_key;
+  if (!apiKey) {
+    return {
+      configured: false,
+      env_var: null,
+      last_rotated: null,
+      age_days: null,
+      rotation_warning: false,
+      rotation_warning_days: null,
+    };
+  }
+
+  const configured = Boolean(envMap[apiKey.env_var] || process.env[apiKey.env_var]);
+  let ageDays = null;
+  if (typeof apiKey.last_rotated === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(apiKey.last_rotated)) {
+    const then = Date.parse(`${apiKey.last_rotated}T00:00:00Z`);
+    if (!Number.isNaN(then)) {
+      ageDays = Math.floor((Date.now() - then) / 86400000);
+    }
+  }
+  const warningDays = Number.isFinite(apiKey.rotation_warning_days) ? apiKey.rotation_warning_days : null;
+
+  return {
+    configured,
+    env_var: apiKey.env_var || null,
+    last_rotated: apiKey.last_rotated ?? null,
+    age_days: ageDays,
+    rotation_warning: ageDays != null && warningDays != null ? ageDays > warningDays : false,
+    rotation_warning_days: warningDays,
+  };
+}
+
+function serviceStatusPriority(status) {
+  if (status === 'down') return 0;
+  if (status === 'error') return 1;
+  if (status === 'not_checked') return 2;
+  if (status === 'healthy') return 3;
+  return 4;
+}
+
+function mergeHealthData() {
+  const config = loadApisConfig();
+  const health = loadHealthResults();
+  const envMap = getMergedEnvMap();
+  const services = config.services.map((svc) => {
+    const result = health.results[svc.id] || null;
+    const status = result?.status || 'not_checked';
+    return {
+      id: svc.id,
+      name: svc.name,
+      provider: svc.provider,
+      description: svc.description,
+      capabilities: Array.isArray(svc.capabilities) ? svc.capabilities : [],
+      status,
+      response_ms: Number.isFinite(result?.response_ms) ? result.response_ms : null,
+      http_status: Number.isFinite(result?.http_status) ? result.http_status : null,
+      checked_at: result?.checked_at || null,
+      error: result?.error ?? null,
+      health_check: svc.health_check || null,
+      api_key_status: calculateApiKeyStatus(svc, envMap),
+    };
+  });
+
+  services.sort((a, b) => {
+    const statusCmp = serviceStatusPriority(a.status) - serviceStatusPriority(b.status);
+    if (statusCmp !== 0) return statusCmp;
+    return a.name.localeCompare(b.name);
+  });
+
+  const total = services.length;
+  const healthy = services.filter((s) => s.status === 'healthy').length;
+  const down = services.filter((s) => s.status === 'down' || s.status === 'error').length;
+  const notChecked = services.filter((s) => s.status === 'not_checked').length;
+  const totalCapabilities = services.reduce((sum, svc) => sum + svc.capabilities.length, 0);
+
+  let overallStatus = 'NOT CHECKED';
+  if (!existsSync(HEALTH_RESULTS_PATH)) {
+    overallStatus = 'NOT CHECKED';
+  } else if (down > 0) {
+    overallStatus = 'DEGRADED';
+  } else if (total > 0 && healthy === total) {
+    overallStatus = 'ALL OK';
+  } else {
+    overallStatus = 'NOT CHECKED';
+  }
+
+  return {
+    checked_at: health.checked_at,
+    summary: {
+      total,
+      healthy,
+      down,
+      not_checked: notChecked,
+      total_capabilities: totalCapabilities,
+      overall_status: overallStatus,
+    },
+    services,
+  };
+}
+
+
+const OPS_SERVICES = ['openclaw', 'clawd-control', 'clawmetry', 'cloudflared', 'tailscaled'];
+
+function truncateOutput(value, max = 2000) {
+  if (value == null) return '';
+  const text = String(value);
+  return text.length > max ? text.slice(0, max) : text;
+}
+
+function parseSystemctlShow(raw) {
+  const out = {};
+  for (const line of String(raw || '').split('\n')) {
+    const idx = line.indexOf('=');
+    if (idx <= 0) continue;
+    out[line.slice(0, idx)] = line.slice(idx + 1);
+  }
+  return out;
+}
+
+function parseMemoryMb(value) {
+  const bytes = Number.parseInt(value, 10);
+  if (!Number.isFinite(bytes) || bytes <= 0) return null;
+  return Math.round((bytes / (1024 * 1024)) * 10) / 10;
+}
+
+function formatCronTime(hourRaw, minuteRaw) {
+  const hour = Number.parseInt(hourRaw, 10);
+  const minute = Number.parseInt(minuteRaw, 10);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+  const suffix = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 || 12;
+  return `${hour12}:${String(minute).padStart(2, '0')} ${suffix}`;
+}
+
+function describeCron(schedule) {
+  if (!schedule) return '';
+  if (schedule === '@reboot') return 'On reboot';
+  if (schedule === '@hourly') return 'Every hour';
+  if (schedule === '@daily' || schedule === '@midnight') return 'Daily at midnight';
+  if (schedule === '@weekly') return 'Weekly (Sunday midnight)';
+  if (schedule === '@monthly') return 'Monthly (1st at midnight)';
+
+  const everyNMinutes = schedule.match(/^\*\/(\d+) \* \* \* \*$/);
+  if (everyNMinutes) return `Every ${Number.parseInt(everyNMinutes[1], 10)} minutes`;
+  if (schedule === '* * * * *') return 'Every minute';
+
+  const parts = schedule.trim().split(/\s+/);
+  if (parts.length !== 5) return schedule;
+
+  const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
+  if (/^\d+$/.test(minute) && hour === '*' && dayOfMonth === '*' && month === '*' && dayOfWeek === '*') {
+    return `Once per hour at :${String(Number.parseInt(minute, 10)).padStart(2, '0')}`;
+  }
+
+  if (/^\d+$/.test(minute) && /^\d+$/.test(hour) && dayOfMonth === '*' && month === '*') {
+    const time = formatCronTime(hour, minute);
+    if (!time) return schedule;
+    if (dayOfWeek === '0' || dayOfWeek === '7') return `Sundays at ${time}`;
+    if (dayOfWeek === '1') return `Mondays at ${time}`;
+    if (dayOfWeek === '1-5') return `Weekdays at ${time}`;
+    if (dayOfWeek === '*') return `Daily at ${time}`;
+  }
+
+  if (/^\d+$/.test(minute) && /^\d+$/.test(hour) && /^\d+$/.test(dayOfMonth) && month === '*' && dayOfWeek === '*') {
+    const time = formatCronTime(hour, minute);
+    if (!time) return schedule;
+    return `Monthly on day ${Number.parseInt(dayOfMonth, 10)} at ${time}`;
+  }
+
+  return schedule;
+}
+
+function parseCronLine(line, { source, defaultUser, fileName, expectsUserColumn }) {
+  const parts = line.split(/\s+/);
+  let schedule = '';
+  let user = defaultUser;
+  let command = '';
+
+  if (line.startsWith('@')) {
+    if (expectsUserColumn) {
+      if (parts.length < 3) return null;
+      schedule = parts[0];
+      user = parts[1];
+      command = parts.slice(2).join(' ');
+    } else {
+      if (parts.length < 2) return null;
+      schedule = parts[0];
+      command = parts.slice(1).join(' ');
+    }
+  } else if (expectsUserColumn) {
+    if (parts.length < 7) return null;
+    schedule = parts.slice(0, 5).join(' ');
+    user = parts[5];
+    command = parts.slice(6).join(' ');
+  } else {
+    if (parts.length < 6) return null;
+    schedule = parts.slice(0, 5).join(' ');
+    command = parts.slice(5).join(' ');
+  }
+
+  const suffix = command.split('/').pop() || command.split(' ')[0] || 'job';
+  const name = fileName ? `${fileName.replace(/\.[^.]+$/, '')}:${suffix}` : `user:${suffix}`;
+  return {
+    name,
+    schedule,
+    description: describeCron(schedule),
+    command,
+    source,
+    user,
+    last_run: null,
+  };
+}
+
+function parseCronEntries() {
+  const jobs = [];
+  const cronDir = '/etc/cron.d';
+  try {
+    const files = readdirSync(cronDir, { withFileTypes: true }).filter((d) => d.isFile());
+    for (const file of files) {
+      const fullPath = join(cronDir, file.name);
+      const lines = readFileSync(fullPath, 'utf8').split('\n');
+      for (const raw of lines) {
+        const line = raw.trim();
+        if (!line || line.startsWith('#') || line.includes('=')) continue;
+        const job = parseCronLine(line, { source: 'system', fileName: file.name, expectsUserColumn: true });
+        if (job) jobs.push(job);
+      }
+    }
+  } catch {}
+
+  try {
+    const lines = readFileSync('/etc/crontab', 'utf8').split('\n');
+    for (const raw of lines) {
+      const line = raw.trim();
+      if (!line || line.startsWith('#') || line.includes('=')) continue;
+      const job = parseCronLine(line, { source: 'system', fileName: 'crontab', expectsUserColumn: true });
+      if (job) jobs.push(job);
+    }
+  } catch {}
+
+  try {
+    const result = spawnSync('crontab', ['-u', 'openclaw', '-l'], { encoding: 'utf8', timeout: 10000 });
+    if (result.status === 0) {
+      const lines = result.stdout.split('\n');
+      for (const raw of lines) {
+        const line = raw.trim();
+        if (!line || line.startsWith('#')) continue;
+        const job = parseCronLine(line, { source: 'user', defaultUser: 'openclaw', expectsUserColumn: false });
+        if (job) jobs.push(job);
+      }
+    }
+  } catch {}
+
+  try {
+    const result = spawnSync('crontab', ['-u', 'root', '-l'], { encoding: 'utf8', timeout: 10000 });
+    if (result.status === 0) {
+      const lines = result.stdout.split('\n');
+      for (const raw of lines) {
+        const line = raw.trim();
+        if (!line || line.startsWith('#')) continue;
+        const job = parseCronLine(line, { source: 'system', defaultUser: 'root', expectsUserColumn: false });
+        if (job) jobs.push(job);
+      }
+    }
+  } catch {}
+
+  return jobs;
+}
+
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.json': 'application/json',
@@ -128,6 +530,10 @@ if (!existsSync(agentsJsonPath)) {
 }
 
 const collector = new AgentCollector(agentsJsonPath);
+const chatGatewayClient = new ChatGatewayClient({ configPath: agentsJsonPath });
+chatGatewayClient.start().catch((error) => {
+  console.warn('⚠️ Chat gateway init failed:', error.message);
+});
 const sseClients = new Set();
 
 collector.on('update', ({ id, state, removed }) => {
@@ -528,6 +934,13 @@ function toCstDate(isoString) {
   return new Date(d.getTime() + CST_OFFSET_MS).toISOString().split('T')[0];
 }
 
+function parseDependsOnIds(value) {
+  if (typeof value !== 'string' || !value.trim()) return [];
+  return [...new Set(value.split(',')
+    .map((part) => Number.parseInt(part.trim(), 10))
+    .filter((id) => Number.isInteger(id) && id > 0))];
+}
+
 function computeCostsData() {
   const now = Date.now();
   const AGENTS_DIR = join(homedir(), '.openclaw', 'agents');
@@ -836,6 +1249,30 @@ function computeAgentMetrics() {
 
 function getAnalytics(rangeStr, agentFilter) {
   const AGENTS_DIR = join(homedir(), '.openclaw', 'agents');
+  const MODEL_PRICING = {
+    // [inputPer1M, outputPer1M, cacheReadPer1M, cacheWritePer1M]
+    'gemini-2.5-flash': [0.15, 0.60, 0.0375, 0.15],
+    'gemini-2.0-flash': [0.10, 0.40, 0.025, 0.10],
+    'claude-opus-4-5': [15.00, 75.00, 1.50, 15.00],
+    'claude-sonnet-4-5': [3.00, 15.00, 0.30, 3.00],
+    'claude-haiku-4-5': [0.80, 4.00, 0.08, 0.80],
+    'gpt-4o': [2.50, 10.00, 1.25, 2.50],
+    'gpt-4o-mini': [0.15, 0.60, 0.075, 0.15],
+  };
+  const DEFAULT_PRICING = [1.00, 3.00, 0.10, 1.00];
+  const computeComponentCosts = (model, input, output, cacheRead, cacheWrite) => {
+    const cleanModel = (model || '')
+      .replace('anthropic/', '')
+      .replace('openai/', '')
+      .replace('google/', '');
+    const rates = MODEL_PRICING[cleanModel] || DEFAULT_PRICING;
+    return {
+      input: (input / 1e6) * rates[0],
+      output: (output / 1e6) * rates[1],
+      cacheRead: (cacheRead / 1e6) * rates[2],
+      cacheWrite: (cacheWrite / 1e6) * rates[3],
+    };
+  };
   const range = rangeStr === 'all' ? Infinity : parseInt(rangeStr);
   const cutoffDate = rangeStr === 'all' ? 0 : Date.now() - (range * 86400000);
 
@@ -845,11 +1282,19 @@ function getAnalytics(rangeStr, agentFilter) {
   let inputTokens = 0;
   let outputTokens = 0;
   let cacheReadTokens = 0;
+  let cacheWriteTokens = 0;
+  let costInput = 0;
+  let costOutput = 0;
+  let costCacheRead = 0;
+  let costCacheWrite = 0;
   let apiCalls = 0;
+  let totalSessions = 0;
+  let totalMessages = 0;
 
   const byAgent = new Map(); // agentId -> {cost, tokens}
   const byDate = new Map(); // date -> {cost, tokens}
   const byModel = new Map(); // model -> {cost, tokens}
+  const bySource = new Map(); // source -> {cost, tokens, sessions}
   const sessions = []; // [{agentId, sessionId, cost, tokens}]
 
   // Discover all agents
@@ -895,8 +1340,11 @@ function getAnalytics(rangeStr, agentFilter) {
         let sessionInput = 0;
         let sessionOutput = 0;
         let sessionCache = 0;
+        let sessionCacheWrite = 0;
         let sessionCalls = 0;
+        let sessionMessages = 0;
         let sessionModel = null;
+        let isHeartbeatSession = false;
 
         try {
           const content = readFileSync(sessionPath, 'utf8');
@@ -925,12 +1373,41 @@ function getAnalytics(rangeStr, agentFilter) {
                 const input = usage.input || 0;
                 const output = usage.output || 0;
                 const cache = usage.cacheRead || 0;
+                const cacheWrite = usage.cacheWrite || 0;
+
+                if (!isHeartbeatSession && msg.role === 'user') {
+                  if (line.includes('"conversation_label"') && line.toLowerCase().includes('heartbeat')) {
+                    isHeartbeatSession = true;
+                  }
+                }
+
+                if (cost > 0) sessionMessages++;
+
+                const hasCostComponents = usage.cost && typeof usage.cost === 'object' && (
+                  usage.cost.input !== undefined ||
+                  usage.cost.output !== undefined ||
+                  usage.cost.cacheRead !== undefined ||
+                  usage.cost.cacheWrite !== undefined
+                );
+                if (hasCostComponents) {
+                  costInput += usage.cost?.input || 0;
+                  costOutput += usage.cost?.output || 0;
+                  costCacheRead += usage.cost?.cacheRead || 0;
+                  costCacheWrite += usage.cost?.cacheWrite || 0;
+                } else {
+                  const parts = computeComponentCosts(sessionModel || msg.model, input, output, cache, cacheWrite);
+                  costInput += parts.input;
+                  costOutput += parts.output;
+                  costCacheRead += parts.cacheRead;
+                  costCacheWrite += parts.cacheWrite;
+                }
 
                 sessionCost += cost;
                 sessionTokens += input + output + cache;
                 sessionInput += input;
                 sessionOutput += output;
                 sessionCache += cache;
+                sessionCacheWrite += cacheWrite;
 
                 if (msg.role === 'user') {
                   sessionCalls++;
@@ -971,7 +1448,18 @@ function getAnalytics(rangeStr, agentFilter) {
         inputTokens += sessionInput;
         outputTokens += sessionOutput;
         cacheReadTokens += sessionCache;
+        cacheWriteTokens += sessionCacheWrite;
         apiCalls += sessionCalls;
+        totalSessions++;
+        totalMessages += sessionMessages;
+        const source = isHeartbeatSession ? 'Cron' : 'Telegram';
+        if (!bySource.has(source)) {
+          bySource.set(source, { cost: 0, tokens: 0, sessions: 0 });
+        }
+        const sourceData = bySource.get(source);
+        sourceData.cost += sessionCost;
+        sourceData.tokens += sessionTokens;
+        sourceData.sessions++;
 
         // Track by agent
         if (!byAgent.has(agentId)) {
@@ -988,6 +1476,9 @@ function getAnalytics(rangeStr, agentFilter) {
             sessionId,
             cost: sessionCost,
             tokens: sessionTokens,
+            model: (sessionModel || 'unknown').replace('anthropic/', '').replace('openai/', '').replace('google/', ''),
+            source,
+            messages: sessionMessages,
           });
         }
       }
@@ -1021,6 +1512,18 @@ function getAnalytics(rangeStr, agentFilter) {
     inputTokens,
     outputTokens,
     cacheReadTokens,
+    cacheWriteTokens,
+    costComponents: {
+      input: Math.round(costInput * 10000) / 10000,
+      output: Math.round(costOutput * 10000) / 10000,
+      cacheRead: Math.round(costCacheRead * 10000) / 10000,
+      cacheWrite: Math.round(costCacheWrite * 10000) / 10000,
+    },
+    totalSessions,
+    totalMessages,
+    bySource: Array.from(bySource.entries())
+      .map(([source, data]) => ({ source, ...data }))
+      .sort((a, b) => b.cost - a.cost),
     apiCalls,
     byAgent: byAgentArray,
     overTime: byDateArray,
@@ -1789,7 +2292,7 @@ const server = createServer((req, res) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-XSS-Protection', '1; mode=block');
   res.setHeader('Referrer-Policy', 'same-origin');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self';");
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self';");
 
   // CORS — restrict to same origin (no cross-origin API access)
   const origin = req.headers.origin;
@@ -1798,7 +2301,7 @@ const server = createServer((req, res) => {
     const allowedLocal = `http://localhost:${PORT}`;
     if (origin === allowed || origin === allowedLocal) {
       res.setHeader('Access-Control-Allow-Origin', origin);
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
       res.setHeader('Access-Control-Allow-Credentials', 'true');
     }
@@ -1889,7 +2392,10 @@ const server = createServer((req, res) => {
       res.end();
       return;
     }
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+    });
     res.end(LOGIN_HTML);
     return;
   }
@@ -1898,6 +2404,134 @@ const server = createServer((req, res) => {
   if (!requireAuth(req, res)) return;
 
   // ── API Routes ──
+
+  if (path === '/api/health' && req.method === 'GET') {
+    try {
+      const payload = mergeHealthData();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(payload));
+    } catch (e) {
+      console.error('[API] /api/health error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to load health data' }));
+    }
+    return;
+  }
+
+  if (path === '/api/cli-usage' && req.method === 'GET') {
+    try {
+      const payload = loadCliUsage();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(payload));
+    } catch (e) {
+      console.error('[API] /api/cli-usage error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to load CLI usage data' }));
+    }
+    return;
+  }
+
+  if (path === '/api/health/check' && req.method === 'POST') {
+    readJsonBody(req).then((body) => {
+      try {
+        const scriptPath = existsSync(SYSTEM_HEALTH_SCRIPT_PATH)
+          ? SYSTEM_HEALTH_SCRIPT_PATH
+          : LOCAL_HEALTH_SCRIPT_PATH;
+        if (!existsSync(scriptPath)) {
+          throw new Error('Health check script not found');
+        }
+        const service = typeof body.service === 'string' ? body.service.trim() : '';
+        const args = service ? [service] : [];
+        execFileSync(scriptPath, args, { encoding: 'utf8', stdio: 'pipe', timeout: 120000 });
+        const payload = mergeHealthData();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(payload));
+      } catch (e) {
+        console.error('[API] /api/health/check error:', e.message);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Health check failed' }));
+      }
+    }).catch((e) => {
+      const code = e.message === 'Payload too large' ? 413 : 400;
+      res.writeHead(code, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message === 'Payload too large' ? 'Payload too large' : 'Invalid JSON body' }));
+    });
+    return;
+  }
+
+  if (path.startsWith('/api/health/') && path.endsWith('/key-rotation') && req.method === 'PATCH') {
+    const parts = path.split('/').filter(Boolean);
+    const serviceId = parts[2];
+    if (!serviceId) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid service id' }));
+      return;
+    }
+
+    readJsonBody(req).then((body) => {
+      try {
+        const nextLastRotated = body.last_rotated;
+        if (nextLastRotated !== null && (typeof nextLastRotated !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(nextLastRotated))) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'last_rotated must be YYYY-MM-DD or null' }));
+          return;
+        }
+
+        const config = loadApisConfig();
+        const service = config.services.find((svc) => svc.id === serviceId);
+        if (!service) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Service not found' }));
+          return;
+        }
+        if (!service.api_key) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Service does not have API key tracking' }));
+          return;
+        }
+
+        service.api_key.last_rotated = nextLastRotated;
+        writeFileSync(APIS_CONFIG_PATH, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
+        const merged = mergeHealthData();
+        const updated = merged.services.find((svc) => svc.id === serviceId);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ service: updated }));
+      } catch (e) {
+        console.error('[API] /api/health/:id/key-rotation error:', e.message);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Failed to update key rotation' }));
+      }
+    }).catch((e) => {
+      const code = e.message === 'Payload too large' ? 413 : 400;
+      res.writeHead(code, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message === 'Payload too large' ? 'Payload too large' : 'Invalid JSON body' }));
+    });
+    return;
+  }
+
+  if (path.startsWith('/api/health/') && path.split('/').length === 4 && req.method === 'GET') {
+    try {
+      const serviceId = path.split('/')[3];
+      const payload = mergeHealthData();
+      const service = payload.services.find((svc) => svc.id === serviceId);
+      if (!service) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Service not found' }));
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        checked_at: payload.checked_at,
+        summary: payload.summary,
+        service,
+      }));
+    } catch (e) {
+      console.error('[API] /api/health/:id error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to load service health' }));
+    }
+    return;
+  }
 
   if (path === '/api/snapshot') {
     const snapshot = collector.getSnapshot();
@@ -1936,6 +2570,487 @@ const server = createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(state));
     return;
+  }
+
+  // ── Tasks ──
+
+  if (path === '/api/ops/services/status' && req.method === 'GET') {
+    try {
+      const services = OPS_SERVICES.map((name) => {
+        const activeRaw = execSync(`systemctl is-active ${name}`, { encoding: 'utf8', timeout: 30000, stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+        const showRaw = execSync(`systemctl show ${name} --property=ActiveEnterTimestamp,MainPID,MemoryUsageCurrent`, { encoding: 'utf8', timeout: 30000, stdio: ['ignore', 'pipe', 'pipe'] });
+        const parsed = parseSystemctlShow(showRaw);
+        return {
+          name,
+          active: activeRaw === 'active',
+          pid: Number.parseInt(parsed.MainPID, 10) || null,
+          uptime_since: parsed.ActiveEnterTimestamp || null,
+          memory_mb: parseMemoryMb(parsed.MemoryUsageCurrent),
+        };
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ services }));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to fetch service status' }));
+    }
+    return;
+  }
+
+  if (path.startsWith('/api/ops/services/') && path.endsWith('/restart') && req.method === 'POST') {
+    const service = decodeURIComponent(path.split('/')[4] || '');
+    if (!OPS_SERVICES.includes(service)) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid service name' }));
+      return;
+    }
+    const started = Date.now();
+    try {
+      execSync(`sudo systemctl restart ${service}`, { timeout: 30000, stdio: ['ignore', 'pipe', 'pipe'] });
+      const duration = Date.now() - started;
+      logAction({ category: 'service', action: 'restart', target: service, status: 'success', detail: 'Service restarted', duration_ms: duration });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ service, status: 'success', duration_ms: duration, timestamp: new Date().toISOString() }));
+    } catch (e) {
+      const duration = Date.now() - started;
+      logAction({ category: 'service', action: 'restart', target: service, status: 'failed', detail: truncateOutput(e.stderr || e.message), duration_ms: duration });
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to restart service' }));
+    }
+    return;
+  }
+
+  if (path === '/api/ops/sessions/fresh' && req.method === 'POST') {
+    readJsonBody(req).then((body) => {
+      if (body.confirm !== true) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Confirmation required. Send { confirm: true } to proceed.' }));
+        return;
+      }
+      const started = Date.now();
+      try {
+        execSync('sudo systemctl restart openclaw', { timeout: 30000, stdio: ['ignore', 'pipe', 'pipe'] });
+        const duration = Date.now() - started;
+        logAction({ category: 'session', action: 'fresh_session', target: 'openclaw', status: 'success', detail: 'Fresh session triggered', duration_ms: duration });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'success', timestamp: new Date().toISOString() }));
+      } catch (e) {
+        const duration = Date.now() - started;
+        logAction({ category: 'session', action: 'fresh_session', target: 'openclaw', status: 'failed', detail: truncateOutput(e.stderr || e.message), duration_ms: duration });
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Failed to start fresh session' }));
+      }
+    }).catch(() => {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+    });
+    return;
+  }
+
+  if (path === '/api/ops/crons' && req.method === 'GET') {
+    try {
+      const jobs = parseCronEntries();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ jobs }));
+    } catch {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to list cron jobs' }));
+    }
+    return;
+  }
+
+  if (path.startsWith('/api/ops/crons/') && path.endsWith('/trigger') && req.method === 'POST') {
+    const jobName = decodeURIComponent(path.split('/')[4] || '');
+    const jobs = parseCronEntries();
+    const job = jobs.find((j) => j.name === jobName);
+    if (!job) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid cron job name' }));
+      return;
+    }
+    const started = Date.now();
+    const result = spawnSync('bash', ['-lc', job.command], { encoding: 'utf8', timeout: 60000 });
+    const duration = Date.now() - started;
+    const output = truncateOutput((result.stdout || '') + (result.stderr || ''));
+    const status = result.status === 0 ? 'success' : 'failed';
+    logAction({ category: 'cron', action: 'trigger', target: job.name, status, detail: output, duration_ms: duration });
+    res.writeHead(result.status === 0 ? 200 : 500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ name: job.name, exit_code: result.status ?? 1, output, duration_ms: duration }));
+    return;
+  }
+
+  if (path === '/api/ops/backups' && req.method === 'POST') {
+    try {
+      const snapshot = createSnapshot();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(snapshot));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (path === '/api/ops/backups' && req.method === 'GET') {
+    try {
+      const snapshots = listSnapshots();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ snapshots }));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (path.startsWith('/api/ops/backups/') && path.endsWith('/manifest') && req.method === 'GET') {
+    const filename = decodeURIComponent(path.split('/')[4] || '');
+    try {
+      const manifest = getSnapshotManifest(filename);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(manifest));
+    } catch (e) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (path.startsWith('/api/ops/backups/') && path.endsWith('/restore') && req.method === 'POST') {
+    const filename = decodeURIComponent(path.split('/')[4] || '');
+    readJsonBody(req).then((body) => {
+      if (body.confirm !== true) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Confirmation required. Send { confirm: true } to proceed.' }));
+        return;
+      }
+      try {
+        const result = restoreSnapshot(filename);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    }).catch(() => {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+    });
+    return;
+  }
+
+  if (path.startsWith('/api/ops/backups/') && req.method === 'DELETE') {
+    const filename = decodeURIComponent(path.split('/')[4] || '');
+    try {
+      deleteSnapshot(filename);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ deleted: true, filename }));
+    } catch (e) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (path === '/api/ops/cleanup' && req.method === 'POST') {
+    readJsonBody(req).then((body) => {
+      const maxBackups = body.maxBackups ?? 10;
+      const maxAgeDays = body.maxAgeDays ?? 30;
+      const retainDays = body.retainDays ?? 90;
+      try {
+        const backupResult = enforceRetention(maxBackups, maxAgeDays);
+        const pruned = pruneLog(retainDays);
+        logAction({ category: 'cleanup', action: 'retention', target: 'ops', status: 'success', detail: `Deleted ${backupResult.deleted_count} backups; pruned ${pruned} log entries` });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ backups_deleted: backupResult.deleted_count, deleted_files: backupResult.deleted_files, log_entries_pruned: pruned }));
+      } catch (e) {
+        logAction({ category: 'cleanup', action: 'retention', target: 'ops', status: 'failed', detail: truncateOutput(e.message) });
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    }).catch(() => {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+    });
+    return;
+  }
+
+  if (path === '/api/ops/log' && req.method === 'GET') {
+    try {
+      const limit = Math.max(1, Math.min(200, Number.parseInt(url.searchParams.get('limit') || '50', 10)));
+      const offset = Math.max(0, Number.parseInt(url.searchParams.get('offset') || '0', 10));
+      const category = url.searchParams.get('category') || null;
+      const { entries, total } = getLog({ limit, offset, category });
+      const stats = getLogStats();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ entries, total, stats: { total: stats.total, last_24h: stats.last_24h, last_7d: stats.last_7d, most_recent_timestamp: stats.most_recent_timestamp } }));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to fetch operations log' }));
+    }
+    return;
+  }
+
+  if (path === '/api/tasks' && req.method === 'GET') {
+    try {
+      getDb();
+      const status = url.searchParams.get('status') || undefined;
+      const priority = url.searchParams.get('priority') || undefined;
+      const assigned_agent = url.searchParams.get('assigned_agent') || undefined;
+      const tasks = getAllTasks({ status, priority, assigned_agent });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ tasks }));
+    } catch (e) {
+      console.error('[API] /api/tasks error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Internal server error' }));
+    }
+    return;
+  }
+
+  if (path === '/api/tasks/next' && req.method === 'GET') {
+    try {
+      getDb();
+      const agent = url.searchParams.get('agent') || null;
+      const task = getNextTask(agent);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ task: task || null }));
+    } catch (e) {
+      console.error('[API] /api/tasks/next error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Internal server error' }));
+    }
+    return;
+  }
+
+  if (path === '/api/tasks/stats' && req.method === 'GET') {
+    try {
+      getDb();
+      const stats = getTaskStats();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(stats));
+    } catch (e) {
+      console.error('[API] /api/tasks/stats error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Internal server error' }));
+    }
+    return;
+  }
+
+  if (path === '/api/tasks/scratch-summary' && req.method === 'GET') {
+    try {
+      getDb();
+      const agent = url.searchParams.get('agent') || null;
+      const summary = getCurrentTaskSummary(agent);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ summary }));
+    } catch (e) {
+      console.error('[API] /api/tasks/scratch-summary error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Internal server error' }));
+    }
+    return;
+  }
+
+  if (path === '/api/tasks' && req.method === 'POST') {
+    readJsonBody(req).then((body) => {
+      const title = typeof body.title === 'string' ? body.title.trim() : '';
+      if (!title || title.length > 100) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'title is required and must be <= 100 chars' }));
+        return;
+      }
+
+      if (body.source === 'agent' && body.status === 'proposed') {
+        const todayCst = toCstDate(new Date().toISOString());
+        const proposalCount = getProposalCount(todayCst);
+        if (proposalCount >= 3) {
+          res.writeHead(429, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Proposal limit reached (3/day)' }));
+          return;
+        }
+      }
+
+      try {
+        const task = createTask(body);
+        res.writeHead(201, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ task }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message || 'Invalid task payload' }));
+      }
+    }).catch((e) => {
+      const code = e.message === 'Payload too large' ? 413 : 400;
+      res.writeHead(code, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message === 'Payload too large' ? 'Payload too large' : 'Invalid JSON body' }));
+    });
+    return;
+  }
+
+  if (path.startsWith('/api/tasks/') && path.endsWith('/history')) {
+    const segments = path.split('/');
+    const taskId = Number.parseInt(segments[3], 10);
+    if (!Number.isInteger(taskId) || taskId <= 0) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid task id' }));
+      return;
+    }
+
+    if (req.method === 'GET') {
+      try {
+        const history = getHistory(taskId);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ history }));
+      } catch (e) {
+        console.error('[API] /api/tasks/:id/history error:', e.message);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Internal server error' }));
+      }
+      return;
+    }
+
+    if (req.method === 'POST') {
+      readJsonBody(req).then((body) => {
+        const actor = typeof body.actor === 'string' && body.actor.trim() ? body.actor.trim() : null;
+        const action = typeof body.action === 'string' && body.action.trim() ? body.action.trim() : null;
+        if (!actor || !action) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'actor and action are required' }));
+          return;
+        }
+        const task = getTaskById(taskId);
+        if (!task) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Task not found' }));
+          return;
+        }
+        const entry = addHistory(taskId, actor, action, body.detail ?? '');
+        res.writeHead(201, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ entry }));
+      }).catch((e) => {
+        const code = e.message === 'Payload too large' ? 413 : 400;
+        res.writeHead(code, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message === 'Payload too large' ? 'Payload too large' : 'Invalid JSON body' }));
+      });
+      return;
+    }
+  }
+
+  if (path.startsWith('/api/tasks/') && path.split('/').length === 4) {
+    const taskId = Number.parseInt(path.split('/')[3], 10);
+    if (!Number.isInteger(taskId) || taskId <= 0) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid task id' }));
+      return;
+    }
+
+    if (req.method === 'GET') {
+      try {
+        const task = getTaskById(taskId);
+        if (!task) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Task not found' }));
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ task }));
+      } catch (e) {
+        console.error('[API] /api/tasks/:id error:', e.message);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Internal server error' }));
+      }
+      return;
+    }
+
+    if (req.method === 'PATCH') {
+      readJsonBody(req).then((body) => {
+        const current = getTaskById(taskId);
+        if (!current) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Task not found' }));
+          return;
+        }
+
+        const allowedFields = new Set([
+          'title',
+          'description',
+          'status',
+          'priority',
+          'assigned_agent',
+          'depends_on',
+          'handoff_payload',
+          'token_estimate',
+          'token_actual',
+        ]);
+        const requestedKeys = Object.keys(body);
+        const hasInvalidField = requestedKeys.some((key) => !allowedFields.has(key));
+        if (hasInvalidField) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid fields in PATCH body' }));
+          return;
+        }
+        if (typeof body.title === 'string' && body.title.trim().length > 100) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'title must be <= 100 chars' }));
+          return;
+        }
+        if (typeof body.description === 'string' && body.description.length > 2000) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'description must be <= 2000 chars' }));
+          return;
+        }
+        if (body.handoff_payload != null && String(body.handoff_payload).length > 2000) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'handoff_payload must be <= 2000 chars' }));
+          return;
+        }
+
+        const targetStatus = typeof body.status === 'string' ? body.status : current.status;
+        const targetPriority = typeof body.priority === 'string' ? body.priority : current.priority;
+        const targetDepends = Object.hasOwn(body, 'depends_on') ? body.depends_on : current.depends_on;
+        const depIds = parseDependsOnIds(targetDepends);
+        if (depIds.includes(taskId)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Task cannot depend on itself' }));
+          return;
+        }
+
+        if (targetStatus === 'in_progress') {
+          const allTasks = getAllTasks();
+          const statusById = new Map(allTasks.map((task) => [task.id, task.status]));
+          const blockedBy = depIds.filter((id) => {
+            const depStatus = statusById.get(id);
+            return depStatus !== 'done' && depStatus !== 'archive';
+          });
+          if (blockedBy.length) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Task is blocked by dependencies', blocked_by: blockedBy }));
+            return;
+          }
+        }
+
+        let task = updateTask(taskId, body);
+
+        if (current.status !== targetStatus) {
+          addHistory(taskId, 'system', 'status_changed', `${current.status} -> ${targetStatus}`);
+        }
+
+        if (current.status !== 'review' && targetStatus === 'review' && (targetPriority === 'low' || targetPriority === 'medium')) {
+          addHistory(taskId, 'system', 'review_entered', 'Task moved to review');
+          task = updateTask(taskId, { status: 'done' });
+          addHistory(taskId, 'system', 'auto_approved', `Auto-approved (${targetPriority} priority): review -> done`);
+          addHistory(taskId, 'system', 'status_changed', 'review -> done');
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ task }));
+      }).catch((e) => {
+        const code = e.message === 'Payload too large' ? 413 : 400;
+        res.writeHead(code, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message === 'Payload too large' ? 'Payload too large' : 'Invalid JSON body' }));
+      });
+      return;
+    }
   }
 
   // ── Create Agent ──
@@ -2021,32 +3136,6 @@ const server = createServer((req, res) => {
   }
 
   // ── Costs Analytics ──
-  if (path === '/api/costs/daily' && req.method === 'GET') {
-    try {
-      const costsData = computeCostsData();
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(costsData.daily));
-    } catch (e) {
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-      console.error('[API] /api/costs/daily error:', e.message);
-      res.end(JSON.stringify({ error: 'Internal server error' }));
-    }
-    return;
-  }
-
-  if (path === '/api/costs/sessions' && req.method === 'GET') {
-    try {
-      const costsData = computeCostsData();
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(costsData.sessions));
-    } catch (e) {
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-      console.error('[API] /api/costs/sessions error:', e.message);
-      res.end(JSON.stringify({ error: 'Internal server error' }));
-    }
-    return;
-  }
-
   if (path === '/api/costs/quota' && req.method === 'GET') {
     try {
       const costsData = computeCostsData();
@@ -2090,6 +3179,66 @@ const server = createServer((req, res) => {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       console.error('[API] error:', e.message); res.end(JSON.stringify({ error: 'Internal server error' }));
     }
+    return;
+  }
+
+
+  // ── Chat Messages ──
+  if (path === '/api/chat/messages' && req.method === 'GET') {
+    try {
+      const limit = Number.parseInt(url.searchParams.get('limit') || '100', 10);
+      const after = url.searchParams.get('after');
+      const result = getChatMessages({
+        limit: Number.isFinite(limit) ? limit : 100,
+        after: after || null,
+      });
+      result.agentStreaming = chatGatewayClient.isAgentStreaming();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      console.error('[API] /api/chat/messages error:', e.message);
+      res.end(JSON.stringify({ error: 'Failed to load chat messages' }));
+    }
+    return;
+  }
+
+  // ── Chat Send ──
+  if (path === '/api/chat/send' && req.method === 'POST') {
+    req.on('error', () => {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: 'Invalid request body' }));
+    });
+
+    let body = '';
+    req.on('data', (chunk) => {
+      body += chunk;
+      if (body.length > MAX_BODY_SIZE) {
+        req.destroy();
+      }
+    });
+
+    req.on('end', async () => {
+      try {
+        const parsed = body ? JSON.parse(body) : {};
+        const message = typeof parsed.message === 'string' ? parsed.message.trim() : '';
+        if (!message) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'Message is required' }));
+          return;
+        }
+
+        await chatGatewayClient.sendMessage(message);
+        console.log('✅ Chat message sent via gateway:', message.substring(0, 50));
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+      } catch (e) {
+        console.error('❌ Chat send failed:', e.message);
+        const status = e.message === 'Gateway not connected' ? 503 : 500;
+        res.writeHead(status, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: e.message || 'Failed to send message' }));
+      }
+    });
     return;
   }
 
@@ -2146,7 +3295,10 @@ const server = createServer((req, res) => {
   if (path.startsWith('/agent/')) {
     const fullPath = join(DIR, 'agent-detail.html');
     if (existsSync(fullPath)) {
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.writeHead(200, {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+      });
       res.end(readFileSync(fullPath));
     } else {
       res.writeHead(404); res.end('Not found');
@@ -2210,9 +3362,12 @@ const server = createServer((req, res) => {
     const ext = extname(fullPath);
     const contentType = MIME[ext] || 'application/octet-stream';
 
-    // Smart caching: cache JS/CSS assets, not HTML
+    // Smart caching: cache JS/CSS assets, force revalidation for HTML
     const isAsset = ['.js', '.mjs', '.css', '.png', '.svg', '.ico'].includes(ext);
-    const cacheControl = isAsset ? 'public, max-age=3600' : 'no-cache';
+    const isHtml = ext === '.html';
+    const cacheControl = isAsset
+      ? 'public, max-age=3600'
+      : (isHtml ? 'no-cache, no-store, must-revalidate' : 'no-cache');
 
     // Gzip text responses > 1KB
     const isText = ['.html', '.js', '.mjs', '.css', '.json', '.svg'].includes(ext);
