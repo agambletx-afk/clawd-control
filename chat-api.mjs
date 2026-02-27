@@ -196,7 +196,10 @@ export function getChatMessages({ limit = 100, after = null } = {}) {
       /^System:\s*\[/.test(rawText) ||
       /Read HEARTBEAT\.md/i.test(rawText) ||
       /^Conversation info \(untrusted metadata\)/m.test(rawText) ||
-      /Exec failed/i.test(rawText)
+      /Exec failed/i.test(rawText) ||
+      /You remember these earlier conversations/i.test(rawText) ||
+      /\[GRAPH MEMORY\]/i.test(rawText) ||
+      /Speak from this memory naturally/i.test(rawText)
     )) continue;
 
     // Skip heartbeat responses
