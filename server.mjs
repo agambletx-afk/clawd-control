@@ -11,7 +11,7 @@ const { createServer } = http;
 import { readFileSync, existsSync, writeFileSync, copyFileSync, readdirSync, statSync } from 'fs';
 import { join, extname, resolve, sep } from 'path';
 import { gzipSync } from 'zlib';
-import { execFileSync, execSync, spawnSync } from 'child_process';
+import { exec, execFileSync, execSync, spawnSync } from 'child_process';
 import { AgentCollector } from './collector.mjs';
 import { createAgent } from './create-agent.mjs';
 import { discoverAgents } from './discover.mjs';
@@ -3230,6 +3230,15 @@ const server = createServer((req, res) => {
 
         await chatGatewayClient.sendMessage(message);
         console.log('✅ Chat message sent via gateway:', message.substring(0, 50));
+
+        // Fire-and-forget: relay user message to Telegram so both sides stay in sync
+        const TELEGRAM_RELAY = '/home/openclaw/.openclaw/workspace/send-to-telegram.sh';
+        const safeMsg = message.replace(/'/g, "'\\''"); // escape single quotes for shell
+        exec(`bash ${TELEGRAM_RELAY} '📱 ${safeMsg}'`, (err) => {
+          if (err) console.error('⚠️ Telegram relay failed:', err.message);
+          else console.log('✅ User message relayed to Telegram');
+        });
+
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true }));
       } catch (e) {
