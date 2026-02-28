@@ -1,5 +1,16 @@
 import fs from "node:fs";
+import https from "node:https";
 import path from "node:path";
+
+type ConfirmPathRule = {
+  pattern: string;
+  timeoutSeconds?: number;
+};
+
+type TelegramConfig = {
+  botTokenEnvVar: string;
+  chatIdEnvVar: string;
+};
 
 type SecurityHookConfig = {
   version: string;
@@ -7,15 +18,21 @@ type SecurityHookConfig = {
   blocklist: string[];
   protectedPaths: string[];
   allowlist: string[];
-  confirmPaths: string[];
+  confirmPaths: ConfirmPathRule[];
+  telegram: TelegramConfig;
   rateLimits: Record<string, unknown>;
 };
 
 type RuleMatch = { matched: boolean; rule?: string };
 
 const DEFAULT_CONFIG: SecurityHookConfig = {
-  version: "1.0",
+  version: "1.1",
   changelog: [
+    {
+      version: "1.1",
+      date: "2026-02-28",
+      note: "Added Telegram confirmation gates for sensitive write paths with timeout controls.",
+    },
     {
       version: "1.0",
       date: "2026-02-28",
@@ -64,7 +81,16 @@ const DEFAULT_CONFIG: SecurityHookConfig = {
     "free *",
     "journalctl *",
   ],
-  confirmPaths: [],
+  confirmPaths: [
+    { pattern: "docker-compose.yml", timeoutSeconds: 300 },
+    { pattern: "*.service", timeoutSeconds: 300 },
+    { pattern: "SOUL.md", timeoutSeconds: 300 },
+    { pattern: ".env", timeoutSeconds: 180 },
+  ],
+  telegram: {
+    botTokenEnvVar: "TELEGRAM_BOT_TOKEN",
+    chatIdEnvVar: "TELEGRAM_CHAT_ID",
+  },
   rateLimits: {},
 };
 
@@ -120,6 +146,130 @@ function matchBlocklist(command: string, blocklist: string[]): RuleMatch {
   return { matched: false };
 }
 
+function matchesConfirmPath(targetPath: string, confirmPaths: ConfirmPathRule[], homeDir: string): ConfirmPathRule | null {
+  const normalized = toAbsolutePath(targetPath, homeDir);
+  for (const rule of confirmPaths) {
+    if (!rule || typeof rule.pattern !== "string" || rule.pattern.trim().length === 0) {
+      continue;
+    }
+    const pattern = rule.pattern;
+    if (pattern.includes("*")) {
+      const matcher = wildcardPatternToRegex(pattern);
+      if (matcher.test(targetPath) || matcher.test(normalized)) {
+        return rule;
+      }
+      continue;
+    }
+    const expandedRule = pattern.startsWith("~/") ? path.join(homeDir, pattern.slice(2)) : pattern;
+    const ruleNormalized = path.isAbsolute(expandedRule) ? path.normalize(expandedRule) : expandedRule;
+    if (!path.isAbsolute(ruleNormalized)) {
+      if (targetPath === ruleNormalized || targetPath.endsWith(`/${ruleNormalized}`)) {
+        return rule;
+      }
+      continue;
+    }
+    if (normalized === ruleNormalized || normalized.startsWith(`${ruleNormalized}${path.sep}`)) {
+      return rule;
+    }
+  }
+  return null;
+}
+
+function getOperationSummary(event: any): string {
+  const summarySource =
+    event?.params?.command ??
+    event?.params?.cmd ??
+    event?.params?.content ??
+    event?.params?.text ??
+    event?.params?.patch ??
+    "";
+  const summary = String(summarySource).replace(/\s+/g, " ").trim();
+  return summary.slice(0, 200);
+}
+
+function telegramRequest(
+  botToken: string,
+  method: string,
+  body: Record<string, unknown>,
+): Promise<Record<string, any>> {
+  return new Promise((resolve, reject) => {
+    const payload = JSON.stringify(body);
+    const req = https.request(
+      {
+        hostname: "api.telegram.org",
+        path: `/bot${botToken}/${method}`,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(payload),
+        },
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+        res.on("end", () => {
+          const raw = Buffer.concat(chunks).toString("utf8");
+          if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
+            reject(new Error(`telegram ${method} failed with status ${res.statusCode}: ${raw}`));
+            return;
+          }
+          try {
+            resolve(JSON.parse(raw));
+          } catch (error) {
+            reject(new Error(`telegram ${method} returned non-JSON response: ${String(error)}`));
+          }
+        });
+      },
+    );
+    req.on("error", reject);
+    req.write(payload);
+    req.end();
+  });
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForTelegramDecision(
+  botToken: string,
+  chatId: string,
+  timeoutSeconds: number,
+  offset: number,
+): Promise<"approve" | "deny" | "timeout"> {
+  let nextOffset = offset;
+  const deadline = Date.now() + timeoutSeconds * 1000;
+
+  while (Date.now() < deadline) {
+    const response = await telegramRequest(botToken, "getUpdates", {
+      timeout: 2,
+      offset: nextOffset,
+      allowed_updates: ["message"],
+    });
+    const updates = Array.isArray(response?.result) ? response.result : [];
+    for (const update of updates) {
+      const updateId = Number(update?.update_id ?? 0);
+      if (updateId >= nextOffset) {
+        nextOffset = updateId + 1;
+      }
+      const message = update?.message;
+      if (!message || String(message?.chat?.id) !== chatId) {
+        continue;
+      }
+      const text = String(message?.text ?? "").trim().toLowerCase();
+      const normalized = text.startsWith("/") ? text.slice(1) : text;
+      if (normalized === "approve") {
+        return "approve";
+      }
+      if (normalized === "deny") {
+        return "deny";
+      }
+    }
+    await delay(2000);
+  }
+  return "timeout";
+}
+
 function matchesProtectedPath(targetPath: string, protectedPaths: string[], homeDir: string): RuleMatch {
   const normalized = toAbsolutePath(targetPath, homeDir);
   for (const rule of protectedPaths) {
@@ -164,6 +314,19 @@ function validateConfig(config: any): string[] {
   }
   if (!Array.isArray(config.changelog)) {
     errors.push("missing required field: changelog[]");
+  }
+  if (!Array.isArray(config.confirmPaths)) {
+    errors.push("missing required field: confirmPaths[]");
+  }
+  if (!config.telegram || typeof config.telegram !== "object") {
+    errors.push("missing required field: telegram");
+  } else {
+    if (typeof config.telegram.botTokenEnvVar !== "string" || config.telegram.botTokenEnvVar.trim().length === 0) {
+      errors.push("missing required field: telegram.botTokenEnvVar");
+    }
+    if (typeof config.telegram.chatIdEnvVar !== "string" || config.telegram.chatIdEnvVar.trim().length === 0) {
+      errors.push("missing required field: telegram.chatIdEnvVar");
+    }
   }
   return errors;
 }
@@ -283,6 +446,116 @@ export default function securityHook(api: any) {
         });
         api.logger.warn(`security-hook: blocked tool=${toolName} agent=${agentId} reason="${reason}"`);
         return blockCall(`Blocked by security-hook (${reason})`);
+      }
+
+      const confirmMatch = matchesConfirmPath(targetPath, config.confirmPaths, homeDir);
+      if (confirmMatch) {
+        const timeoutSeconds = confirmMatch.timeoutSeconds ?? 300;
+        const botToken = process.env[config.telegram.botTokenEnvVar] ?? "";
+        const chatId = process.env[config.telegram.chatIdEnvVar] ?? "";
+        const operationSummary = getOperationSummary(event);
+        const matchedRule = `confirm path: ${confirmMatch.pattern}`;
+
+        if (!botToken || !chatId) {
+          const reason = `${matchedRule}; missing telegram credentials in env`;
+          await appendBlockedLog(logPath, {
+            timestamp: new Date().toISOString(),
+            agentId,
+            tool: toolName,
+            command,
+            path: targetPath,
+            matchedRule: reason,
+            action: "gate-denied",
+          });
+          return blockCall(`Blocked by security-hook (${reason})`);
+        }
+
+        try {
+          const updates = await telegramRequest(botToken, "getUpdates", {
+            timeout: 0,
+            allowed_updates: ["message"],
+          });
+          const existingUpdates = Array.isArray(updates?.result) ? updates.result : [];
+          const initialOffset = existingUpdates.reduce((maxOffset: number, update: any) => {
+            const updateId = Number(update?.update_id ?? 0);
+            return updateId >= maxOffset ? updateId + 1 : maxOffset;
+          }, 0);
+
+          const requestMessage =
+            `Security confirmation requested\n` +
+            `Agent ID: ${agentId}\n` +
+            `Tool: ${toolName}\n` +
+            `Target Path: ${targetPath}\n` +
+            `Operation Summary: ${operationSummary || "(none)"}\n\n` +
+            `Reply /approve or /deny`;
+
+          await telegramRequest(botToken, "sendMessage", {
+            chat_id: chatId,
+            text: requestMessage,
+          });
+
+          await appendBlockedLog(logPath, {
+            timestamp: new Date().toISOString(),
+            agentId,
+            tool: toolName,
+            command,
+            path: targetPath,
+            matchedRule,
+            action: "gate-requested",
+            timeoutSeconds,
+          });
+
+          const decision = await waitForTelegramDecision(botToken, chatId, timeoutSeconds, initialOffset);
+          if (decision === "approve") {
+            await appendBlockedLog(logPath, {
+              timestamp: new Date().toISOString(),
+              agentId,
+              tool: toolName,
+              command,
+              path: targetPath,
+              matchedRule,
+              action: "gate-approved",
+            });
+            return;
+          }
+
+          if (decision === "deny") {
+            await appendBlockedLog(logPath, {
+              timestamp: new Date().toISOString(),
+              agentId,
+              tool: toolName,
+              command,
+              path: targetPath,
+              matchedRule,
+              action: "gate-denied",
+            });
+            return blockCall(`Blocked by security-hook (${matchedRule}; denied via Telegram)`);
+          }
+
+          await appendBlockedLog(logPath, {
+            timestamp: new Date().toISOString(),
+            agentId,
+            tool: toolName,
+            command,
+            path: targetPath,
+            matchedRule,
+            action: "gate-timeout",
+            timeoutSeconds,
+          });
+          return blockCall(`Blocked by security-hook (${matchedRule}; approval timeout)`);
+        } catch (error) {
+          const reason = `${matchedRule}; telegram error: ${String(error)}`;
+          await appendBlockedLog(logPath, {
+            timestamp: new Date().toISOString(),
+            agentId,
+            tool: toolName,
+            command,
+            path: targetPath,
+            matchedRule: reason,
+            action: "gate-denied",
+          });
+          return blockCall(`Blocked by security-hook (${reason})`);
+        }
       }
     }
 
