@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import readline from "node:readline";
 
 type SecurityHookConfig = {
   version: string;
@@ -88,57 +87,19 @@ function toAbsolutePath(inputPath: string, homeDir: string): string {
   if (inputPath.startsWith("~/")) {
     return path.join(homeDir, inputPath.slice(2));
   }
-
   return path.resolve(inputPath);
 }
 
 function isExecCapableTool(toolName: string): boolean {
-  return /(exec|shell|bash|sh|terminal|command)/i.test(toolName);
+  const execTools = ["shell", "bash", "exec", "terminal", "command", "run_command"];
+  const lower = toolName.toLowerCase();
+  return execTools.some((t) => lower === t || lower.endsWith(`_${t}`) || lower.startsWith(`${t}_`));
 }
 
 function isWriteTool(toolName: string): boolean {
-  return /(write|edit|create|save|append|file)/i.test(toolName);
-}
-
-function getCandidateCommand(event: any): string | null {
-  const candidates = [
-    event?.arguments?.command,
-    event?.arguments?.cmd,
-    event?.params?.command,
-    event?.params?.cmd,
-    event?.input?.command,
-    event?.input?.cmd,
-  ];
-
-  for (const candidate of candidates) {
-    if (typeof candidate === "string" && candidate.trim().length > 0) {
-      return candidate.trim();
-    }
-  }
-
-  return null;
-}
-
-function getCandidatePath(event: any): string | null {
-  const candidates = [
-    event?.arguments?.path,
-    event?.arguments?.file_path,
-    event?.arguments?.target,
-    event?.params?.path,
-    event?.params?.file_path,
-    event?.params?.target,
-    event?.input?.path,
-    event?.input?.file_path,
-    event?.input?.target,
-  ];
-
-  for (const candidate of candidates) {
-    if (typeof candidate === "string" && candidate.trim().length > 0) {
-      return candidate.trim();
-    }
-  }
-
-  return null;
+  const writeTools = ["write", "edit", "create_file", "save", "append", "apply_patch", "write_file"];
+  const lower = toolName.toLowerCase();
+  return writeTools.some((t) => lower === t || lower.endsWith(`_${t}`) || lower.startsWith(`${t}_`));
 }
 
 function matchAllowlist(command: string, allowlist: string[]): RuleMatch {
@@ -147,7 +108,6 @@ function matchAllowlist(command: string, allowlist: string[]): RuleMatch {
       return { matched: true, rule: pattern };
     }
   }
-
   return { matched: false };
 }
 
@@ -157,13 +117,11 @@ function matchBlocklist(command: string, blocklist: string[]): RuleMatch {
       return { matched: true, rule: pattern };
     }
   }
-
   return { matched: false };
 }
 
 function matchesProtectedPath(targetPath: string, protectedPaths: string[], homeDir: string): RuleMatch {
   const normalized = toAbsolutePath(targetPath, homeDir);
-
   for (const rule of protectedPaths) {
     if (rule.includes("*")) {
       if (wildcardPatternToRegex(rule).test(targetPath) || wildcardPatternToRegex(rule).test(normalized)) {
@@ -171,22 +129,18 @@ function matchesProtectedPath(targetPath: string, protectedPaths: string[], home
       }
       continue;
     }
-
     const expandedRule = rule.startsWith("~/") ? path.join(homeDir, rule.slice(2)) : rule;
     const ruleNormalized = path.isAbsolute(expandedRule) ? path.normalize(expandedRule) : expandedRule;
-
     if (!path.isAbsolute(ruleNormalized)) {
       if (targetPath === ruleNormalized || targetPath.endsWith(`/${ruleNormalized}`)) {
         return { matched: true, rule };
       }
       continue;
     }
-
     if (normalized === ruleNormalized || normalized.startsWith(`${ruleNormalized}${path.sep}`)) {
       return { matched: true, rule };
     }
   }
-
   return { matched: false };
 }
 
@@ -196,27 +150,21 @@ function validateConfig(config: any): string[] {
     errors.push("config is not an object");
     return errors;
   }
-
   if (typeof config.version !== "string" || config.version.trim().length === 0) {
     errors.push("missing required field: version");
   }
-
   if (!Array.isArray(config.blocklist)) {
     errors.push("missing required field: blocklist[]");
   }
-
   if (!Array.isArray(config.protectedPaths)) {
     errors.push("missing required field: protectedPaths[]");
   }
-
   if (!Array.isArray(config.allowlist)) {
     errors.push("missing required field: allowlist[]");
   }
-
   if (!Array.isArray(config.changelog)) {
     errors.push("missing required field: changelog[]");
   }
-
   return errors;
 }
 
@@ -224,28 +172,17 @@ async function appendBlockedLog(logPath: string, payload: Record<string, unknown
   await fs.promises.appendFile(logPath, `${JSON.stringify(payload)}\n`, { encoding: "utf8" });
 }
 
-async function deniedEvent(event: any, message: string): Promise<any> {
-  return {
-    ...event,
-    blocked: true,
-    denied: true,
-    error: message,
-    result: {
-      ok: false,
-      error: message,
-    },
-  };
+function blockCall(reason: string): { block: true; blockReason: string } {
+  return { block: true, blockReason: reason };
 }
 
 export default function securityHook(api: any) {
   const homeDir = process.env.HOME ?? "/home/openclaw";
   const openclawDir = path.join(homeDir, ".openclaw");
-  const extensionsDir = path.join(openclawDir, "extensions", "security-hook");
   const logsDir = path.join(openclawDir, "logs");
   const configPath = path.join(openclawDir, "security-hook.json");
   const logPath = path.join(logsDir, "security-hook.log");
 
-  ensureDir(extensionsDir);
   ensureDir(logsDir);
   ensureFile(logPath);
 
@@ -257,11 +194,9 @@ export default function securityHook(api: any) {
       fs.writeFileSync(configPath, `${JSON.stringify(DEFAULT_CONFIG, null, 2)}\n`, { encoding: "utf8" });
       api.logger.info(`security-hook: seeded config at ${configPath}`);
     }
-
     const raw = fs.readFileSync(configPath, "utf8");
     const parsed = JSON.parse(raw);
     const errors = validateConfig(parsed);
-
     if (errors.length > 0) {
       failClosed = true;
       api.logger.error(`security-hook: config validation failed (${errors.join("; ")})`);
@@ -273,42 +208,25 @@ export default function securityHook(api: any) {
     api.logger.error(`security-hook: failed to load config (${String(error)})`);
   }
 
-  api.registerService("security-hook", {
-    getConfigPath: () => configPath,
-    getLogPath: () => logPath,
-    isFailClosed: () => failClosed,
-    async tailBlocked(limit = 10): Promise<any[]> {
-      const rows: any[] = [];
-      const stream = fs.createReadStream(logPath, { encoding: "utf8" });
-      const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
-
-      for await (const line of rl) {
-        if (!line.trim()) {
-          continue;
-        }
-
-        try {
-          rows.push(JSON.parse(line));
-          if (rows.length > limit) {
-            rows.shift();
-          }
-        } catch {
-          // Ignore malformed lines while tailing.
-        }
-      }
-
-      return rows;
+  api.registerService({
+    id: "security-hook",
+    start: () => {
+      api.logger.info("security-hook: service started");
+    },
+    stop: () => {
+      api.logger.info("security-hook: service stopped");
     },
   });
 
   api.logger.info("[plugins] security-hook: registered — pre-execution command filtering active");
 
   api.on("before_tool_call", async (event: any, ctx: any) => {
-    const toolName = String(event?.tool_name ?? event?.tool ?? event?.name ?? "unknown");
-    const command = getCandidateCommand(event);
-    const targetPath = getCandidatePath(event);
-    const agentId = String(ctx?.agentId ?? event?.agent_id ?? event?.agentId ?? "unknown");
+    const toolName = String(event?.toolName ?? "unknown");
+    const command: string | null = event?.params?.command ?? event?.params?.cmd ?? null;
+    const targetPath: string | null = event?.params?.path ?? event?.params?.file_path ?? event?.params?.target ?? null;
+    const agentId = String(ctx?.agentId ?? "unknown");
 
+    // Fail-closed: block all exec-capable calls when config is invalid
     if (failClosed && isExecCapableTool(toolName)) {
       const reason = "invalid config: fail-closed mode";
       await appendBlockedLog(logPath, {
@@ -320,13 +238,14 @@ export default function securityHook(api: any) {
         matchedRule: reason,
         action: "blocked",
       });
-      return deniedEvent(event, "security-hook blocked this call: configuration is invalid (fail-closed)");
+      return blockCall("security-hook blocked this call: configuration is invalid (fail-closed)");
     }
 
     if (!config) {
-      return event;
+      return;
     }
 
+    // Check exec-capable tool calls against blocklist (with allowlist override)
     if (command && isExecCapableTool(toolName)) {
       const allow = matchAllowlist(command, config.allowlist);
       if (!allow.matched) {
@@ -343,11 +262,12 @@ export default function securityHook(api: any) {
             action: "blocked",
           });
           api.logger.warn(`security-hook: blocked tool=${toolName} agent=${agentId} reason="${reason}"`);
-          return deniedEvent(event, `Blocked by security-hook (${reason})`);
+          return blockCall(`Blocked by security-hook (${reason})`);
         }
       }
     }
 
+    // Check write tools against protected paths
     if (targetPath && isWriteTool(toolName)) {
       const protectedMatch = matchesProtectedPath(targetPath, config.protectedPaths, homeDir);
       if (protectedMatch.matched) {
@@ -362,10 +282,11 @@ export default function securityHook(api: any) {
           action: "blocked",
         });
         api.logger.warn(`security-hook: blocked tool=${toolName} agent=${agentId} reason="${reason}"`);
-        return deniedEvent(event, `Blocked by security-hook (${reason})`);
+        return blockCall(`Blocked by security-hook (${reason})`);
       }
     }
 
-    return event;
+    // Allow: return undefined
+    return;
   });
 }
