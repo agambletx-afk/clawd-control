@@ -535,7 +535,7 @@ else
       security_flag='true'
     fi
 
-    latest_release_preview=$(echo "$latest_release_body" | head -c 2000)
+    latest_release_preview=$(echo "$latest_release_body" | head -c 15000)
 
     version_layer='version'
     version_name='OpenClaw Version'
