@@ -332,7 +332,7 @@
       return `
         <div class="timeline-item">
           <div class="timeline-top">
-            <span class="timeline-time">${relativeTime(event.timestamp)}</span>
+            <span class="timeline-time">${relativeTime(event.checked_at || event.timestamp)}</span>
             <span class="timeline-layer">${esc(layer)}</span>
             <span class="status-pair">
               <span class="status-dot ${esc(from)}"></span>
@@ -368,7 +368,7 @@
     async function loadTransitions() {
       try {
         const data = await api('/api/security/transitions?limit=20');
-        state.transitions = data.transitions || data.events || [];
+        state.transitions = Array.isArray(data) ? data : (data.transitions || data.events || []);
       } catch {
         state.transitions = [];
       }
