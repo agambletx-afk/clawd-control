@@ -1,0 +1,10 @@
+{
+  "name": "@openclaw/credential-scanner",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Deterministic post-response credential pattern scanner",
+  "dependencies": {},
+  "openclaw": {
+    "extensions": ["./index.ts"]
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "id": "credential-scanner",
+  "name": "Credential Scanner",
+  "version": "1.0.0",
+  "description": "Post-response deterministic credential leak detection and Telegram alerting",
+  "configSchema": {}
+}
