@@ -604,7 +604,7 @@ else
 fi
 
 # Check 11: Config Drift
-config_drift_result=$(CONFIG_FILE='/home/openclaw/.openclaw/openclaw.json' BASELINE_FILE='/tmp/config-drift-baseline.json' node -e "
+config_drift_result=$(CONFIG_FILE='/home/openclaw/.openclaw/openclaw.json' BASELINE_FILE='/var/tmp/config-drift-baseline.json' node -e "
   const fs = require('fs');
 
   const configFile = process.env.CONFIG_FILE;

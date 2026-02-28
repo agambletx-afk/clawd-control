@@ -2,7 +2,7 @@
 set -euo pipefail
 
 CONFIG_FILE='/home/openclaw/.openclaw/openclaw.json'
-BASELINE_FILE='/tmp/config-drift-baseline.json'
+BASELINE_FILE='/var/tmp/config-drift-baseline.json'
 
 if [ ! -r "$CONFIG_FILE" ]; then
   echo "ERROR: cannot read config file: $CONFIG_FILE" >&2
