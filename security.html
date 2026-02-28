@@ -298,7 +298,7 @@
       flex-wrap: wrap;
     }
     .version-release-stats .stat { color: var(--text-secondary); }
-    .version-release-preview { font-size: 0.7rem; line-height: 1.5; }
+    .version-release-preview { font-size: 0.7rem; line-height: 1.5; max-height: 300px; overflow-y: auto; }
     .release-line {
       padding: 1px 0;
       color: var(--text-secondary);
@@ -525,15 +525,15 @@
       }, duration);
     }
 
-    function renderReleasePreview(preview, maxLines = 8) {
+    function renderReleasePreview(preview, maxLines = 0) {
       if (!preview) return '<span class="muted">No release notes available.</span>';
 
       const lines = preview.split('\n')
         .map(l => l.trim())
         .filter(l => l.startsWith('- '));
 
-      const shown = lines.slice(0, maxLines);
-      const remaining = lines.length - shown.length;
+      const shown = maxLines > 0 ? lines.slice(0, maxLines) : lines;
+      const remaining = maxLines > 0 ? lines.length - shown.length : 0;
 
       let html = shown.map(line => {
         const escaped = esc(line);
