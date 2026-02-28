@@ -242,28 +242,33 @@
     .version-card.status-yellow { border-left-color: #D4881C; background: rgba(212,136,28,0.05); }
     .version-card.status-red { border-left-color: #C0392B; background: rgba(192,57,43,0.06); }
     .version-card.status-unknown { border-left-color: #636e72; }
-    .version-card-header { display:flex; align-items:center; gap:8px; justify-content:space-between; flex-wrap:wrap; }
+    .version-card-header { display:flex; align-items:center; gap:8px; justify-content:space-between; flex-wrap:wrap; cursor:pointer; user-select:none; }
     .version-card-title { display:flex; align-items:center; gap:8px; font-size:0.86rem; font-weight:700; }
+    .version-card-summary { font-size:0.76rem; color:var(--text-secondary); }
+    .version-card-heading { display:flex; align-items:center; gap:10px; min-width:0; flex:1; }
+    .version-card-heading-text { min-width:0; }
     .status-dot { width:9px; height:9px; border-radius:50%; display:inline-block; }
     .status-dot.green { background:#27AE60; }
     .status-dot.yellow { background:#D4881C; }
     .status-dot.red { background:#C0392B; }
     .status-dot.unknown { background:#636e72; }
     .version-card-body { font-size:0.76rem; color:var(--text-secondary); margin-top:8px; line-height:1.4; }
-    .version-grid { display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; margin:0.5rem 0; }
+    .version-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:0.5rem; margin:0.5rem 0; }
     .version-grid code { font-family:'JetBrains Mono','Fira Code',monospace; }
     .version-missed { font-size:0.85rem; color:var(--text-secondary); margin:0.5rem 0; }
     .version-card-footer { margin-top:8px; display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:0.68rem; }
     .version-card-footer a { color: var(--text-secondary); }
-    .version-remediation { margin-top:8px; border-radius:6px; padding:6px 8px; font-size:0.7rem; display:flex; align-items:flex-start; gap:8px; flex-wrap:wrap; }
-    .version-remediation.yellow { background: rgba(212,136,28,0.15); }
-    .version-remediation.red { background: rgba(192,57,43,0.15); }
     .version-badge { border-radius:10px; padding:2px 8px; font-size:0.7rem; font-weight:700; }
     .version-badge.green { background: rgba(39,174,96,0.2); color:#2ecc71; }
     .version-badge.yellow { background: rgba(212,136,28,0.2); color:#f0a836; }
     .version-badge.red { background: rgba(192,57,43,0.2); color:#e74c3c; }
-    .version-security-yes { color: #e74c3c; font-weight: 700; }
-    .version-security-no { color: #2ecc71; }
+    .version-card .tier-chevron { transition: transform 0.25s; }
+    .version-card.open .tier-chevron { transform: rotate(180deg); }
+    .version-card-expand {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    }
     .btn { border:1px solid rgba(255,255,255,0.2); background: rgba(10,12,16,0.3); color:#dfe6e9; border-radius:6px; cursor:pointer; }
     .btn:hover { background: rgba(10,12,16,0.55); color:#fff; }
     .btn:disabled { opacity:0.5; cursor:not-allowed; }
@@ -284,7 +289,23 @@
       border-radius: 10px;
       padding: 10px 12px;
     }
-    .timeline-title { font-size: 0.86rem; margin-bottom: 8px; font-weight: 700; }
+    .timeline-title { font-size: 0.86rem; font-weight: 700; }
+    .timeline-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      user-select: none;
+      padding: 0;
+    }
+    .timeline-banner .tier-chevron { transition: transform 0.25s; }
+    .timeline-section.open .timeline-banner .tier-chevron { transform: rotate(180deg); }
+    .timeline-body {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .timeline-body-inner { padding-top: 8px; }
     .timeline-list { display: grid; gap: 4px; }
     .tl-item {
       border: 1px solid var(--border-subtle);
@@ -339,10 +360,17 @@
 
     <div id="tierAccordions" class="tier-accordions"></div>
 
-    <section class="timeline-section">
-      <div class="timeline-title">Event Timeline</div>
-      <div id="timelineList" class="timeline-list">
-        <div class="muted">Loading...</div>
+    <section class="timeline-section" id="timelineSection">
+      <div class="timeline-banner" id="timelineBanner" role="button" tabindex="0">
+        <span class="timeline-title">Event Timeline</span>
+        <svg class="tier-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="timeline-body" id="timelineBody">
+        <div class="timeline-body-inner">
+          <div id="timelineList" class="timeline-list">
+            <div class="muted">Loading...</div>
+          </div>
+        </div>
       </div>
     </section>
   </main>
@@ -385,6 +413,8 @@
     const state = { health: null, transitions: [], pollTimer: null, running: false, versionCheck: null };
     const openTiers = new Set();    // track which tiers are expanded
     const openCards = new Set();    // track which card details are expanded
+    let timelineOpen = false;
+    let versionCardOpen = false;
     const $ = id => document.getElementById(id);
 
     /* ══════════════════════════════════════════════════
@@ -474,9 +504,9 @@
       const missed = Array.isArray(meta.missed_versions) ? meta.missed_versions : [];
       const preview = missed.slice(0, 5);
       const more = missed.length > 5 ? ` and ${missed.length - 5} more` : '';
-      const securityFlag = meta.security_flag === true;
       const badge = safeBehind == null ? '' : `<span class="version-badge ${safeBehind === 0 ? 'green' : safeBehind === 1 ? 'yellow' : 'red'}">${safeBehind}</span>`;
       const updateDisabled = status === 'green' || status === 'unknown';
+      const summary = check.message || 'No version data.';
 
       let body = `<span class="version-current">${esc(check.message || 'No version data.')}</span>`;
       if (status === 'yellow' || status === 'red') {
@@ -485,7 +515,6 @@
             <div>Current: <code>${esc(current)}</code></div>
             <div>Latest: <code>${esc(latest)}</code></div>
             <div>Versions behind: ${badge}</div>
-            <div>Security flag: <span class="${securityFlag ? 'version-security-yes' : 'version-security-no'}">${securityFlag ? '⚠ Yes' : 'No'}</span></div>
           </div>
           ${preview.length ? `<div class="version-missed">Missed: ${esc(preview.join(', '))}${esc(more)}</div>` : ''}
           ${check.details ? `<div class="version-missed">${esc(check.details)}</div>` : ''}
@@ -494,29 +523,43 @@
         body = `<span class="version-current">${esc(check.message || 'No version data.')}</span><div class="version-missed">${esc(check.details)}</div>`;
       }
 
-      const remediation = (status === 'yellow' || status === 'red') && check.remediation
-        ? `<div class="version-remediation ${status}">⚠ Remediation: <span class="remediation-text">${esc(check.remediation)}</span><button class="mini-btn" type="button" data-action="copy" data-text="${esc(check.remediation)}">Copy</button></div>`
-        : '';
-
       card.className = `version-card status-${status}`;
       card.style.display = '';
       card.innerHTML = `
-        <div class="version-card-header">
-          <div class="version-card-title">
+        <div class="version-card-header" id="version-card-header" role="button" tabindex="0">
+          <div class="version-card-heading">
             <span class="status-dot ${status}"></span>
-            <span class="check-name">OpenClaw Version</span>
+            <div class="version-card-heading-text">
+              <div class="version-card-title">
+                <span class="check-name">OpenClaw Version</span>
+                ${CHEVRON_SVG}
+              </div>
+              <div class="version-card-summary">${esc(summary)}</div>
+            </div>
           </div>
           <button class="btn btn-sm ${updateDisabled ? '' : 'btn-primary'}" id="update-now-btn" ${updateDisabled ? 'disabled' : ''}>Update Now</button>
         </div>
-        <div class="version-card-body">${body}</div>
-        <div class="version-card-footer">
-          <a href="${esc(releaseUrl)}" target="_blank" rel="noopener">Release Notes ↗</a>
-          <span class="check-time">Checked: ${relTime(check.checked_at)}</span>
+        <div class="version-card-expand" id="version-card-expand" ${versionCardOpen ? 'data-open="1"' : ''}>
+          <div class="version-card-body">${body}</div>
+          <div class="version-card-footer">
+            <a href="${esc(releaseUrl)}" target="_blank" rel="noopener">Release Notes ↗</a>
+            <span class="check-time">Checked: ${relTime(check.checked_at)}</span>
+          </div>
         </div>
-        ${remediation}
       `;
 
-      card.querySelector('#update-now-btn')?.addEventListener('click', async () => {
+      if (versionCardOpen) {
+        card.classList.add('open');
+      }
+
+      requestAnimationFrame(() => {
+        const expand = $('version-card-expand');
+        if (!expand) return;
+        expand.style.maxHeight = versionCardOpen ? `${expand.scrollHeight}px` : '0';
+      });
+
+      card.querySelector('#update-now-btn')?.addEventListener('click', async (e) => {
+        e.stopPropagation();
         try {
           const data = await api('/api/security/update-openclaw', { method: 'POST' });
           showToast(data.message || 'Update endpoint reached.');
@@ -525,6 +568,7 @@
         }
       });
     }
+
 
     /* ══════════════════════════════════════════════════
        OVERALL BANNER
@@ -662,6 +706,15 @@
           if (el) el.style.maxHeight = el.scrollHeight + 'px';
         });
       });
+
+      if (timelineOpen) {
+        const body = $('timelineBody');
+        const section = $('timelineSection');
+        if (body && section) {
+          body.style.maxHeight = `${body.scrollHeight}px`;
+          section.classList.add('open');
+        }
+      }
     }
 
     /* ══════════════════════════════════════════════════
@@ -687,6 +740,15 @@
           <span class="tl-message">${esc(e.message || '')}</span>
         </div>`;
       }).join('');
+
+      if (timelineOpen) {
+        const body = $('timelineBody');
+        if (body) {
+          requestAnimationFrame(() => {
+            body.style.maxHeight = `${body.scrollHeight}px`;
+          });
+        }
+      }
     }
 
     /* ══════════════════════════════════════════════════
@@ -769,14 +831,62 @@
       if (openCards.has(key)) {
         openCards.delete(key);
         el.style.maxHeight = '0';
+        el.removeAttribute('data-open');
       } else {
         openCards.add(key);
         el.style.maxHeight = el.scrollHeight + 'px';
+        el.setAttribute('data-open', '1');
+      }
+
+      const tierBody = el.closest('.tier-body');
+      if (tierBody && tierBody.style.maxHeight) {
+        requestAnimationFrame(() => {
+          tierBody.style.maxHeight = tierBody.scrollHeight + 'px';
+        });
+      }
+    }
+
+    function toggleTimeline() {
+      const body = $('timelineBody');
+      const section = $('timelineSection');
+      if (!body || !section) return;
+
+      if (timelineOpen) {
+        timelineOpen = false;
+        body.style.maxHeight = '0';
+        section.classList.remove('open');
+      } else {
+        timelineOpen = true;
+        body.style.maxHeight = `${body.scrollHeight}px`;
+        section.classList.add('open');
+      }
+    }
+
+    function toggleVersionCard() {
+      const card = $('version-card');
+      const expand = $('version-card-expand');
+      if (!card || !expand) return;
+
+      if (versionCardOpen) {
+        versionCardOpen = false;
+        expand.style.maxHeight = '0';
+        card.classList.remove('open');
+      } else {
+        versionCardOpen = true;
+        expand.style.maxHeight = `${expand.scrollHeight}px`;
+        card.classList.add('open');
       }
     }
 
     function bindEvents() {
       $('recheckBtn').onclick = runCheckNow;
+      $('timelineBanner').onclick = toggleTimeline;
+      $('timelineBanner').onkeydown = (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggleTimeline();
+        }
+      };
 
       $('tierAccordions').onclick = async (e) => {
         // Tier toggle
@@ -800,10 +910,18 @@
         if (action === 'ack') { btn.disabled = true; await acknowledgeReasoning(); btn.disabled = false; return; }
       };
 
-      $('version-card').onclick = async (e) => {
-        const btn = e.target.closest("button[data-action='copy']");
-        if (!btn) return;
-        await copyText(btn.dataset.text);
+      $('version-card').onclick = (e) => {
+        if (e.target.closest('#update-now-btn')) return;
+        if (e.target.closest('#version-card-header')) {
+          toggleVersionCard();
+        }
+      };
+      $('version-card').onkeydown = (e) => {
+        if (!e.target.closest('#version-card-header')) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggleVersionCard();
+        }
       };
     }
 
@@ -826,32 +944,11 @@
       if (window.__securityInitRoot === root && state.pollTimer) return;
       window.__securityInitRoot = root;
 
-      // Auto-expand tiers that have warnings/issues on first load
       openTiers.clear();
       openCards.clear();
 
-      bindEvents();
       await refresh();
-
-      // After first load, auto-expand degraded tiers
-      if (state.health && !state.health.stale) {
-        const checks = state.health.checks || [];
-        const byLayer = Object.fromEntries(checks.map(c => [c.layer, c]));
-        TIERS.forEach(tier => {
-          const hasIssue = tier.checks.some(d => {
-            const t = tok(byLayer[d.key]?.status);
-            return t === 'yellow' || t === 'red';
-          });
-          if (hasIssue) {
-            openTiers.add(tier.id);
-            const body = $(`tbody-${tier.id}`);
-            const tierEl = body?.closest('.tier');
-            if (body) { body.style.maxHeight = body.scrollHeight + 'px'; }
-            if (tierEl) { tierEl.classList.add('open'); }
-          }
-        });
-      }
-
+      bindEvents();
       startPolling();
     }
 
