@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Security — Clawd Control</title>
+  <style>
+    .page-header { margin-bottom: 12px; }
+    .page-header h1 { font-size: 1.9rem; }
+    .subtitle { color: var(--text-secondary); font-size: 0.88rem; }
+
+    .security-banner {
+      border-radius: 12px;
+      border: 1px solid transparent;
+      margin-bottom: 14px;
+      padding: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      color: #fff;
+    }
+    .security-banner-main { min-width: 0; }
+    .security-banner-title { font-size: 1rem; font-weight: 700; }
+    .security-banner-meta { font-size: 0.78rem; opacity: 0.95; margin-top: 2px; }
+    .security-banner.status-green { background: #27AE60; border-color: #2ecc71; }
+    .security-banner.status-yellow { background: #E67E22; border-color: #f39c12; }
+    .security-banner.status-red { background: #C0392B; border-color: #e74c3c; }
+    .security-banner.status-unknown { background: #95A5A6; border-color: #7f8c8d; }
+
+    .btn {
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      background: rgba(10, 12, 16, 0.25);
+      color: #fff;
+      padding: 10px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      min-height: 44px;
+      white-space: nowrap;
+    }
+    .btn:hover { background: rgba(10, 12, 16, 0.4); }
+    .btn:disabled { opacity: 0.7; cursor: wait; }
+
+    .security-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-bottom: 14px;
+    }
+
+    .security-card {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--bg-secondary);
+      display: flex;
+      flex-direction: column;
+      min-height: 220px;
+      overflow: hidden;
+    }
+    .security-card.status-green { background: rgba(39, 174, 96, 0.16); border-color: rgba(39, 174, 96, 0.45); }
+    .security-card.status-yellow { background: rgba(230, 126, 34, 0.16); border-color: rgba(230, 126, 34, 0.45); }
+    .security-card.status-red { background: rgba(192, 57, 43, 0.18); border-color: rgba(192, 57, 43, 0.45); }
+
+    .card-head { padding: 12px 12px 8px; border-bottom: 1px solid var(--border-subtle); }
+    .layer-label { color: var(--text-tertiary); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; }
+    .card-title { font-weight: 700; margin-top: 2px; font-size: 0.95rem; }
+    .status-row { margin-top: 8px; display: flex; align-items: center; gap: 6px; font-size: 0.78rem; }
+    .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .status-dot.green { background: #27AE60; }
+    .status-dot.yellow { background: #E67E22; }
+    .status-dot.red { background: #C0392B; }
+    .status-dot.unknown { background: #95A5A6; }
+
+    .card-body { padding: 10px 12px 12px; display: grid; gap: 8px; }
+    .card-msg { font-size: 0.82rem; color: var(--text-primary); }
+    .card-time { font-size: 0.74rem; color: var(--text-tertiary); }
+    .details-toggle {
+      width: 100%;
+      text-align: left;
+      border: 1px solid var(--border);
+      background: var(--bg-tertiary);
+      color: var(--text-secondary);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 0.75rem;
+      cursor: pointer;
+      min-height: 44px;
+    }
+    .details-toggle:hover { color: var(--text-primary); }
+    .details-panel {
+      display: none;
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      background: rgba(10, 12, 16, 0.35);
+      padding: 8px;
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      color: var(--text-secondary);
+      white-space: pre-wrap;
+      overflow-x: auto;
+      word-break: break-word;
+    }
+    .details-panel.open { display: block; }
+
+    .remediation {
+      margin-top: auto;
+      border-top: 1px solid transparent;
+      display: none;
+      padding: 10px;
+      gap: 8px;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      font-size: 0.75rem;
+    }
+    .remediation.visible { display: flex; }
+    .remediation.yellow { background: rgba(230, 126, 34, 0.28); border-color: rgba(230, 126, 34, 0.45); }
+    .remediation.red { background: rgba(192, 57, 43, 0.3); border-color: rgba(192, 57, 43, 0.45); }
+    .remediation-text { font-family: var(--font-mono); flex: 1; min-width: 160px; word-break: break-word; }
+    .remediation-actions { display: flex; gap: 8px; }
+    .mini-btn {
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      background: rgba(10, 12, 16, 0.35);
+      color: #fff;
+      border-radius: 7px;
+      padding: 8px 10px;
+      font-size: 0.72rem;
+      min-height: 44px;
+      cursor: pointer;
+    }
+
+    .timeline {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+    }
+    .timeline h2 { font-size: 0.98rem; margin-bottom: 10px; }
+    .timeline-list { display: grid; gap: 8px; }
+    .timeline-item {
+      border: 1px solid var(--border-subtle);
+      border-radius: 9px;
+      padding: 9px;
+      background: var(--bg-tertiary);
+      display: grid;
+      gap: 4px;
+    }
+    .timeline-top { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 0.76rem; }
+    .timeline-time { color: var(--text-tertiary); }
+    .timeline-layer { color: var(--text-secondary); }
+    .timeline-message { font-size: 0.78rem; color: var(--text-primary); }
+    .status-pair { display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem; }
+    .muted { color: var(--text-tertiary); font-size: 0.8rem; }
+
+    @media (max-width: 1024px) {
+      .security-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 640px) {
+      .security-grid { grid-template-columns: 1fr; }
+      .security-banner { flex-direction: column; align-items: stretch; }
+      .security-banner .btn { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <main class="main">
+    <div class="page-header">
+      <h1>Security</h1>
+      <p class="subtitle">Layered health checks, remediation signals, and transition timeline.</p>
+    </div>
+
+    <section id="securityBanner" class="security-banner status-unknown">
+      <div class="security-banner-main">
+        <div id="bannerTitle" class="security-banner-title">Security Status Unknown — Data Stale or Unavailable</div>
+        <div id="bannerMeta" class="security-banner-meta">Waiting for security check data…</div>
+      </div>
+      <button id="runCheckBtn" class="btn" type="button">Run Check Now</button>
+    </section>
+
+    <section id="securityGrid" class="security-grid"></section>
+
+    <section class="timeline">
+      <h2>Security Event Timeline</h2>
+      <div id="timelineList" class="timeline-list">
+        <div class="muted">Loading timeline…</div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const SECURITY_ORDER = [
+      { name: 'UFW Firewall', key: 'network_firewall', layer: 'Layer 1: Network' },
+      { name: 'fail2ban', key: 'network_brute_force', layer: 'Layer 1: Network' },
+      { name: 'Tailscale', key: 'access', layer: 'Layer 2: Access' },
+      { name: 'Cloudflare Access', key: 'public', layer: 'Layer 3: Public' },
+      { name: 'Gateway Bind', key: 'gateway', layer: 'Layer 4: Gateway' },
+      { name: 'Channel Allowlist', key: 'channel', layer: 'Layer 5: Channel' },
+      { name: 'SOUL.md Integrity', key: 'reasoning', layer: 'Layer 6: Reasoning' },
+      { name: 'Tool Policy', key: 'operational', layer: 'Layer 7: Operational' },
+      { name: 'Memory Security', key: 'memory', layer: 'Layer 8: Memory' }
+    ];
+
+    const state = {
+      health: null,
+      transitions: [],
+      pollTimer: null,
+      runningCheck: false,
+    };
+
+    const $ = (id) => document.getElementById(id);
+
+    function esc(value) {
+      return String(value ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+    }
+
+    function relativeTime(isoString) {
+      if (!isoString) return 'unknown';
+      const diff = Date.now() - new Date(isoString).getTime();
+      const mins = Math.floor(diff / 60000);
+      if (mins < 1) return 'just now';
+      if (mins < 60) return `${mins} min ago`;
+      const hours = Math.floor(mins / 60);
+      if (hours < 24) return `${hours}h ago`;
+      const days = Math.floor(hours / 24);
+      return `${days}d ago`;
+    }
+
+    async function api(path, init = {}) {
+      const res = await fetch(path, {
+        cache: 'no-store',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', ...(init.headers || {}) },
+        ...init,
+      });
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      return res.json();
+    }
+
+    function statusToken(raw, stale = false) {
+      const status = String(raw || '').toLowerCase();
+      if (stale) return 'unknown';
+      if (status === 'green' || status === 'secure' || status === 'ok' || status === 'success') return 'green';
+      if (status === 'yellow' || status === 'warning' || status === 'warn' || status === 'degraded') return 'yellow';
+      if (status === 'red' || status === 'critical' || status === 'error' || status === 'failed') return 'red';
+      return 'unknown';
+    }
+
+    function statusLabel(token) {
+      if (token === 'green') return 'Secure';
+      if (token === 'yellow') return 'Warning';
+      if (token === 'red') return 'Critical';
+      return 'Unknown';
+    }
+
+    function applyBanner() {
+      const banner = $('securityBanner');
+      const health = state.health || {};
+      const checks = Array.isArray(health.checks) ? health.checks : [];
+      const stale = !!health.stale;
+      const overall = statusToken(health.overall_status, stale);
+      const badCount = checks.filter((check) => {
+        const token = statusToken(check.status, stale || check.stale);
+        return token === 'yellow' || token === 'red';
+      }).length;
+
+      banner.className = `security-banner status-${overall}`;
+      if (overall === 'green') {
+        $('bannerTitle').textContent = 'All Systems Secure';
+        $('bannerMeta').textContent = health.checked_at ? `Last check ${relativeTime(health.checked_at)}` : 'Last check time unavailable';
+      } else if (overall === 'yellow') {
+        $('bannerTitle').textContent = 'Warnings Detected';
+        $('bannerMeta').textContent = `${badCount} layer${badCount === 1 ? '' : 's'} need attention`;
+      } else if (overall === 'red') {
+        $('bannerTitle').textContent = 'Security Issues Detected';
+        $('bannerMeta').textContent = `${badCount} layer${badCount === 1 ? '' : 's'} in warning/critical state`;
+      } else {
+        $('bannerTitle').textContent = 'Security Status Unknown — Data Stale or Unavailable';
+        $('bannerMeta').textContent = 'Security data is stale or unavailable';
+      }
+    }
+
+    function cardMarkup(cardDef, check, staleAll) {
+      const stale = staleAll || !!check?.stale;
+      const token = statusToken(check?.status, stale);
+      const remediation = check?.remediation || '';
+      const details = check?.details || 'No details available.';
+      const detailId = `details-${cardDef.key}`;
+
+      const ackBtn = cardDef.key === 'reasoning'
+        ? `<button class="mini-btn" data-action="ack" data-layer="reasoning" type="button">Acknowledge</button>`
+        : '';
+
+      return `
+        <article class="security-card status-${token}" data-layer="${cardDef.key}">
+          <header class="card-head">
+            <div class="layer-label">${esc(cardDef.layer)}</div>
+            <div class="card-title">${esc(cardDef.name)}</div>
+            <div class="status-row">
+              <span class="status-dot ${token}"></span>
+              <span>${statusLabel(token)}</span>
+            </div>
+          </header>
+          <div class="card-body">
+            <div class="card-msg">${esc(check?.message || 'No status message available.')}</div>
+            <div class="card-time">Last checked ${relativeTime(check?.checked_at || state.health?.checked_at)}</div>
+            <button class="details-toggle" type="button" data-action="toggle" data-target="${detailId}">Details ▾</button>
+            <pre id="${detailId}" class="details-panel">${esc(details)}</pre>
+          </div>
+          <div class="remediation ${token === 'yellow' || token === 'red' ? `visible ${token}` : ''}">
+            <div class="remediation-text">${esc(remediation)}</div>
+            <div class="remediation-actions">
+              <button class="mini-btn" type="button" data-action="copy" data-text="${(remediation || '').replace(/"/g, '&quot;')}">Copy</button>
+              ${ackBtn}
+            </div>
+          </div>
+        </article>
+      `;
+    }
+
+    function renderCards() {
+      const checks = Array.isArray(state.health?.checks) ? state.health.checks : [];
+      const checkByLayer = Object.fromEntries(checks.map((c) => [c.layer || c.key, c]));
+      const staleAll = !!state.health?.stale;
+      $('securityGrid').innerHTML = SECURITY_ORDER.map((card) => cardMarkup(card, checkByLayer[card.key], staleAll)).join('');
+    }
+
+    function transitionRow(event) {
+      const from = statusToken(event.old_status || event.from_status);
+      const to = statusToken(event.new_status || event.to_status);
+      const layer = event.layer_label || event.layer || 'Unknown layer';
+      return `
+        <div class="timeline-item">
+          <div class="timeline-top">
+            <span class="timeline-time">${relativeTime(event.timestamp)}</span>
+            <span class="timeline-layer">${esc(layer)}</span>
+            <span class="status-pair">
+              <span class="status-dot ${esc(from)}"></span>
+              <span>${esc(from)}</span>
+              <span>→</span>
+              <span class="status-dot ${esc(to)}"></span>
+              <span>${esc(to)}</span>
+            </span>
+          </div>
+          <div class="timeline-message">${esc(event.message || 'Status changed.')}</div>
+        </div>
+      `;
+    }
+
+    function renderTimeline() {
+      const entries = state.transitions || [];
+      $('timelineList').innerHTML = entries.length
+        ? entries.map(transitionRow).join('')
+        : '<div class="muted">No status changes recorded yet.</div>';
+    }
+
+    async function loadHealth() {
+      try {
+        state.health = await api('/api/security/health');
+      } catch {
+        state.health = { overall_status: 'unknown', checks: [], stale: true };
+      }
+      applyBanner();
+      renderCards();
+      if (window.refreshSecurityBadge) window.refreshSecurityBadge();
+    }
+
+    async function loadTransitions() {
+      try {
+        const data = await api('/api/security/transitions?limit=20');
+        state.transitions = data.transitions || data.events || [];
+      } catch {
+        state.transitions = [];
+      }
+      renderTimeline();
+    }
+
+    async function runCheckNow() {
+      if (state.runningCheck) return;
+      state.runningCheck = true;
+      const btn = $('runCheckBtn');
+      const originalText = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Checking...';
+      try {
+        state.health = await api('/api/security/recheck', { method: 'POST', body: '{}' });
+      } catch {
+        // handled by fallback refresh below
+      } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
+        state.runningCheck = false;
+      }
+      await Promise.all([loadHealth(), loadTransitions()]);
+    }
+
+    async function acknowledgeReasoning() {
+      try {
+        await api('/api/security/acknowledge', {
+          method: 'POST',
+          body: JSON.stringify({ layer: 'reasoning', note: 'Approved from dashboard' }),
+        });
+        await runCheckNow();
+      } catch (error) {
+        if (window.showToast) window.showToast(`Acknowledge failed: ${error.message}`, 'error');
+      }
+    }
+
+    async function copyText(text) {
+      const value = (text || '').trim();
+      if (!value) return;
+      try {
+        await navigator.clipboard.writeText(value);
+      } catch {
+        const ta = document.createElement('textarea');
+        ta.value = value;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+      }
+      if (window.showToast) window.showToast('Copied remediation command', 'success');
+    }
+
+    function bindEvents() {
+      $('runCheckBtn').onclick = runCheckNow;
+      $('securityGrid').onclick = async (event) => {
+        const btn = event.target.closest('button[data-action]');
+        if (!btn) return;
+        const action = btn.getAttribute('data-action');
+        if (action === 'toggle') {
+          const target = document.getElementById(btn.getAttribute('data-target'));
+          const isOpen = target.classList.toggle('open');
+          btn.textContent = isOpen ? 'Details ▴' : 'Details ▾';
+        }
+        if (action === 'copy') {
+          await copyText(btn.getAttribute('data-text'));
+        }
+        if (action === 'ack') {
+          btn.disabled = true;
+          await acknowledgeReasoning();
+          btn.disabled = false;
+        }
+      };
+    }
+
+    function cleanupSecurityTab() {
+      if (state.pollTimer) {
+        clearInterval(state.pollTimer);
+        state.pollTimer = null;
+      }
+      window.__securityInitRoot = null;
+    }
+
+    async function initSecurityTab() {
+      const initRoot = $('securityGrid');
+      if (!initRoot || window.__securityInitRoot === initRoot) return;
+      window.__securityInitRoot = initRoot;
+
+      bindEvents();
+      await Promise.all([loadHealth(), loadTransitions()]);
+      if (state.pollTimer) clearInterval(state.pollTimer);
+      state.pollTimer = setInterval(() => {
+        loadHealth();
+        loadTransitions();
+      }, 60000);
+    }
+
+    window.cleanupSecurityTab = cleanupSecurityTab;
+    window.initSecurityTab = initSecurityTab;
+    initSecurityTab();
+  </script>
+</body>
+</html>
