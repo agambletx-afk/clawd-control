@@ -532,12 +532,12 @@
             <div class="version-card-heading-text">
               <div class="version-card-title">
                 <span class="check-name">OpenClaw Version</span>
-                ${CHEVRON_SVG}
               </div>
               <div class="version-card-summary">${esc(summary)}</div>
             </div>
           </div>
           <button class="btn btn-sm ${updateDisabled ? '' : 'btn-primary'}" id="update-now-btn" ${updateDisabled ? 'disabled' : ''}>Update Now</button>
+          ${CHEVRON_SVG}
         </div>
         <div class="version-card-expand" id="version-card-expand" ${versionCardOpen ? 'data-open="1"' : ''}>
           <div class="version-card-body">${body}</div>
@@ -839,10 +839,9 @@
       }
 
       const tierBody = el.closest('.tier-body');
-      if (tierBody && tierBody.style.maxHeight) {
-        requestAnimationFrame(() => {
-          tierBody.style.maxHeight = tierBody.scrollHeight + 'px';
-        });
+      if (tierBody) {
+        // Temporarily remove max-height constraint so content can expand freely
+        tierBody.style.maxHeight = 'none';
       }
     }
 
