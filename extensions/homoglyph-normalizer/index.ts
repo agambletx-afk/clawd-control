@@ -73,6 +73,7 @@ function findRedFlag(normalizedText: string): string | undefined {
 }
 
 export default function homoglyphNormalizer(api: any) {
+  api.logger.info("[plugins] homoglyph-normalizer: registered — deterministic Unicode normalization active");
   api.on("before_agent_start", async (event: any) => {
     const messages = Array.isArray(event?.messages) ? event.messages : [];
     let userText = "";
