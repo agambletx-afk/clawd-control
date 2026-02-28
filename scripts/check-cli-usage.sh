@@ -46,7 +46,12 @@ else
 fi
 
 if have_cmd claude; then
-  claude_json="$(provider_json "Claude Code" "not_connected" "Claude Code not authenticated. Run: claude login")"
+  # Claude Code CLI stores login state in ~/.claude/.credentials.json
+  if [[ -f "$HOME/.claude/.credentials.json" ]]; then
+    claude_json="$(provider_json "Claude Code" "ok" "")"
+  else
+    claude_json="$(provider_json "Claude Code" "not_connected" "Claude Code not authenticated. Run: claude login")"
+  fi
 else
   claude_json="$(provider_json "Claude Code" "not_connected" "Claude Code not installed")"
 fi
