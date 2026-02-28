@@ -54,6 +54,7 @@ export function storeChecks(checks) {
       if (!check.layer || !check.name || !check.status) continue;
       if (!['green', 'yellow', 'red', 'unknown'].includes(check.status)) continue;
 
+      const safeStatus = check.status === 'unknown' ? 'yellow' : check.status;
       const metadata = check.metadata == null
         ? null
         : (typeof check.metadata === 'string' ? check.metadata : JSON.stringify(check.metadata));
@@ -61,7 +62,7 @@ export function storeChecks(checks) {
       insert.run(
         String(check.layer),
         String(check.name),
-        String(check.status),
+        safeStatus,
         check.message == null ? null : String(check.message),
         check.details == null ? null : String(check.details),
         check.remediation == null ? null : String(check.remediation),
