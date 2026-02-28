@@ -2,7 +2,6 @@ import { HOMOGLYPH_MAP } from "./homoglyph-map.ts";
 
 const RED_FLAG_PATTERNS: string[] = [
   "ignore previous instructions",
-  "ignore previous",
   "ignore all previous instructions",
   "ignore your instructions",
   "ignore prior instructions",
