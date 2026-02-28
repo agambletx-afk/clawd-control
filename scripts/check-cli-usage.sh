@@ -37,7 +37,7 @@ JSON
 fi
 
 if have_cmd codex; then
-  codex_json="$(timeout 12 node scripts/codex-usage.mjs 2>/dev/null || true)"
+  codex_json="$(timeout --kill-after=3 12 node scripts/codex-usage.mjs 2>/dev/null || true)"
   if [[ -z "$codex_json" ]] || ! jq -e . >/dev/null 2>&1 <<< "$codex_json"; then
     codex_json="$(provider_json "Codex CLI" "error" "Codex CLI usage check failed")"
   fi
