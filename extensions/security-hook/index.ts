@@ -20,14 +20,35 @@ type SecurityHookConfig = {
   allowlist: string[];
   confirmPaths: ConfirmPathRule[];
   telegram: TelegramConfig;
-  rateLimits: Record<string, unknown>;
+  rateLimits?: Record<string, unknown>;
+};
+
+type RateLimitThreshold = {
+  perMinute: number;
+  perHour: number;
+};
+
+type RateWindowCounter = {
+  windowStartMs: number;
+  count: number;
+  blockedUntilMs: number | null;
+};
+
+type AgentRateCounter = {
+  minute: RateWindowCounter;
+  hour: RateWindowCounter;
 };
 
 type RuleMatch = { matched: boolean; rule?: string };
 
 const DEFAULT_CONFIG: SecurityHookConfig = {
-  version: "1.1",
+  version: "1.2",
   changelog: [
+    {
+      version: "1.2",
+      date: "2026-02-28",
+      note: "Added per-agent execution rate limiting with a security_hook_status monitoring tool.",
+    },
     {
       version: "1.1",
       date: "2026-02-28",
@@ -91,8 +112,34 @@ const DEFAULT_CONFIG: SecurityHookConfig = {
     botTokenEnvVar: "TELEGRAM_BOT_TOKEN",
     chatIdEnvVar: "TELEGRAM_CHAT_ID",
   },
-  rateLimits: {},
+  rateLimits: {
+    default: { perMinute: 10, perHour: 100 },
+    coder: { perMinute: 20, perHour: 200 },
+    janitor: { perMinute: 15, perHour: 150 },
+    researcher: { perMinute: 5, perHour: 50 },
+  },
 };
+
+const DEFAULT_RATE_LIMITS: Record<string, RateLimitThreshold> = {
+  default: { perMinute: 10, perHour: 100 },
+};
+
+const MINUTE_WINDOW_MS = 60_000;
+const HOUR_WINDOW_MS = 3_600_000;
+
+const READ_ONLY_COMMANDS = new Set([
+  "cat",
+  "grep",
+  "ls",
+  "head",
+  "tail",
+  "find",
+  "wc",
+  "du",
+  "df",
+  "free",
+  "journalctl",
+]);
 
 function ensureDir(dirPath: string): void {
   fs.mkdirSync(dirPath, { recursive: true });
@@ -120,6 +167,16 @@ function isExecCapableTool(toolName: string): boolean {
   const execTools = ["shell", "bash", "exec", "terminal", "command", "run_command"];
   const lower = toolName.toLowerCase();
   return execTools.some((t) => lower === t || lower.endsWith(`_${t}`) || lower.startsWith(`${t}_`));
+}
+
+function isReadOnlyCommand(command: string): boolean {
+  const normalized = command.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  const commandStart = normalized.split(/\s*[;&|]{1,2}\s*/)[0] ?? normalized;
+  const firstToken = commandStart.trim().split(/\s+/)[0] ?? "";
+  return READ_ONLY_COMMANDS.has(firstToken);
 }
 
 function isWriteTool(toolName: string): boolean {
@@ -328,7 +385,64 @@ function validateConfig(config: any): string[] {
       errors.push("missing required field: telegram.chatIdEnvVar");
     }
   }
+
+  if (config.rateLimits !== undefined && (typeof config.rateLimits !== "object" || config.rateLimits === null)) {
+    errors.push("invalid field: rateLimits must be an object");
+  }
   return errors;
+}
+
+function parseThreshold(input: unknown, fallback: number): number {
+  const numeric = Number(input);
+  if (Number.isFinite(numeric) && numeric > 0) {
+    return Math.floor(numeric);
+  }
+  return fallback;
+}
+
+function normalizeRateLimits(raw: Record<string, unknown> | undefined): Record<string, RateLimitThreshold> {
+  const normalized: Record<string, RateLimitThreshold> = { ...DEFAULT_RATE_LIMITS };
+  if (!raw) {
+    return normalized;
+  }
+  for (const [agentRole, value] of Object.entries(raw)) {
+    if (!value || typeof value !== "object") {
+      continue;
+    }
+    const typedValue = value as Record<string, unknown>;
+    normalized[agentRole] = {
+      perMinute: parseThreshold(typedValue.perMinute, normalized.default.perMinute),
+      perHour: parseThreshold(typedValue.perHour, normalized.default.perHour),
+    };
+  }
+  return normalized;
+}
+
+function newWindow(nowMs: number): RateWindowCounter {
+  return {
+    windowStartMs: nowMs,
+    count: 0,
+    blockedUntilMs: null,
+  };
+}
+
+function refreshWindowCounter(window: RateWindowCounter, durationMs: number, nowMs: number): void {
+  if (nowMs - window.windowStartMs >= durationMs) {
+    window.windowStartMs = nowMs;
+    window.count = 0;
+    window.blockedUntilMs = null;
+  }
+}
+
+function getResetMs(window: RateWindowCounter, durationMs: number): number {
+  return window.windowStartMs + durationMs;
+}
+
+function formatRateLimitDenyMessage(windowType: "minute" | "hour", threshold: number, resetAtMs: number): string {
+  return (
+    `Blocked by security-hook (rate limit exceeded: ${windowType} threshold ${threshold} reached; ` +
+    `resets at ${new Date(resetAtMs).toISOString()})`
+  );
 }
 
 async function appendBlockedLog(logPath: string, payload: Record<string, unknown>): Promise<void> {
@@ -351,6 +465,8 @@ export default function securityHook(api: any) {
 
   let config: SecurityHookConfig | null = null;
   let failClosed = false;
+  const countersByAgent = new Map<string, AgentRateCounter>();
+  let rateLimitsByAgent: Record<string, RateLimitThreshold> = { ...DEFAULT_RATE_LIMITS };
 
   try {
     if (!fs.existsSync(configPath)) {
@@ -365,6 +481,7 @@ export default function securityHook(api: any) {
       api.logger.error(`security-hook: config validation failed (${errors.join("; ")})`);
     } else {
       config = parsed as SecurityHookConfig;
+      rateLimitsByAgent = normalizeRateLimits(config.rateLimits);
     }
   } catch (error) {
     failClosed = true;
@@ -383,11 +500,91 @@ export default function securityHook(api: any) {
 
   api.logger.info("[plugins] security-hook: registered — pre-execution command filtering active");
 
+  const getThresholdForAgent = (agentId: string): RateLimitThreshold => {
+    return rateLimitsByAgent[agentId] ?? rateLimitsByAgent.default ?? DEFAULT_RATE_LIMITS.default;
+  };
+
+  const getAgentCounter = (agentId: string, nowMs: number): AgentRateCounter => {
+    const existing = countersByAgent.get(agentId);
+    if (existing) {
+      refreshWindowCounter(existing.minute, MINUTE_WINDOW_MS, nowMs);
+      refreshWindowCounter(existing.hour, HOUR_WINDOW_MS, nowMs);
+      return existing;
+    }
+    const created: AgentRateCounter = {
+      minute: newWindow(nowMs),
+      hour: newWindow(nowMs),
+    };
+    countersByAgent.set(agentId, created);
+    return created;
+  };
+
+  const collectActiveBlocks = (counter: AgentRateCounter, nowMs: number) => {
+    const blocks: Array<{ window: "minute" | "hour"; resetAtMs: number }> = [];
+    if (counter.minute.blockedUntilMs && nowMs < counter.minute.blockedUntilMs) {
+      blocks.push({ window: "minute", resetAtMs: counter.minute.blockedUntilMs });
+    }
+    if (counter.hour.blockedUntilMs && nowMs < counter.hour.blockedUntilMs) {
+      blocks.push({ window: "hour", resetAtMs: counter.hour.blockedUntilMs });
+    }
+    return blocks;
+  };
+
+  if (typeof api.registerTool === "function") {
+    api.registerTool({
+      name: "security_hook_status",
+      description:
+        "Return in-memory security-hook rate-limit counters, thresholds, window boundaries, and active blocks.",
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {},
+      },
+      handler: async () => {
+        const nowMs = Date.now();
+        const agents = Array.from(countersByAgent.entries()).map(([agentId, counter]) => {
+          refreshWindowCounter(counter.minute, MINUTE_WINDOW_MS, nowMs);
+          refreshWindowCounter(counter.hour, HOUR_WINDOW_MS, nowMs);
+          const thresholds = getThresholdForAgent(agentId);
+          const activeBlocks = collectActiveBlocks(counter, nowMs).map((block) => ({
+            window: block.window,
+            resetAt: new Date(block.resetAtMs).toISOString(),
+          }));
+          return {
+            agentId,
+            thresholds,
+            minute: {
+              count: counter.minute.count,
+              windowStart: new Date(counter.minute.windowStartMs).toISOString(),
+              windowEnd: new Date(getResetMs(counter.minute, MINUTE_WINDOW_MS)).toISOString(),
+            },
+            hour: {
+              count: counter.hour.count,
+              windowStart: new Date(counter.hour.windowStartMs).toISOString(),
+              windowEnd: new Date(getResetMs(counter.hour, HOUR_WINDOW_MS)).toISOString(),
+            },
+            activeBlocks,
+          };
+        });
+
+        return {
+          now: new Date(nowMs).toISOString(),
+          rateLimits: rateLimitsByAgent,
+          agents,
+        };
+      },
+    });
+  }
+
   api.on("before_tool_call", async (event: any, ctx: any) => {
     const toolName = String(event?.toolName ?? "unknown");
     const command: string | null = event?.params?.command ?? event?.params?.cmd ?? null;
     const targetPath: string | null = event?.params?.path ?? event?.params?.file_path ?? event?.params?.target ?? null;
     const agentId = String(ctx?.agentId ?? "unknown");
+
+    if (toolName === "security_hook_status") {
+      return;
+    }
 
     // Fail-closed: block all exec-capable calls when config is invalid
     if (failClosed && isExecCapableTool(toolName)) {
@@ -406,6 +603,59 @@ export default function securityHook(api: any) {
 
     if (!config) {
       return;
+    }
+
+    // Rate-limit exec-capable, non-read-only commands before all other checks.
+    if (command && isExecCapableTool(toolName) && !isReadOnlyCommand(command)) {
+      const nowMs = Date.now();
+      const thresholds = getThresholdForAgent(agentId);
+      const counter = getAgentCounter(agentId, nowMs);
+      const activeBlocks = collectActiveBlocks(counter, nowMs);
+
+      if (activeBlocks.length > 0) {
+        const earliestBlock = activeBlocks.reduce((earliest, current) =>
+          current.resetAtMs < earliest.resetAtMs ? current : earliest,
+        );
+        const blockedThreshold = earliestBlock.window === "minute" ? thresholds.perMinute : thresholds.perHour;
+        return blockCall(formatRateLimitDenyMessage(earliestBlock.window, blockedThreshold, earliestBlock.resetAtMs));
+      }
+
+      counter.minute.count += 1;
+      counter.hour.count += 1;
+
+      if (counter.minute.count > thresholds.perMinute) {
+        const resetAtMs = getResetMs(counter.minute, MINUTE_WINDOW_MS);
+        counter.minute.blockedUntilMs = resetAtMs;
+        await appendBlockedLog(logPath, {
+          timestamp: new Date(nowMs).toISOString(),
+          action: "rate-limited",
+          agentId,
+          tool: toolName,
+          command,
+          window: "minute",
+          currentCount: counter.minute.count,
+          threshold: thresholds.perMinute,
+          resetAt: new Date(resetAtMs).toISOString(),
+        });
+        return blockCall(formatRateLimitDenyMessage("minute", thresholds.perMinute, resetAtMs));
+      }
+
+      if (counter.hour.count > thresholds.perHour) {
+        const resetAtMs = getResetMs(counter.hour, HOUR_WINDOW_MS);
+        counter.hour.blockedUntilMs = resetAtMs;
+        await appendBlockedLog(logPath, {
+          timestamp: new Date(nowMs).toISOString(),
+          action: "rate-limited",
+          agentId,
+          tool: toolName,
+          command,
+          window: "hour",
+          currentCount: counter.hour.count,
+          threshold: thresholds.perHour,
+          resetAt: new Date(resetAtMs).toISOString(),
+        });
+        return blockCall(formatRateLimitDenyMessage("hour", thresholds.perHour, resetAtMs));
+      }
     }
 
     // Check exec-capable tool calls against blocklist (with allowlist override)
