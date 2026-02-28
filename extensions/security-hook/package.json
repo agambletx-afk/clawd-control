@@ -1,0 +1,10 @@
+{
+  "name": "@openclaw/security-hook",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Pre-execution security hook for command filtering and path protection",
+  "dependencies": {},
+  "openclaw": {
+    "extensions": ["./index.ts"]
+  }
+}
