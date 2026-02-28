@@ -1,0 +1,10 @@
+{
+  "name": "@openclaw/homoglyph-normalizer",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Deterministic Unicode homoglyph normalizer for ACIP bypass prevention",
+  "dependencies": {},
+  "openclaw": {
+    "extensions": ["./index.ts"]
+  }
+}
