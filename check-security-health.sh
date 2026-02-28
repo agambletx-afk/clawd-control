@@ -786,8 +786,102 @@ config_drift_details=$(echo "$config_drift_result" | node -e "try{const d=JSON.p
 config_drift_remediation=$(echo "$config_drift_result" | node -e "try{const d=JSON.parse(require('fs').readFileSync(0,'utf8'));process.stdout.write(d.remediation===null?'':String(d.remediation||''));}catch(e){process.stdout.write('Run /usr/local/bin/reset-config-baseline.sh to accept current config as new baseline');}" 2>/dev/null)
 config_drift_metadata=$(echo "$config_drift_result" | node -e "try{const d=JSON.parse(require('fs').readFileSync(0,'utf8'));process.stdout.write(JSON.stringify(d.metadata||{}));}catch(e){process.stdout.write('{}');}" 2>/dev/null)
 
-add_check "$(make_check_json 'config' 'Config Drift' "$config_drift_status" "$config_drift_message" "$config_drift_details" "$config_drift_remediation" "$config_drift_metadata")"
+add_check "$(make_check_json 'injection-defense' 'Config Drift' "$config_drift_status" "$config_drift_message" "$config_drift_details" "$config_drift_remediation" "$config_drift_metadata")"
 update_overall "$config_drift_status"
+
+# Check 12-13 journal snapshot (bounded to avoid hangs on large logs)
+journalctl_safe() {
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 12s journalctl "$@" 2>/dev/null | tail -n 8000
+  else
+    journalctl "$@" 2>/dev/null | tail -n 8000
+  fi
+}
+
+openclaw_boot_logs=$(journalctl_safe -u openclaw --boot -q --no-pager)
+openclaw_24h_logs=$(journalctl_safe -u openclaw --since '24 hours ago' -q --no-pager)
+
+# Check 12: Homoglyph Normalizer
+homoglyph_registered='false'
+if echo "$openclaw_boot_logs" | grep -q 'homoglyph-normalizer: registered'; then
+  homoglyph_registered='true'
+fi
+homoglyph_critical_count=$(echo "$openclaw_24h_logs" | grep 'homoglyph-normalizer:' | grep -c 'CRITICAL')
+homoglyph_warning_count=$(echo "$openclaw_24h_logs" | grep 'homoglyph-normalizer:' | grep -c 'WARNING')
+
+homoglyph_status='red'
+homoglyph_message='Homoglyph normalizer plugin not registered in current boot logs.'
+homoglyph_details="registered=${homoglyph_registered}; critical=${homoglyph_critical_count}; warning=${homoglyph_warning_count}"
+homoglyph_remediation='Verify OpenClaw is running and plugin is installed, then restart OpenClaw and confirm journal contains: homoglyph-normalizer: registered'
+
+if [ "$homoglyph_registered" = 'true' ]; then
+  if [ "$homoglyph_critical_count" -gt 0 ] || [ "$homoglyph_warning_count" -gt 0 ]; then
+    total_homoglyph=$((homoglyph_critical_count + homoglyph_warning_count))
+    homoglyph_status='yellow'
+    homoglyph_message="Homoglyph normalizer active with ${total_homoglyph} detection(s) in last 24h."
+    homoglyph_details="registered=${homoglyph_registered}; critical=${homoglyph_critical_count}; warning=${homoglyph_warning_count}; window=24h"
+    homoglyph_remediation='Review recent homoglyph-normalizer detections in journalctl and confirm intended blocking behavior.'
+  else
+    homoglyph_status='green'
+    homoglyph_message='Homoglyph normalizer registered; no detections in last 24h.'
+    homoglyph_details="registered=${homoglyph_registered}; critical=${homoglyph_critical_count}; warning=${homoglyph_warning_count}; window=24h"
+    homoglyph_remediation=''
+  fi
+fi
+
+homoglyph_metadata=$(node -e "
+  console.log(JSON.stringify({
+    registered: process.argv[1] === 'true',
+    critical_count: parseInt(process.argv[2], 10) || 0,
+    warning_count: parseInt(process.argv[3], 10) || 0
+  }));
+" "$homoglyph_registered" "$homoglyph_critical_count" "$homoglyph_warning_count" 2>/dev/null)
+
+add_check "$(make_check_json 'injection-defense' 'Homoglyph Normalizer' "$homoglyph_status" "$homoglyph_message" "$homoglyph_details" "$homoglyph_remediation" "$homoglyph_metadata")"
+update_overall "$homoglyph_status"
+
+# Check 13: Credential Scanner
+credential_registered='false'
+if echo "$openclaw_boot_logs" | grep -q 'credential-scanner: registered'; then
+  credential_registered='true'
+fi
+credential_critical_count=$(echo "$openclaw_24h_logs" | grep 'credential-scanner:' | grep -c 'CRITICAL')
+credential_warning_count=$(echo "$openclaw_24h_logs" | grep 'credential-scanner:' | grep -c 'WARNING')
+
+credential_status='red'
+credential_message='Credential scanner plugin not registered in current boot logs.'
+credential_details="registered=${credential_registered}; critical=${credential_critical_count}; warning=${credential_warning_count}"
+credential_remediation='Verify OpenClaw is running and plugin is installed, then restart OpenClaw and confirm journal contains: credential-scanner: registered'
+
+if [ "$credential_registered" = 'true' ]; then
+  if [ "$credential_critical_count" -gt 0 ]; then
+    credential_status='red'
+    credential_message="CRITICAL: Credential scanner found ${credential_critical_count} credential leak detection(s) in last 24h."
+    credential_details="registered=${credential_registered}; critical=${credential_critical_count}; warning=${credential_warning_count}; window=24h"
+    credential_remediation='Treat as security incident: rotate exposed credentials immediately and audit affected logs/prompts.'
+  elif [ "$credential_warning_count" -gt 0 ]; then
+    credential_status='yellow'
+    credential_message="Credential scanner active with ${credential_warning_count} warning detection(s) in last 24h."
+    credential_details="registered=${credential_registered}; critical=${credential_critical_count}; warning=${credential_warning_count}; window=24h"
+    credential_remediation='Review entropy-only detections to confirm whether sensitive tokens were present.'
+  else
+    credential_status='green'
+    credential_message='Credential scanner registered; no credential detections in last 24h.'
+    credential_details="registered=${credential_registered}; critical=${credential_critical_count}; warning=${credential_warning_count}; window=24h"
+    credential_remediation=''
+  fi
+fi
+
+credential_metadata=$(node -e "
+  console.log(JSON.stringify({
+    registered: process.argv[1] === 'true',
+    critical_count: parseInt(process.argv[2], 10) || 0,
+    warning_count: parseInt(process.argv[3], 10) || 0
+  }));
+" "$credential_registered" "$credential_critical_count" "$credential_warning_count" 2>/dev/null)
+
+add_check "$(make_check_json 'injection-defense' 'Credential Scanner' "$credential_status" "$credential_message" "$credential_details" "$credential_remediation" "$credential_metadata")"
+update_overall "$credential_status"
 
 final_json=$(node -e "
   const out = {
