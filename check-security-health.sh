@@ -425,127 +425,183 @@ add_check "$(make_check_json 'memory' 'Memory Security' "$mem_status" "$mem_mess
 update_overall "$mem_status"
 
 # ---- Check 10: OpenClaw Version Currency ----
-current_version=$(openclaw --version 2>&1 | grep -oP '[\d]+\.[\d]+\.[\d]+' | head -1)
+VERSION_CACHE_FILE='/tmp/security-version-cache.json'
+VERSION_CACHE_MAX_AGE=86400  # 24 hours in seconds
+FORCE_VERSION_CHECK="${FORCE_VERSION_CHECK:-false}"
 
-# Query npm registry for all published versions (no auth required)
-# Wrap in timeout to handle network failures gracefully
-registry_json=$(timeout 15 npm view openclaw versions --json 2>&1)
-npm_exit=$?
+use_cache=false
+if [ "$FORCE_VERSION_CHECK" != "true" ] && [ -f "$VERSION_CACHE_FILE" ]; then
+  cache_age=$(( $(date +%s) - $(stat -c %Y "$VERSION_CACHE_FILE" 2>/dev/null || echo 0) ))
+  if [ "$cache_age" -lt "$VERSION_CACHE_MAX_AGE" ]; then
+    use_cache=true
+  fi
+fi
 
-if [ $npm_exit -ne 0 ] || [ -z "$registry_json" ]; then
-  version_layer='version'
-  version_name='OpenClaw Version'
-  version_status='unknown'
-  version_message='Could not reach npm registry. Check network connectivity.'
-  version_details=''
-  version_remediation=''
-  version_metadata='{}'
+if [ "$use_cache" = "true" ]; then
+  version_check_json=$(cat "$VERSION_CACHE_FILE")
+  add_check "$version_check_json"
+  version_status=$(echo "$version_check_json" | node -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.status)" 2>/dev/null)
+  overall_version_status="$version_status"
+  if [ "$overall_version_status" = 'unknown' ]; then
+    overall_version_status='yellow'
+  fi
+  update_overall "$overall_version_status"
 else
-  latest_version=$(node -e "
-    const versions = JSON.parse(process.argv[1]);
-    const stable = versions.filter(v => !v.includes('-'));
-    console.log(stable[stable.length - 1] || '');
-  " "$registry_json" 2>/dev/null)
+  current_version=$(openclaw --version 2>&1 | grep -oP '[\d]+\.[\d]+\.[\d]+' | head -1)
 
-  # NOTE: Uses indexOf on the publish-order array. This works because
-  # npm view returns versions in publish order, and OpenClaw uses
-  # date-based versioning (2026.2.12) not strict semver sorting.
-  versions_behind=$(node -e "
-    const versions = JSON.parse(process.argv[1]);
-    const stable = versions.filter(v => !v.includes('-'));
-    const currentIdx = stable.indexOf(process.argv[2]);
-    const latestIdx = stable.length - 1;
-    if (currentIdx === -1) {
-      console.log(JSON.stringify({ count: -1, current: process.argv[2], latest: stable[latestIdx] }));
-    } else {
-      console.log(JSON.stringify({
-        count: latestIdx - currentIdx,
-        current: process.argv[2],
-        latest: stable[latestIdx],
-        missed: stable.slice(currentIdx + 1).reverse().slice(0, 5)
-      }));
-    }
-  " "$registry_json" "$current_version" 2>/dev/null)
+  registry_json=$(timeout 15 npm view openclaw versions --json 2>&1)
+  npm_exit=$?
 
-  behind_count=$(echo "$versions_behind" | node -e "const d=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')); console.log(d.count)")
-  latest=$(echo "$versions_behind" | node -e "const d=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')); console.log(d.latest || '')")
-  missed_versions=$(echo "$versions_behind" | node -e "const d=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')); console.log((d.missed||[]).join(', '))")
-
-  latest_desc=$(timeout 15 npm view "openclaw@${latest}" description 2>&1 || echo "")
-
-  security_flag='false'
-  if [ "$behind_count" -gt 0 ] 2>/dev/null; then
-    security_tag=$(timeout 15 npm view openclaw dist-tags --json 2>&1 | node -e "
-      try {
-        const tags = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
-        const secVer = tags.security || tags['security-latest'] || null;
-        console.log(secVer || '');
-      } catch(e) { console.log(''); }
-    " 2>/dev/null)
-
-    if echo "$latest_desc" | grep -qiE 'security|CVE|vulnerab|patch|exploit|RCE'; then
-      security_flag='true'
-    elif [ -n "$security_tag" ] && [ "$latest" = "$security_tag" ]; then
-      security_flag='true'
-    fi
-  fi
-
-  version_layer='version'
-  version_name='OpenClaw Version'
-
-  if [ "$behind_count" -eq 0 ] 2>/dev/null; then
-    version_status='green'
-    version_message="Running latest stable: v${current_version}"
-    version_details="Latest description: ${latest_desc}"
-    version_remediation=''
-  elif [ "$behind_count" -eq 1 ] 2>/dev/null && [ "$security_flag" = 'false' ]; then
-    version_status='yellow'
-    version_message="1 version behind. Current: v${current_version}. Latest: v${latest}."
-    version_details="Missed: ${missed_versions}. Latest description: ${latest_desc}"
-    version_remediation='New release available. Review changelog before updating: https://github.com/openclaw/openclaw/releases'
-  elif [ "$behind_count" -ge 2 ] 2>/dev/null || [ "$security_flag" = 'true' ]; then
-    version_status='red'
-    version_message="${behind_count} versions behind. Current: v${current_version}. Latest: v${latest}."
-    version_details="Missed: ${missed_versions}. Latest description: ${latest_desc}"
-    if [ "$security_flag" = 'true' ]; then
-      version_remediation='Security-related release detected. Apply within 48 hours. Safe update: cp ~/.openclaw/openclaw.json ~/.openclaw/openclaw.json.bak && npm update -g openclaw@latest && openclaw doctor'
-    else
-      version_remediation="Multiple versions behind (${behind_count}). Missed: ${missed_versions}. Review changelog and update: https://github.com/openclaw/openclaw/releases"
-    fi
-  elif [ "$behind_count" -eq -1 ] 2>/dev/null; then
-    version_status='yellow'
-    version_message="Current version v${current_version} not found in npm registry. Custom or pre-release build."
-    version_details=''
-    version_remediation='Verify installation: openclaw --version. If intentional (pinned version), this is expected.'
-  else
+  if [ $npm_exit -ne 0 ] || [ -z "$registry_json" ]; then
+    version_layer='version'
+    version_name='OpenClaw Version'
     version_status='unknown'
-    version_message='Unable to determine OpenClaw version status.'
-    version_details='Version comparison returned unexpected output.'
+    version_message='Could not reach npm registry. Check network connectivity.'
+    version_details=''
     version_remediation=''
+    version_metadata='{}'
+  else
+    versions_behind=$(node -e "
+      const versions = JSON.parse(process.argv[1]);
+      const stable = versions.filter(v => !v.includes('-'));
+      const currentIdx = stable.indexOf(process.argv[2]);
+      const latestIdx = stable.length - 1;
+      if (currentIdx === -1) {
+        console.log(JSON.stringify({ count: -1, current: process.argv[2], latest: stable[latestIdx] }));
+      } else {
+        console.log(JSON.stringify({
+          count: latestIdx - currentIdx,
+          current: process.argv[2],
+          latest: stable[latestIdx],
+          missed: stable.slice(currentIdx + 1).reverse().slice(0, 5)
+        }));
+      }
+    " "$registry_json" "$current_version" 2>/dev/null)
+
+    behind_count=$(echo "$versions_behind" | node -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.count)")
+    latest=$(echo "$versions_behind" | node -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.latest || '')")
+    missed_versions=$(echo "$versions_behind" | node -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log((d.missed||[]).join(', '))")
+
+    latest_release_body=$(timeout 15 curl -sf "https://api.github.com/repos/openclaw/openclaw/releases/tags/v${latest}" 2>/dev/null | node -e "
+      try {
+        const d = JSON.parse(require('fs').readFileSync(0, 'utf8'));
+        console.log(d.body || '');
+      } catch { console.log(''); }
+    ")
+
+    latest_stats=$(node -e "
+      const body = process.argv[1] || '';
+      let inChanges = false, inFixes = false;
+      let features = 0, fixes = 0, securityFixes = 0;
+
+      for (const raw of body.split('\n')) {
+        const line = raw.trim();
+        if (line.match(/^###\s*Changes/i)) { inChanges = true; inFixes = false; continue; }
+        if (line.match(/^###\s*Fixes/i)) { inFixes = true; inChanges = false; continue; }
+        if (line.match(/^###\s/) && !line.match(/Changes|Fixes/i)) { inChanges = false; inFixes = false; continue; }
+
+        if (!line.startsWith('- ')) continue;
+
+        if (inChanges) features++;
+        if (inFixes) {
+          fixes++;
+          if (line.match(/^- Security\//i)) securityFixes++;
+        }
+      }
+
+      console.log(JSON.stringify({ features, fixes, securityFixes }));
+    " "$latest_release_body" 2>/dev/null)
+
+    latest_features=$(echo "$latest_stats" | node -e "try { const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.features ?? 0); } catch { console.log(0); }")
+    latest_fixes=$(echo "$latest_stats" | node -e "try { const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.fixes ?? 0); } catch { console.log(0); }")
+    latest_security=$(echo "$latest_stats" | node -e "try { const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.securityFixes ?? 0); } catch { console.log(0); }")
+
+    total_security_fixes=0
+    if [ "$behind_count" -gt 0 ] 2>/dev/null; then
+      missed_array=$(echo "$versions_behind" | node -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8')); (d.missed||[]).slice(0,5).forEach(v=>console.log(v))")
+
+      while IFS= read -r ver; do
+        [ -z "$ver" ] && continue
+        ver_body=$(timeout 10 curl -sf "https://api.github.com/repos/openclaw/openclaw/releases/tags/v${ver}" 2>/dev/null | node -e "
+          try { const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.body||''); } catch { console.log(''); }
+        ")
+        ver_sec=$(echo "$ver_body" | grep -ciE '^\s*-\s*Security/' || echo 0)
+        total_security_fixes=$((total_security_fixes + ver_sec))
+      done <<< "$missed_array"
+    fi
+
+    security_flag='false'
+    if [ "$total_security_fixes" -gt 0 ]; then
+      security_flag='true'
+    fi
+
+    latest_release_preview=$(echo "$latest_release_body" | head -c 2000)
+
+    version_layer='version'
+    version_name='OpenClaw Version'
+
+    if [ "$behind_count" -eq 0 ] 2>/dev/null; then
+      version_status='green'
+      version_message="Running latest stable: v${current_version}"
+      version_details="Latest release analyzed from GitHub notes."
+      version_remediation=''
+    elif [ "$behind_count" -eq 1 ] 2>/dev/null && [ "$total_security_fixes" -eq 0 ] 2>/dev/null; then
+      version_status='yellow'
+      version_message="1 version behind. Current: v${current_version}. Latest: v${latest}."
+      version_details="Missed: ${missed_versions}"
+      version_remediation='New release available. Review changelog before updating: https://github.com/openclaw/openclaw/releases'
+    elif [ "$behind_count" -ge 2 ] 2>/dev/null || [ "$total_security_fixes" -gt 0 ] 2>/dev/null; then
+      version_status='red'
+      version_message="${behind_count} versions behind. Current: v${current_version}. Latest: v${latest}."
+      version_details="Missed: ${missed_versions}. Security fixes across missed versions: ${total_security_fixes}."
+      if [ "$total_security_fixes" -gt 0 ] 2>/dev/null; then
+        version_remediation='Security-related fixes missed. Apply within 48 hours. Safe update: cp ~/.openclaw/openclaw.json ~/.openclaw/openclaw.json.bak && npm update -g openclaw@latest && openclaw doctor'
+      else
+        version_remediation="Multiple versions behind (${behind_count}). Missed: ${missed_versions}. Review changelog and update: https://github.com/openclaw/openclaw/releases"
+      fi
+    elif [ "$behind_count" -eq -1 ] 2>/dev/null; then
+      version_status='yellow'
+      version_message="Current version v${current_version} not found in npm registry. Custom or pre-release build."
+      version_details=''
+      version_remediation='Verify installation: openclaw --version. If intentional (pinned version), this is expected.'
+    else
+      version_status='unknown'
+      version_message='Unable to determine OpenClaw version status.'
+      version_details='Version comparison returned unexpected output.'
+      version_remediation=''
+    fi
+
+    version_metadata=$(node -e "
+      console.log(JSON.stringify({
+        current_version: process.argv[1],
+        latest_version: process.argv[2],
+        versions_behind: parseInt(process.argv[3], 10),
+        security_flag: process.argv[4] === 'true',
+        total_security_fixes: parseInt(process.argv[5], 10),
+        latest_features: parseInt(process.argv[6], 10),
+        latest_fixes: parseInt(process.argv[7], 10),
+        latest_security_fixes: parseInt(process.argv[8], 10),
+        latest_release_preview: process.argv[9],
+        release_notes_url: 'https://github.com/openclaw/openclaw/releases',
+        missed_versions: process.argv[10] ? process.argv[10].split(', ') : []
+      }));
+    " "$current_version" "$latest" "$behind_count" "$security_flag" "$total_security_fixes" "$latest_features" "$latest_fixes" "$latest_security" "$latest_release_preview" "$missed_versions" 2>/dev/null)
   fi
 
-  version_metadata=$(node -e "
-    console.log(JSON.stringify({
-      current_version: process.argv[1],
-      latest_version: process.argv[2],
-      versions_behind: parseInt(process.argv[3], 10),
-      security_flag: process.argv[4] === 'true',
-      release_notes_url: 'https://github.com/openclaw/openclaw/releases',
-      missed_versions: process.argv[5] ? process.argv[5].split(', ') : []
-    }));
-  " "$current_version" "$latest" "$behind_count" "$security_flag" "$missed_versions" 2>/dev/null)
-fi
+  if [ -z "$version_metadata" ]; then
+    version_metadata='{}'
+  fi
 
-if [ -z "$version_metadata" ]; then
-  version_metadata='{}'
-fi
+  version_check_json=$(make_check_json "$version_layer" "$version_name" "$version_status" "$version_message" "$version_details" "$version_remediation" "$version_metadata")
+  echo "$version_check_json" > "$VERSION_CACHE_FILE"
+  add_check "$version_check_json"
 
-add_check "$(make_check_json "$version_layer" "$version_name" "$version_status" "$version_message" "$version_details" "$version_remediation" "$version_metadata")"
-overall_version_status="$version_status"
-if [ "$overall_version_status" = 'unknown' ]; then
-  overall_version_status='yellow'
+  overall_version_status="$version_status"
+  if [ "$overall_version_status" = 'unknown' ]; then
+    overall_version_status='yellow'
+  fi
+  update_overall "$overall_version_status"
 fi
-update_overall "$overall_version_status"
 
 final_json=$(node -e "
   const out = {
