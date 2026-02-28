@@ -46,6 +46,7 @@ else
 fi
 
 if have_cmd claude; then
+  # Claude Code CLI stores login state in ~/.claude/.credentials.json
   if [[ -f "$HOME/.claude/.credentials.json" ]]; then
     claude_json="$(provider_json "Claude Code" "ok" "")"
   else
