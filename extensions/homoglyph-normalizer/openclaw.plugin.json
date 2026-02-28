@@ -1,0 +1,6 @@
+{
+  "id": "homoglyph-normalizer",
+  "name": "Homoglyph Normalizer",
+  "version": "1.0.0",
+  "description": "Pre-LLM Unicode normalization to prevent ACIP bypass via confusable characters"
+}
