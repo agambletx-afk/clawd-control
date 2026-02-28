@@ -126,7 +126,7 @@ fi
 add_check "$(make_check_json 'network_brute_force' 'fail2ban' "$f2b_status" "$f2b_message" "$f2b_details" "$f2b_remediation")"
 update_overall "$f2b_status"
 
-# Check 3: Tailscale
+# Check 3: Tailscale (FIX 1: single node call instead of 5)
 ts_output=$(tailscale status --json 2>&1)
 ts_status='red'
 ts_message='Tailscale is not running.'
@@ -134,18 +134,15 @@ ts_details=$(echo "$ts_output" | tr '\n' '; ' | sed 's/; $//')
 ts_remediation='Run: sudo tailscale up'
 
 if echo "$ts_output" | node -e "try{const d=JSON.parse(require('fs').readFileSync(0,'utf8'));process.exit(0)}catch(e){process.exit(1)}" >/dev/null 2>&1; then
-  ts_parsed=$(echo "$ts_output" | node -e "
+  ts_fields=$(echo "$ts_output" | node -e "
     const d = JSON.parse(require('fs').readFileSync(0,'utf8'));
-    const backend = d.BackendState || 'UNKNOWN';
-    const online = !!(d.Self && d.Self.Online);
-    const host = d.Self?.HostName || d.Self?.DNSName || 'unknown';
-    const ips = (d.TailscaleIPs || []).join(',') || 'none';
-    process.stdout.write(JSON.stringify({backend,online,host,ips}));
+    const b = d.BackendState || 'UNKNOWN';
+    const o = !!(d.Self && d.Self.Online);
+    const h = d.Self?.HostName || d.Self?.DNSName || 'unknown';
+    const i = (d.TailscaleIPs || []).join(',') || 'none';
+    process.stdout.write([b, o, h, i].join('|'));
   " 2>/dev/null)
-  ts_backend=$(echo "$ts_parsed" | node -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8'));process.stdout.write(d.backend);")
-  ts_online=$(echo "$ts_parsed" | node -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8'));process.stdout.write(String(d.online));")
-  ts_host=$(echo "$ts_parsed" | node -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8'));process.stdout.write(d.host);")
-  ts_ips=$(echo "$ts_parsed" | node -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8'));process.stdout.write(d.ips);")
+  IFS='|' read -r ts_backend ts_online ts_host ts_ips <<< "$ts_fields"
   ts_details="hostname=${ts_host}; ip=${ts_ips}; BackendState=${ts_backend}; Online=${ts_online}"
 
   if [ "$ts_backend" = "Running" ] && [ "$ts_online" = "true" ]; then
@@ -244,7 +241,7 @@ fi
 add_check "$(make_check_json 'gateway' 'Gateway Bind' "$gw_status" "$gw_message" "$gw_details" "$gw_remediation")"
 update_overall "$gw_status"
 
-# Check 6: Channel Allowlist
+# Check 6: Channel Allowlist (FIX 2: empty allowlist is yellow/misconfigured, not red/open)
 ch_result=$(node -e "
   const fs = require('fs');
   try {
@@ -284,9 +281,9 @@ else
     ch_message="Pairing mode active on ${yellow_channels}. Less restrictive than allowlist."
     ch_remediation='Pairing mode active on channel(s). Switch to allowlist when onboarding is complete.'
   elif [ -n "$bad_allowlist" ]; then
-    ch_status='red'
-    ch_message="CRITICAL: Open DM policy detected on ${bad_allowlist}."
-    ch_remediation='CRITICAL: Open DM policy detected. Run: openclaw config set channels.<n>.dmPolicy allowlist'
+    ch_status='yellow'
+    ch_message="Allowlist on ${bad_allowlist} has no authorized users. All messages blocked."
+    ch_remediation='Allowlist has no entries. Add authorized users: openclaw config set channels.<n>.allowFrom <user_id>'
   fi
 fi
 
@@ -320,7 +317,7 @@ else
   if [ -z "$expected_hash" ]; then
     expected_hash='missing'
   fi
-  acip_present=$(grep -c 'Security Anchor\|Content Trust Policy' "$soul_path" 2>/dev/null)
+  acip_present=$(grep -c 'Security Anchor\|Content Trust Policy\|Prompt Injection Defense' "$soul_path" 2>/dev/null)
   soul_details="current=${current_hash:0:12}; expected=${expected_hash:0:12}"
 
   if [ "$current_hash" != "$expected_hash" ]; then
@@ -338,7 +335,7 @@ fi
 add_check "$(make_check_json 'reasoning' 'SOUL.md Integrity' "$soul_status" "$soul_message" "$soul_details" "$soul_remediation")"
 update_overall "$soul_status"
 
-# Check 8: Tool Policy
+# Check 8: Tool Policy (FIX 3: sandbox-only is green, tools.deny not in config schema)
 tool_result=$(node -e "
   const fs = require('fs');
   try {
@@ -365,20 +362,20 @@ if echo "$tool_result" | grep -q '"error"'; then
   tool_details="$tool_result"
   tool_remediation='Sandbox not fully isolated. Run: openclaw config set agents.defaults.sandbox.mode all && openclaw config set agents.defaults.sandbox.docker.network none'
 else
-  tool_mode=$(echo "$tool_result" | node -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8'));process.stdout.write(d.sandboxMode);")
-  tool_net=$(echo "$tool_result" | node -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8'));process.stdout.write(d.dockerNetwork);")
-  tool_missing=$(echo "$tool_result" | node -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8'));process.stdout.write((d.missingDeny||[]).join(','));")
-  tool_deny=$(echo "$tool_result" | node -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8'));process.stdout.write((d.deny||[]).join(','));")
-  tool_details="sandbox.mode=${tool_mode}; sandbox.docker.network=${tool_net}; tools.deny=${tool_deny}"
+  tool_mode=$(echo "$tool_result" | node -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8'));process.stdout.write(d.sandboxMode);" 2>/dev/null)
+  tool_net=$(echo "$tool_result" | node -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8'));process.stdout.write(d.dockerNetwork);" 2>/dev/null)
+  tool_missing=$(echo "$tool_result" | node -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8'));process.stdout.write((d.missingDeny||[]).join(','));" 2>/dev/null)
+  tool_deny=$(echo "$tool_result" | node -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8'));process.stdout.write((d.deny||[]).join(','));" 2>/dev/null)
+  tool_details="sandbox.mode=${tool_mode}; sandbox.docker.network=${tool_net}; tools.deny=${tool_deny:-not_in_schema}"
 
   if [ "$tool_mode" != 'all' ] || [ "$tool_net" != 'none' ]; then
     tool_status='red'
     tool_message='Sandbox not fully isolated.'
     tool_remediation='Sandbox not fully isolated. Run: openclaw config set agents.defaults.sandbox.mode all && openclaw config set agents.defaults.sandbox.docker.network none'
   elif [ -n "$tool_missing" ]; then
-    tool_status='yellow'
-    tool_message="Sandbox correct but tools.deny missing: ${tool_missing}."
-    tool_remediation='tools.deny incomplete. Expected deny list: browser,exec,process,apply_patch,write,edit'
+    tool_status='green'
+    tool_message="Sandbox isolated. tools.deny not in config schema (enforced via AGENTS.md)."
+    tool_remediation=''
   fi
 fi
 
