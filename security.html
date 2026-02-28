@@ -570,7 +570,7 @@
       const latestFixes = meta.latest_fixes || 0;
       const latestSec = meta.latest_security_fixes || 0;
       const preview = meta.latest_release_preview || '';
-      const releasePreviewHtml = renderReleasePreview(preview, 8);
+      const releasePreviewHtml = renderReleasePreview(preview);
       const summary = check.message || 'No version data.';
       const showUpdate = status === 'yellow' || status === 'red';
 
