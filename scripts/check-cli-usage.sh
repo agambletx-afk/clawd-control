@@ -48,7 +48,43 @@ fi
 if have_cmd claude; then
   # Claude Code CLI stores login state in ~/.claude/.credentials.json
   if [[ -f "$HOME/.claude/.credentials.json" ]]; then
-    claude_json="$(provider_json "Claude Code" "ok" "")"
+    access_token="$(jq -r '.claudeAiOauth.accessToken // empty' "$HOME/.claude/.credentials.json" 2>/dev/null)"
+    expires_at="$(jq -r '.claudeAiOauth.expiresAt // empty' "$HOME/.claude/.credentials.json" 2>/dev/null)"
+    now_ms="$(( $(date +%s) * 1000 ))"
+
+    if [[ -z "$access_token" || -z "$expires_at" || ! "$expires_at" =~ ^[0-9]+$ ]]; then
+      claude_json="$(provider_json "Claude Code" "ok" "Claude Code OAuth token unavailable. Run: claude login to refresh.")"
+    elif (( expires_at <= now_ms )); then
+      claude_json="$(provider_json "Claude Code" "ok" "OAuth token expired. Run: claude login to refresh.")"
+    else
+      # Undocumented API - may change without notice. See: https://gist.github.com/jtbr/4f99671d1cee06b44106456958caba8b
+      usage_json="$(timeout --kill-after=3 5 curl --max-time 3 -H "Authorization: Bearer ${access_token}" -H "anthropic-beta: oauth-2025-04-20" -H "Content-Type: application/json" "https://api.anthropic.com/api/oauth/usage" 2>/dev/null)"
+      usage_status=$?
+
+      if [[ $usage_status -eq 0 ]] && jq -e . >/dev/null 2>&1 <<< "$usage_json"; then
+        claude_json="$(jq -n --argjson usage "$usage_json" '{
+          name: "Claude Code",
+          session_pct: ($usage.five_hour.utilization | if . == null then null else round end),
+          session_reset: ($usage.five_hour.resets_at // null),
+          weekly_pct: ($usage.seven_day.utilization | if . == null then null else round end),
+          weekly_reset: ($usage.seven_day.resets_at // null),
+          credits: (if ($usage.extra_usage.is_enabled // false) then ($usage.extra_usage.used_credits // null) else null end),
+          plan: null,
+          status: "ok",
+          error: null
+        }')"
+      else
+        claude_error="Claude Code usage API request failed"
+        if [[ $usage_status -ne 0 ]]; then
+          claude_error="Claude Code usage API request failed (exit ${usage_status})"
+        elif [[ -z "$usage_json" ]]; then
+          claude_error="Claude Code usage API request failed (empty response)"
+        else
+          claude_error="Claude Code usage API request failed (invalid JSON response)"
+        fi
+        claude_json="$(provider_json "Claude Code" "ok" "$claude_error")"
+      fi
+    fi
   else
     claude_json="$(provider_json "Claude Code" "not_connected" "Claude Code not authenticated. Run: claude login")"
   fi
