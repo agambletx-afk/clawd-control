@@ -46,9 +46,41 @@ else
 fi
 
 if have_cmd claude; then
+  creds_path="$HOME/.claude/.credentials.json"
   # Claude Code CLI stores login state in ~/.claude/.credentials.json
-  if [[ -f "$HOME/.claude/.credentials.json" ]]; then
-    claude_json="$(provider_json "Claude Code" "ok" "")"
+  if [[ -f "$creds_path" ]]; then
+    access_token="$(jq -r '.claudeAiOauth.accessToken // empty' "$creds_path" 2>/dev/null)"
+    expires_at_ms="$(jq -r '.claudeAiOauth.expiresAt // empty' "$creds_path" 2>/dev/null)"
+    now_ms="$(( $(date +%s) * 1000 ))"
+
+    if [[ -z "$access_token" || -z "$expires_at_ms" || ! "$expires_at_ms" =~ ^[0-9]+$ ]]; then
+      claude_json="$(provider_json "Claude Code" "ok" "Claude OAuth credentials incomplete. Run: claude login to refresh.")"
+    elif (( expires_at_ms <= now_ms )); then
+      claude_json="$(provider_json "Claude Code" "ok" "OAuth token expired. Run: claude login to refresh.")"
+    else
+      # Undocumented API - may change without notice. See: https://gist.github.com/jtbr/4f99671d1cee06b44106456958caba8b
+      usage_json="$(timeout --kill-after=3 5 curl -fsS \
+        -H "Authorization: Bearer $access_token" \
+        -H "anthropic-beta: oauth-2025-04-20" \
+        -H "Content-Type: application/json" \
+        "https://api.anthropic.com/api/oauth/usage" 2>/dev/null || true)"
+
+      if [[ -n "$usage_json" ]] && jq -e . >/dev/null 2>&1 <<< "$usage_json"; then
+        claude_json="$(jq -n --argjson usage "$usage_json" '{
+          name: "Claude Code",
+          session_pct: (if ($usage.five_hour.utilization | type) == "number" then ($usage.five_hour.utilization | round) else null end),
+          session_reset: ($usage.five_hour.resets_at // null),
+          weekly_pct: (if ($usage.seven_day.utilization | type) == "number" then ($usage.seven_day.utilization | round) else null end),
+          weekly_reset: ($usage.seven_day.resets_at // null),
+          credits: (if $usage.extra_usage.is_enabled then $usage.extra_usage.used_credits else null end),
+          plan: null,
+          status: "ok",
+          error: null
+        }')"
+      else
+        claude_json="$(provider_json "Claude Code" "ok" "Claude OAuth usage API call failed")"
+      fi
+    fi
   else
     claude_json="$(provider_json "Claude Code" "not_connected" "Claude Code not authenticated. Run: claude login")"
   fi
