@@ -277,6 +277,42 @@
     .btn-sm { padding:4px 10px; font-size:0.68rem; min-height:28px; }
     .btn-primary { border-color:rgba(212,136,28,0.7); background:rgba(212,136,28,0.25); color:#ffd27a; }
 
+    .version-release-summary {
+      margin-top: 0.75rem;
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      padding: 8px 10px;
+      background: rgba(0,0,0,0.15);
+    }
+    .version-release-header {
+      font-size: 0.78rem;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: var(--text-primary);
+    }
+    .version-release-stats {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 8px;
+      font-size: 0.74rem;
+      flex-wrap: wrap;
+    }
+    .version-release-stats .stat { color: var(--text-secondary); }
+    .version-release-preview { font-size: 0.7rem; line-height: 1.5; }
+    .release-line {
+      padding: 1px 0;
+      color: var(--text-secondary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .release-line.security { color: #e74c3c; font-weight: 500; }
+    .release-line.muted { color: var(--text-tertiary); font-style: italic; }
+    .version-security-count { font-weight: 700; }
+    .version-security-count.red { color: #e74c3c; }
+    .version-security-count.green { color: #2ecc71; }
+    .text-red { color: #e74c3c; }
+
     .toast-notification {
       position: fixed; bottom: 2rem; right: 2rem; background: var(--bg-secondary, #2d3748); color: var(--text-primary, #fff);
       padding: 0.75rem 1.25rem; border-radius: 0.5rem; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
@@ -489,6 +525,31 @@
       }, duration);
     }
 
+    function renderReleasePreview(preview, maxLines = 8) {
+      if (!preview) return '<span class="muted">No release notes available.</span>';
+
+      const lines = preview.split('\n')
+        .map(l => l.trim())
+        .filter(l => l.startsWith('- '));
+
+      const shown = lines.slice(0, maxLines);
+      const remaining = lines.length - shown.length;
+
+      let html = shown.map(line => {
+        const escaped = esc(line);
+        if (line.match(/^- Security\//i)) {
+          return `<div class="release-line security">${escaped}</div>`;
+        }
+        return `<div class="release-line">${escaped}</div>`;
+      }).join('');
+
+      if (remaining > 0) {
+        html += `<div class="release-line muted">+ ${remaining} more entries</div>`;
+      }
+
+      return html || '<span class="muted">No release notes available.</span>';
+    }
+
     function renderVersionCard(check) {
       const card = $('version-card');
       if (!card || !check) {
@@ -503,12 +564,15 @@
       const latest = meta.latest_version ? `v${meta.latest_version}` : 'unknown';
       const behind = Number.isFinite(meta.versions_behind) ? meta.versions_behind : Number.parseInt(meta.versions_behind, 10);
       const safeBehind = Number.isFinite(behind) ? behind : null;
-      const missed = Array.isArray(meta.missed_versions) ? meta.missed_versions : [];
-      const preview = missed.slice(0, 5);
-      const more = missed.length > 5 ? ` and ${missed.length - 5} more` : '';
-      const badge = safeBehind == null ? '' : `<span class="version-badge ${safeBehind === 0 ? 'green' : safeBehind === 1 ? 'yellow' : 'red'}">${safeBehind}</span>`;
-      const updateDisabled = status === 'green' || status === 'unknown';
+      const badge = safeBehind == null ? '-' : `<span class="version-badge ${safeBehind === 0 ? 'green' : safeBehind === 1 ? 'yellow' : 'red'}">${safeBehind}</span>`;
+      const totalSec = meta.total_security_fixes || 0;
+      const latestFeatures = meta.latest_features || 0;
+      const latestFixes = meta.latest_fixes || 0;
+      const latestSec = meta.latest_security_fixes || 0;
+      const preview = meta.latest_release_preview || '';
+      const releasePreviewHtml = renderReleasePreview(preview, 8);
       const summary = check.message || 'No version data.';
+      const showUpdate = status === 'yellow' || status === 'red';
 
       let body = `<span class="version-current">${esc(check.message || 'No version data.')}</span>`;
       if (status === 'yellow' || status === 'red') {
@@ -517,9 +581,23 @@
             <div>Current: <code>${esc(current)}</code></div>
             <div>Latest: <code>${esc(latest)}</code></div>
             <div>Versions behind: ${badge}</div>
+            <div>Security fixes missed: <span class="${totalSec > 0 ? 'version-security-count red' : 'version-security-count green'}">${totalSec}</span></div>
           </div>
-          ${preview.length ? `<div class="version-missed">Missed: ${esc(preview.join(', '))}${esc(more)}</div>` : ''}
-          ${check.details ? `<div class="version-missed">${esc(check.details)}</div>` : ''}
+
+          <div class="version-release-summary">
+            <div class="version-release-header">Latest Release (${esc(latest)}):</div>
+            <div class="version-release-stats">
+              <span class="stat">Features: <strong>${latestFeatures}</strong></span>
+              <span class="stat">Bug Fixes: <strong>${latestFixes}</strong></span>
+              <span class="stat">Security Fixes: <strong class="${latestSec > 0 ? 'text-red' : ''}">${latestSec}</strong></span>
+            </div>
+            <div class="version-release-preview">${releasePreviewHtml}</div>
+          </div>
+        `;
+      } else if (status === 'green') {
+        body = `
+          <span class="version-current">${esc(check.message || 'No version data.')}</span>
+          <div class="version-missed">Latest Release: Features: <strong>${latestFeatures}</strong> &nbsp; Bug Fixes: <strong>${latestFixes}</strong> &nbsp; Security Fixes: <strong class="${latestSec > 0 ? 'text-red' : ''}">${latestSec}</strong></div>
         `;
       } else if (status === 'unknown' && check.details) {
         body = `<span class="version-current">${esc(check.message || 'No version data.')}</span><div class="version-missed">${esc(check.details)}</div>`;
@@ -538,7 +616,10 @@
               <div class="version-card-summary">${esc(summary)}</div>
             </div>
           </div>
-          <button class="btn btn-sm ${updateDisabled ? '' : 'btn-primary'}" id="update-now-btn" ${updateDisabled ? 'disabled' : ''}>Update Now</button>
+          <div style="display:flex; gap:6px; align-items:center;">
+            <button class="btn btn-sm" id="version-check-btn">Check Now</button>
+            ${showUpdate ? '<button class="btn btn-sm btn-primary" id="update-now-btn">Update Now</button>' : ''}
+          </div>
           ${CHEVRON_SVG}
         </div>
         <div class="version-card-expand" id="version-card-expand" ${versionCardOpen ? 'data-open="1"' : ''}>
@@ -550,14 +631,17 @@
         </div>
       `;
 
-      if (versionCardOpen) {
-        card.classList.add('open');
-      }
+      if (versionCardOpen) card.classList.add('open');
 
       requestAnimationFrame(() => {
         const expand = $('version-card-expand');
         if (!expand) return;
         expand.style.maxHeight = versionCardOpen ? `${expand.scrollHeight}px` : '0';
+      });
+
+      card.querySelector('#version-check-btn')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        runVersionCheck();
       });
 
       card.querySelector('#update-now-btn')?.addEventListener('click', async (e) => {
@@ -570,7 +654,6 @@
         }
       });
     }
-
 
     /* ══════════════════════════════════════════════════
        OVERALL BANNER
@@ -879,6 +962,29 @@
       }
     }
 
+    async function runVersionCheck() {
+      const btn = document.getElementById('version-check-btn');
+      if (!btn || btn.disabled) return;
+
+      btn.disabled = true;
+      btn.textContent = 'Checking...';
+
+      try {
+        const data = await api('/api/security/version-check', { method: 'POST' });
+        if (data && Array.isArray(data.checks)) {
+          state.health = data;
+          renderBanner();
+          renderTiers();
+        }
+        showToast('Version check complete.');
+      } catch (e) {
+        showToast('Version check failed: ' + (e.message || 'Unknown error'));
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Check Now';
+      }
+    }
+
     function bindEvents() {
       $('recheckBtn').onclick = runCheckNow;
       $('timelineBanner').onclick = toggleTimeline;
@@ -912,7 +1018,7 @@
       };
 
       $('version-card').onclick = (e) => {
-        if (e.target.closest('#update-now-btn')) return;
+        if (e.target.closest('#update-now-btn') || e.target.closest('#version-check-btn')) return;
         if (e.target.closest('#version-card-header')) {
           toggleVersionCard();
         }

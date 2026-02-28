@@ -8,7 +8,7 @@
 
 import http from 'http';
 const { createServer } = http;
-import { readFileSync, existsSync, writeFileSync, copyFileSync, readdirSync, statSync } from 'fs';
+import { readFileSync, existsSync, writeFileSync, copyFileSync, readdirSync, statSync, unlinkSync } from 'fs';
 import { join, extname, resolve, sep } from 'path';
 import { gzipSync } from 'zlib';
 import { exec, execFileSync, execSync, spawnSync } from 'child_process';
@@ -2892,6 +2892,61 @@ const server = createServer((req, res) => {
         res.end(JSON.stringify({ error: e.message }));
       }
     });
+    return;
+  }
+
+  // POST /api/security/version-check
+  // Manual version check: deletes cache and runs the version check portion
+  // Returns fresh version check data
+  if (path === '/api/security/version-check' && req.method === 'POST') {
+    const cacheFile = '/tmp/security-version-cache.json';
+
+    try { unlinkSync(cacheFile); } catch {}
+
+    logAction({
+      category: 'security',
+      action: 'version_check_manual',
+      target: 'openclaw-version',
+      status: 'started',
+      detail: 'Manual version check triggered from dashboard',
+    });
+
+    try {
+      execSync(
+        'FORCE_VERSION_CHECK=true /usr/local/bin/check-security-health.sh',
+        { timeout: 60000, encoding: 'utf8' }
+      );
+
+      const data = JSON.parse(readFileSync('/tmp/security-health-results.json', 'utf8'));
+
+      if (Array.isArray(data.checks)) {
+        storeChecks(data.checks);
+        if (data.generated_at) {
+          lastStoredSecurityGeneratedAt = data.generated_at;
+        }
+      }
+
+      logAction({
+        category: 'security',
+        action: 'version_check_manual',
+        target: 'openclaw-version',
+        status: 'success',
+        detail: 'Manual version check completed',
+      });
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(data));
+    } catch (e) {
+      logAction({
+        category: 'security',
+        action: 'version_check_manual',
+        target: 'openclaw-version',
+        status: 'error',
+        detail: `Manual version check failed: ${e.message}`,
+      });
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
     return;
   }
 
