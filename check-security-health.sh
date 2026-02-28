@@ -603,6 +603,192 @@ else
   update_overall "$overall_version_status"
 fi
 
+# Check 11: Config Drift
+config_drift_result=$(CONFIG_FILE='/home/openclaw/.openclaw/openclaw.json' BASELINE_FILE='/var/tmp/config-drift-baseline.json' node -e "
+  const fs = require('fs');
+
+  const configFile = process.env.CONFIG_FILE;
+  const baselineFile = process.env.BASELINE_FILE;
+  const now = new Date().toISOString();
+
+  const make = (status, message, details, remediation, metadata) => {
+    process.stdout.write(JSON.stringify({ status, message, details, remediation, metadata, checked_at: now }));
+  };
+
+  const stringify = (value) => {
+    if (value === null) return 'null';
+    if (typeof value === 'string') return JSON.stringify(value);
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+    return JSON.stringify(value);
+  };
+
+  const flatten = (input) => {
+    const out = {};
+    const walk = (value, path) => {
+      if (Array.isArray(value)) {
+        if (value.length > 10) {
+          out[path] = JSON.stringify(value);
+          return;
+        }
+        if (value.length === 0) {
+          out[path] = JSON.stringify([]);
+          return;
+        }
+        value.forEach((entry, i) => walk(entry, path ? (path + '.' + i) : String(i)));
+        return;
+      }
+
+      if (value && typeof value === 'object') {
+        const keys = Object.keys(value);
+        if (keys.length === 0) {
+          out[path] = JSON.stringify({});
+          return;
+        }
+        keys.forEach((key) => walk(value[key], path ? (path + '.' + key) : key));
+        return;
+      }
+
+      out[path] = value;
+    };
+
+    walk(input, '');
+    if (Object.prototype.hasOwnProperty.call(out, '')) {
+      delete out[''];
+    }
+    return out;
+  };
+
+  const isCritical = (key) => {
+    if (key === 'sandbox.mode') return true;
+    if (key === 'sandbox.docker.network') return true;
+    if (key === 'tools.deny' || key.startsWith('tools.deny.')) return true;
+    if (/^channels\.[^.]+\.configWrites$/.test(key)) return true;
+    if (/^channels\.[^.]+\.allowFrom(\.|$)/.test(key)) return true;
+    return false;
+  };
+
+  let config;
+  try {
+    const raw = fs.readFileSync(configFile, 'utf8');
+    config = JSON.parse(raw);
+  } catch (error) {
+    make('red', 'Cannot read config file.', String(error.message || error), 'Run /usr/local/bin/reset-config-baseline.sh to accept current config as new baseline', {
+      changes_count: 0,
+      critical_changes: [],
+      non_critical_changes: []
+    });
+    process.exit(0);
+  }
+
+  const currentFlat = flatten(config);
+
+  let baselineRaw;
+  try {
+    baselineRaw = fs.readFileSync(baselineFile, 'utf8');
+  } catch (_error) {
+    fs.writeFileSync(baselineFile, JSON.stringify(currentFlat, null, 2));
+    make('green', 'Baseline established', 'Stored ' + Object.keys(currentFlat).length + ' keys in baseline snapshot.', null, {
+      changes_count: 0,
+      critical_changes: [],
+      non_critical_changes: []
+    });
+    process.exit(0);
+  }
+
+  let baseline;
+  try {
+    baseline = JSON.parse(baselineRaw);
+    if (!baseline || typeof baseline !== 'object' || Array.isArray(baseline)) {
+      throw new Error('Baseline snapshot is not an object');
+    }
+  } catch (_error) {
+    fs.writeFileSync(baselineFile, JSON.stringify(currentFlat, null, 2));
+    make('green', 'Baseline established', 'Stored ' + Object.keys(currentFlat).length + ' keys in baseline snapshot.', null, {
+      changes_count: 0,
+      critical_changes: [],
+      non_critical_changes: []
+    });
+    process.exit(0);
+  }
+
+  const changed = [];
+  const added = [];
+  const removed = [];
+
+  for (const key of Object.keys(currentFlat)) {
+    if (Object.prototype.hasOwnProperty.call(baseline, key)) {
+      if (JSON.stringify(currentFlat[key]) !== JSON.stringify(baseline[key])) {
+        changed.push({ key, from: baseline[key], to: currentFlat[key] });
+      }
+    } else {
+      added.push({ key, value: currentFlat[key] });
+    }
+  }
+
+  for (const key of Object.keys(baseline)) {
+    if (!Object.prototype.hasOwnProperty.call(currentFlat, key)) {
+      removed.push({ key, value: baseline[key] });
+    }
+  }
+
+  const allChanges = [
+    ...changed.map((item) => ({ type: 'changed', ...item })),
+    ...added.map((item) => ({ type: 'added', ...item })),
+    ...removed.map((item) => ({ type: 'removed', ...item }))
+  ];
+
+  if (allChanges.length === 0) {
+    make('green', 'No config drift detected.', 'Current config matches baseline.', null, {
+      changes_count: 0,
+      critical_changes: [],
+      non_critical_changes: []
+    });
+    process.exit(0);
+  }
+
+  const critical = [];
+  const nonCritical = [];
+
+  for (const item of allChanges) {
+    if (isCritical(item.key)) {
+      critical.push(item);
+    } else {
+      nonCritical.push(item);
+    }
+  }
+
+  const toLine = (item) => {
+    if (item.type === 'changed') {
+      return 'changed ' + item.key + ': ' + stringify(item.from) + ' -> ' + stringify(item.to);
+    }
+    if (item.type === 'added') {
+      return 'added ' + item.key + ': ' + stringify(item.value);
+    }
+    return 'removed ' + item.key + ': ' + stringify(item.value);
+  };
+
+  const details = allChanges.map(toLine).join('; ');
+  const status = critical.length > 0 ? 'red' : 'yellow';
+  const message = status === 'red'
+    ? ('Critical config drift detected (' + allChanges.length + ' changes).')
+    : ('Config drift detected (' + allChanges.length + ' changes).');
+
+  make(status, message, details, 'Run /usr/local/bin/reset-config-baseline.sh to accept current config as new baseline', {
+    changes_count: allChanges.length,
+    critical_changes: critical.map(toLine),
+    non_critical_changes: nonCritical.map(toLine)
+  });
+" 2>&1)
+
+config_drift_status=$(echo "$config_drift_result" | node -e "try{const d=JSON.parse(require('fs').readFileSync(0,'utf8'));process.stdout.write(String(d.status||'red'));}catch(e){process.stdout.write('red');}" 2>/dev/null)
+config_drift_message=$(echo "$config_drift_result" | node -e "try{const d=JSON.parse(require('fs').readFileSync(0,'utf8'));process.stdout.write(String(d.message||'Config drift check failed.'));}catch(e){process.stdout.write('Config drift check failed.');}" 2>/dev/null)
+config_drift_details=$(echo "$config_drift_result" | node -e "try{const d=JSON.parse(require('fs').readFileSync(0,'utf8'));process.stdout.write(String(d.details||''));}catch(e){process.stdout.write('Unable to parse config drift result.');}" 2>/dev/null)
+config_drift_remediation=$(echo "$config_drift_result" | node -e "try{const d=JSON.parse(require('fs').readFileSync(0,'utf8'));process.stdout.write(d.remediation===null?'':String(d.remediation||''));}catch(e){process.stdout.write('Run /usr/local/bin/reset-config-baseline.sh to accept current config as new baseline');}" 2>/dev/null)
+config_drift_metadata=$(echo "$config_drift_result" | node -e "try{const d=JSON.parse(require('fs').readFileSync(0,'utf8'));process.stdout.write(JSON.stringify(d.metadata||{}));}catch(e){process.stdout.write('{}');}" 2>/dev/null)
+
+add_check "$(make_check_json 'config' 'Config Drift' "$config_drift_status" "$config_drift_message" "$config_drift_details" "$config_drift_remediation" "$config_drift_metadata")"
+update_overall "$config_drift_status"
+
 final_json=$(node -e "
   const out = {
     generated_at: process.argv[1],
