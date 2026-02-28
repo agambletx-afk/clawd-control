@@ -14,10 +14,11 @@ function getDb() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       layer TEXT NOT NULL,
       name TEXT NOT NULL,
-      status TEXT NOT NULL CHECK(status IN ('green', 'yellow', 'red')),
+      status TEXT NOT NULL CHECK(status IN ('green', 'yellow', 'red', 'unknown')),
       message TEXT,
       details TEXT,
       remediation TEXT,
+      metadata TEXT,
       checked_at TEXT NOT NULL
     );
 
@@ -25,6 +26,13 @@ function getDb() {
     CREATE INDEX IF NOT EXISTS idx_security_status ON security_checks(status);
     CREATE INDEX IF NOT EXISTS idx_security_time ON security_checks(checked_at);
   `);
+
+  // Migrate: add metadata column if missing (added for Check 10: version currency)
+  try {
+    db.exec('ALTER TABLE security_checks ADD COLUMN metadata TEXT');
+  } catch (e) {
+    // Column already exists, ignore
+  }
 
   return db;
 }
@@ -34,8 +42,8 @@ export function storeChecks(checks) {
 
   const conn = getDb();
   const insert = conn.prepare(`
-    INSERT INTO security_checks (layer, name, status, message, details, remediation, checked_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO security_checks (layer, name, status, message, details, remediation, metadata, checked_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const nowIso = new Date().toISOString();
@@ -44,15 +52,21 @@ export function storeChecks(checks) {
     for (const check of rows) {
       if (!check || typeof check !== 'object') continue;
       if (!check.layer || !check.name || !check.status) continue;
-      if (!['green', 'yellow', 'red'].includes(check.status)) continue;
+      if (!['green', 'yellow', 'red', 'unknown'].includes(check.status)) continue;
+
+      const safeStatus = check.status === 'unknown' ? 'yellow' : check.status;
+      const metadata = check.metadata == null
+        ? null
+        : (typeof check.metadata === 'string' ? check.metadata : JSON.stringify(check.metadata));
 
       insert.run(
         String(check.layer),
         String(check.name),
-        String(check.status),
+        safeStatus,
         check.message == null ? null : String(check.message),
         check.details == null ? null : String(check.details),
         check.remediation == null ? null : String(check.remediation),
+        metadata,
         check.checked_at ? String(check.checked_at) : nowIso,
       );
       inserted += 1;
@@ -71,7 +85,7 @@ export function getHistory(layer, limit = 50) {
   if (!layer || typeof layer !== 'string') return [];
 
   return conn.prepare(`
-    SELECT layer, name, status, message, details, remediation, checked_at
+    SELECT layer, name, status, message, details, remediation, metadata, checked_at
     FROM security_checks
     WHERE layer = ?
     ORDER BY datetime(checked_at) DESC, id DESC
