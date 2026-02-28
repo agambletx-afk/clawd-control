@@ -382,7 +382,7 @@
   <main class="main">
     <div class="page-header">
       <h1>Security</h1>
-      <p class="subtitle">Defense-in-depth posture across 10 checks.</p>
+      <p class="subtitle">Defense-in-depth posture across 13 checks.</p>
     </div>
 
     <section id="overallBanner" class="overall-banner unknown">
@@ -422,31 +422,41 @@
       {
         id: 'infra', label: 'Infrastructure', icon: '🛡',
         desc: 'Network perimeter, brute-force protection, and mesh access',
-        checks: [
-          { name: 'UFW Firewall', key: 'network_firewall', tag: 'L1' },
-          { name: 'fail2ban', key: 'network_brute_force', tag: 'L1' },
-          { name: 'Tailscale', key: 'access', tag: 'L2' },
-        ]
+        layers: ['network_firewall', 'network_brute_force', 'access'],
+        showWhenEmpty: true
       },
       {
         id: 'app', label: 'Application Boundary', icon: '🔒',
         desc: 'Public access, gateway bind, and channel policy',
-        checks: [
-          { name: 'Cloudflare Access', key: 'public', tag: 'L3' },
-          { name: 'Gateway Bind', key: 'gateway', tag: 'L4' },
-          { name: 'Channel Allowlist', key: 'channel', tag: 'L5' },
-        ]
+        layers: ['public', 'gateway', 'channel'],
+        showWhenEmpty: true
       },
       {
         id: 'agent', label: 'Agent', icon: '🧠',
         desc: 'Identity integrity, tool sandboxing, and memory security',
-        checks: [
-          { name: 'SOUL.md Integrity', key: 'reasoning', tag: 'L6' },
-          { name: 'Tool Policy', key: 'operational', tag: 'L7' },
-          { name: 'Memory Security', key: 'memory', tag: 'L8' },
-        ]
+        layers: ['reasoning', 'operational', 'memory'],
+        showWhenEmpty: true
+      },
+      {
+        id: 'injection', label: 'Injection Defense', icon: '🔍',
+        desc: 'Config drift baselining and deterministic prompt/plugin defenses',
+        layers: ['injection-defense'],
+        showWhenEmpty: false
       }
     ];
+
+    const LAYER_TAGS = {
+      network_firewall: 'L1',
+      network_brute_force: 'L1',
+      access: 'L2',
+      public: 'L3',
+      gateway: 'L4',
+      channel: 'L5',
+      reasoning: 'L6',
+      operational: 'L7',
+      memory: 'L8',
+      'injection-defense': 'L9'
+    };
 
     const state = { health: null, transitions: [], pollTimer: null, running: false, versionCheck: null };
     const openTiers = new Set();    // track which tiers are expanded
@@ -687,10 +697,32 @@
     /* ══════════════════════════════════════════════════
        TIER ACCORDIONS
     ══════════════════════════════════════════════════ */
-    function buildSummaryBadges(checks, byLayer, staleAll) {
+    function checkKey(check) {
+      const layer = String(check?.layer || 'unknown').replace(/[^a-zA-Z0-9_-]/g, '-');
+      const name = String(check?.name || 'check').replace(/[^a-zA-Z0-9_-]/g, '-');
+      return `${layer}-${name}`;
+    }
+
+    function layerOrder(layer) {
+      const order = {
+        network_firewall: 1,
+        network_brute_force: 2,
+        access: 3,
+        public: 4,
+        gateway: 5,
+        channel: 6,
+        reasoning: 7,
+        operational: 8,
+        memory: 9,
+        'injection-defense': 10
+      };
+      return order[layer] || 99;
+    }
+
+    function buildSummaryBadges(checks, staleAll) {
       const counts = { green: 0, yellow: 0, red: 0 };
-      checks.forEach(d => {
-        const t = tok(byLayer[d.key]?.status, staleAll);
+      checks.forEach(check => {
+        const t = tok(check?.status, staleAll);
         if (t === 'green') counts.green++;
         else if (t === 'yellow') counts.yellow++;
         else if (t === 'red') counts.red++;
@@ -703,36 +735,38 @@
       return html;
     }
 
-    function buildCardHTML(def, check, staleAll) {
+    function buildCardHTML(check, staleAll) {
       const t = tok(check?.status, staleAll);
       const rem = check?.remediation || '';
       const details = check?.details || 'No details available.';
-      const expandId = `cexp-${def.key}`;
-      const isOpen = openCards.has(def.key);
+      const key = checkKey(check);
+      const expandId = `cexp-${key}`;
+      const isOpen = openCards.has(key);
+      const tag = LAYER_TAGS[check?.layer] || String(check?.layer || 'layer').toUpperCase();
 
       const remBlock = (t === 'yellow' || t === 'red') && rem
         ? `<div class="check-remediation ${t}">
             <div class="remediation-text">${esc(rem)}</div>
             <div class="remediation-actions">
               <button class="mini-btn" type="button" data-action="copy" data-text="${esc(rem)}">Copy</button>
-              ${def.key === 'reasoning' ? '<button class="mini-btn" data-action="ack" type="button">Acknowledge</button>' : ''}
+              ${check?.layer === 'reasoning' ? '<button class="mini-btn" data-action="ack" type="button">Acknowledge</button>' : ''}
             </div>
           </div>`
         : '';
 
       return `
-        <div class="check-card card-${t}" data-layer="${def.key}">
+        <div class="check-card card-${t}" data-layer="${esc(check?.layer || 'unknown')}">
           <div class="check-row">
             <span class="check-dot ${t}"></span>
             <div class="check-info">
               <div class="check-top">
-                <span class="check-name">${esc(def.name)}</span>
-                <span class="check-layer-tag">${esc(def.tag)}</span>
+                <span class="check-name">${esc(check?.name || 'Unnamed Check')}</span>
+                <span class="check-layer-tag">${esc(tag)}</span>
               </div>
               <div class="check-msg">${esc(check?.message || 'No data.')}</div>
               <div class="check-meta">
                 <span class="check-time">${relTime(check?.checked_at)}</span>
-                <button class="check-expand-btn" type="button" data-action="card-toggle" data-key="${def.key}" data-expand="${expandId}">${isOpen ? 'hide' : 'details'}</button>
+                <button class="check-expand-btn" type="button" data-action="card-toggle" data-key="${key}" data-expand="${expandId}">${isOpen ? 'hide' : 'details'}</button>
               </div>
             </div>
           </div>
@@ -751,12 +785,19 @@
       state.versionCheck = versionCheck;
       renderVersionCard(versionCheck);
       const tierChecks = checks.filter(c => c.layer !== 'version');
-      const byLayer = Object.fromEntries(tierChecks.map(c => [c.layer, c]));
       const staleAll = !!state.health?.stale;
 
-      $('tierAccordions').innerHTML = TIERS.map(tier => {
-        const tierStatuses = tier.checks.map(d => tok(byLayer[d.key]?.status, staleAll));
-        const tierStatus = worstStatus(tierStatuses);
+      const tierHtml = TIERS.map(tier => {
+        const checksForTier = tierChecks
+          .filter(check => tier.layers.includes(check.layer))
+          .sort((a, b) => layerOrder(a.layer) - layerOrder(b.layer) || String(a.name || '').localeCompare(String(b.name || '')));
+
+        if (!tier.showWhenEmpty && checksForTier.length === 0) {
+          return '';
+        }
+
+        const tierStatuses = checksForTier.map(check => tok(check.status, staleAll));
+        const tierStatus = checksForTier.length ? worstStatus(tierStatuses) : 'unknown';
         const isOpen = openTiers.has(tier.id);
 
         return `
@@ -768,17 +809,19 @@
                 <div class="tier-desc">${esc(tier.desc)}</div>
               </div>
               <div class="tier-summary">
-                ${buildSummaryBadges(tier.checks, byLayer, staleAll)}
+                ${buildSummaryBadges(checksForTier, staleAll)}
               </div>
               ${CHEVRON_SVG}
             </div>
             <div class="tier-body" id="tbody-${tier.id}" ${isOpen ? 'data-open="1"' : ''}>
               <div class="tier-body-inner">
-                ${tier.checks.map(d => buildCardHTML(d, byLayer[d.key], staleAll)).join('')}
+                ${checksForTier.map(check => buildCardHTML(check, staleAll)).join('')}
               </div>
             </div>
           </div>`;
       }).join('');
+
+      $('tierAccordions').innerHTML = tierHtml;
 
       // Restore open states after render
       requestAnimationFrame(() => {
