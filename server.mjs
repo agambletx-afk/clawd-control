@@ -32,6 +32,7 @@ import {
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 
 import { logAction, getLog, getLogStats, pruneLog } from './ops-log-db.mjs';
+import { storeChecks, getHistory as getSecurityHistory, getTransitions } from './security-db.mjs';
 import { createSnapshot, listSnapshots, getSnapshotManifest, restoreSnapshot, deleteSnapshot, enforceRetention } from './ops-backup.mjs';
 import { ChatGatewayClient, getChatMessages } from './chat-api.mjs';
 
@@ -45,6 +46,11 @@ const PRIMARY_ENV_PATH = join(DIR, '.env');
 const SECONDARY_ENV_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', '.env');
 const LOCAL_HEALTH_SCRIPT_PATH = join(DIR, 'scripts', 'check-api-health.sh');
 const SYSTEM_HEALTH_SCRIPT_PATH = '/usr/local/bin/check-api-health.sh';
+const SECURITY_HEALTH_RESULTS_PATH = '/tmp/security-health-results.json';
+const SECURITY_CHECK_SCRIPT_PATH = '/usr/local/bin/check-security-health.sh';
+const SOUL_MD_PATH = '/home/openclaw/.openclaw/workspace/SOUL.md';
+const SOUL_HASH_PATH = '/home/openclaw/.openclaw/.soul-hash';
+let lastStoredSecurityGeneratedAt = null;
 
 // ── Security constants ──
 const MAX_BODY_SIZE = 1024 * 1024; // 1MB max POST body
@@ -2788,6 +2794,150 @@ const server = createServer((req, res) => {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Failed to fetch operations log' }));
     }
+    return;
+  }
+
+  if (path === '/api/security/health' && req.method === 'GET') {
+    try {
+      if (!existsSync(SECURITY_HEALTH_RESULTS_PATH)) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ overall_status: 'unknown', checks: [], stale: true }));
+        return;
+      }
+
+      const data = JSON.parse(readFileSync(SECURITY_HEALTH_RESULTS_PATH, 'utf8'));
+      const generatedAtRaw = data?.generated_at;
+      const generatedAtMs = Date.parse(generatedAtRaw);
+      const isStale = !generatedAtRaw || Number.isNaN(generatedAtMs) || (Date.now() - generatedAtMs > 30 * 60 * 1000);
+
+      if (isStale) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ overall_status: 'unknown', checks: [], stale: true }));
+        return;
+      }
+
+      if (generatedAtRaw !== lastStoredSecurityGeneratedAt && Array.isArray(data.checks)) {
+        storeChecks(data.checks);
+        lastStoredSecurityGeneratedAt = generatedAtRaw;
+      }
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ...data, stale: false }));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (path === '/api/security/history' && req.method === 'GET') {
+    try {
+      const layer = url.searchParams.get('layer');
+      if (!layer) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'layer query parameter is required' }));
+        return;
+      }
+      const limit = Number.parseInt(url.searchParams.get('limit') || '50', 10);
+      const rows = getSecurityHistory(layer, limit);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(rows));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (path === '/api/security/transitions' && req.method === 'GET') {
+    try {
+      const limit = Number.parseInt(url.searchParams.get('limit') || '50', 10);
+      const rows = getTransitions(limit);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(rows));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (path === '/api/security/recheck' && req.method === 'POST') {
+    exec(SECURITY_CHECK_SCRIPT_PATH, { timeout: 30000 }, (error) => {
+      if (error) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: error.message }));
+        return;
+      }
+
+      try {
+        const data = JSON.parse(readFileSync(SECURITY_HEALTH_RESULTS_PATH, 'utf8'));
+        if (Array.isArray(data.checks)) {
+          storeChecks(data.checks);
+          if (data.generated_at) {
+            lastStoredSecurityGeneratedAt = data.generated_at;
+          }
+        }
+        logAction({
+          category: 'security',
+          action: 'security-recheck',
+          target: 'security-health',
+          status: 'success',
+          detail: 'Security recheck triggered from dashboard',
+        });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(data));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  if (path === '/api/security/acknowledge' && req.method === 'POST') {
+    readJsonBody(req).then((body) => {
+      try {
+        const layer = body?.layer ? String(body.layer) : '';
+        const note = body?.note ? String(body.note) : '';
+        if (!layer) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'layer is required' }));
+          return;
+        }
+
+        if (layer === 'reasoning') {
+          const hash = execSync(`sha256sum ${SOUL_MD_PATH} | awk '{print $1}'`, { encoding: 'utf8' }).trim();
+          writeFileSync(SOUL_HASH_PATH, hash, 'utf8');
+          logAction({
+            category: 'security',
+            action: 'security-acknowledge',
+            target: layer,
+            status: 'success',
+            detail: `Acknowledged ${layer}: ${note}`,
+          });
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: true, message: 'SOUL.md baseline updated' }));
+          return;
+        }
+
+        logAction({
+          category: 'security',
+          action: 'security-acknowledge',
+          target: layer,
+          status: 'success',
+          detail: `Acknowledged ${layer}: ${note}`,
+        });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, message: `Acknowledged ${layer}` }));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    }).catch((e) => {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    });
     return;
   }
 

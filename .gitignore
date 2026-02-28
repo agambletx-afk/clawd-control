@@ -9,6 +9,10 @@ node_modules/
 reports/
 *.report.json
 tasks.db
+ops-log.db
+security-checks.db
+security-checks.db-shm
+security-checks.db-wal
 
 # Local/personal files
 gandalf-report.json
@@ -21,3 +25,5 @@ MVP-PLAN.md
 Thumbs.db
 tasks.db-shm
 tasks.db-wal
+ops-log.db-shm
+ops-log.db-wal
