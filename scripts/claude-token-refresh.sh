@@ -23,7 +23,7 @@ if [[ ! -f "$CREDENTIALS_FILE" ]]; then
   exit 0
 fi
 
-if pgrep -f "claude" >/dev/null 2>&1; then
+if pgrep -x "claude" >/dev/null 2>&1; then
   echo "SKIP: Claude Code process detected"
   exit 0
 fi
