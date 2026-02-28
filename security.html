@@ -5,161 +5,267 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Security — Clawd Control</title>
   <style>
-    .page-header { margin-bottom: 12px; }
+    .page-header { margin-bottom: 10px; }
     .page-header h1 { font-size: 1.9rem; }
-    .subtitle { color: var(--text-secondary); font-size: 0.88rem; }
+    .subtitle { color: var(--text-secondary); font-size: 0.86rem; }
 
-    .security-banner {
-      border-radius: 12px;
-      border: 1px solid transparent;
-      margin-bottom: 14px;
-      padding: 12px;
+    /* ── Overall Status Banner ── */
+    .overall-banner {
+      border-radius: 10px;
+      margin-bottom: 16px;
+      padding: 6px 12px;
       display: flex;
       justify-content: space-between;
       align-items: center;
       gap: 10px;
       color: #fff;
+      transition: background 0.3s;
     }
-    .security-banner-main { min-width: 0; }
-    .security-banner-title { font-size: 1rem; font-weight: 700; }
-    .security-banner-meta { font-size: 0.78rem; opacity: 0.95; margin-top: 2px; }
-    .security-banner.status-green { background: #27AE60; border-color: #2ecc71; }
-    .security-banner.status-yellow { background: #E67E22; border-color: #f39c12; }
-    .security-banner.status-red { background: #C0392B; border-color: #e74c3c; }
-    .security-banner.status-unknown { background: #95A5A6; border-color: #7f8c8d; }
-
-    .btn {
-      border: 1px solid rgba(255, 255, 255, 0.35);
-      background: rgba(10, 12, 16, 0.25);
+    .overall-banner.green { background: #27AE60; }
+    .overall-banner.yellow { background: #D4881C; }
+    .overall-banner.red { background: #C0392B; }
+    .overall-banner.unknown { background: #636e72; }
+    .overall-title { font-size: 0.82rem; font-weight: 700; }
+    .overall-meta { font-size: 0.68rem; opacity: 0.92; margin-top: 1px; }
+    .btn-recheck {
+      border: 1px solid rgba(255,255,255,0.3);
+      background: rgba(0,0,0,0.15);
       color: #fff;
-      padding: 10px 12px;
-      border-radius: 8px;
+      padding: 5px 10px;
+      border-radius: 6px;
       cursor: pointer;
-      font-size: 0.8rem;
-      min-height: 44px;
+      font-size: 0.7rem;
+      min-height: 30px;
+      white-space: nowrap;
+      transition: background 0.15s;
+    }
+    .btn-recheck:hover { background: rgba(0,0,0,0.3); }
+    .btn-recheck:disabled { opacity: 0.6; cursor: wait; }
+
+    /* ── Tier Accordion ── */
+    .tier-accordions { display: grid; gap: 8px; margin-bottom: 16px; }
+
+    .tier {
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      transition: border-color 0.3s;
+    }
+    .tier.tier-green { border-color: rgba(39,174,96,0.4); }
+    .tier.tier-yellow { border-color: rgba(212,136,28,0.5); }
+    .tier.tier-red { border-color: rgba(192,57,43,0.5); }
+
+    /* ── Tier Banner (clickable) ── */
+    .tier-banner {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.2s;
+      position: relative;
+    }
+    .tier-banner:hover { filter: brightness(1.08); }
+
+    /* Tier status backgrounds */
+    .tier.tier-green .tier-banner { background: rgba(39,174,96,0.12); }
+    .tier.tier-yellow .tier-banner { background: rgba(212,136,28,0.14); }
+    .tier.tier-red .tier-banner { background: rgba(192,57,43,0.14); }
+    .tier.tier-unknown .tier-banner { background: rgba(99,110,114,0.12); }
+
+    .tier-icon { font-size: 1.05rem; flex-shrink: 0; }
+    .tier-info { flex: 1; min-width: 0; }
+    .tier-name { font-weight: 700; font-size: 0.84rem; color: var(--text-primary); }
+    .tier-desc { font-size: 0.68rem; color: var(--text-tertiary); margin-top: 1px; }
+
+    .tier-summary {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .tier-badge {
+      font-size: 0.64rem;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 10px;
       white-space: nowrap;
     }
-    .btn:hover { background: rgba(10, 12, 16, 0.4); }
-    .btn:disabled { opacity: 0.7; cursor: wait; }
+    .tier-badge.badge-green { background: rgba(39,174,96,0.2); color: #2ecc71; }
+    .tier-badge.badge-yellow { background: rgba(212,136,28,0.2); color: #f0a836; }
+    .tier-badge.badge-red { background: rgba(192,57,43,0.2); color: #e74c3c; }
 
-    .security-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 16px;
-      margin-bottom: 14px;
+    .tier-chevron {
+      width: 18px; height: 18px;
+      flex-shrink: 0;
+      color: var(--text-tertiary);
+      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
+    .tier.open .tier-chevron { transform: rotate(180deg); }
 
-    .security-card {
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      background: var(--bg-secondary);
-      display: flex;
-      flex-direction: column;
-      min-height: 220px;
+    /* ── Tier Body (collapsible) ── */
+    .tier-body {
+      max-height: 0;
       overflow: hidden;
+      transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1);
     }
-    .security-card.status-green { background: rgba(39, 174, 96, 0.16); border-color: rgba(39, 174, 96, 0.45); }
-    .security-card.status-yellow { background: rgba(230, 126, 34, 0.16); border-color: rgba(230, 126, 34, 0.45); }
-    .security-card.status-red { background: rgba(192, 57, 43, 0.18); border-color: rgba(192, 57, 43, 0.45); }
-
-    .card-head { padding: 12px 12px 8px; border-bottom: 1px solid var(--border-subtle); }
-    .layer-label { color: var(--text-tertiary); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; }
-    .card-title { font-weight: 700; margin-top: 2px; font-size: 0.95rem; }
-    .status-row { margin-top: 8px; display: flex; align-items: center; gap: 6px; font-size: 0.78rem; }
-    .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
-    .status-dot.green { background: #27AE60; }
-    .status-dot.yellow { background: #E67E22; }
-    .status-dot.red { background: #C0392B; }
-    .status-dot.unknown { background: #95A5A6; }
-
-    .card-body { padding: 10px 12px 12px; display: grid; gap: 8px; }
-    .card-msg { font-size: 0.82rem; color: var(--text-primary); }
-    .card-time { font-size: 0.74rem; color: var(--text-tertiary); }
-    .details-toggle {
-      width: 100%;
-      text-align: left;
-      border: 1px solid var(--border);
-      background: var(--bg-tertiary);
-      color: var(--text-secondary);
-      border-radius: 8px;
-      padding: 8px 10px;
-      font-size: 0.75rem;
-      cursor: pointer;
-      min-height: 44px;
+    .tier-body-inner {
+      padding: 6px 10px 10px;
+      display: grid;
+      gap: 6px;
     }
-    .details-toggle:hover { color: var(--text-primary); }
-    .details-panel {
-      display: none;
+
+    /* ── Security Check Cards ── */
+    .check-card {
       border: 1px solid var(--border-subtle);
       border-radius: 8px;
-      background: rgba(10, 12, 16, 0.35);
-      padding: 8px;
+      background: var(--bg-tertiary);
+      overflow: hidden;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .check-card.card-green { border-left: 3px solid #27AE60; }
+    .check-card.card-yellow { border-left: 3px solid #D4881C; background: rgba(212,136,28,0.05); }
+    .check-card.card-red { border-left: 3px solid #C0392B; background: rgba(192,57,43,0.06); }
+
+    .check-row {
+      padding: 8px 10px;
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+    .check-dot {
+      width: 9px; height: 9px;
+      border-radius: 50%;
+      margin-top: 4px;
+      flex-shrink: 0;
+    }
+    .check-dot.green { background: #27AE60; }
+    .check-dot.yellow { background: #D4881C; }
+    .check-dot.red { background: #C0392B; }
+    .check-dot.unknown { background: #636e72; }
+
+    .check-info { flex: 1; min-width: 0; }
+    .check-top {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+    }
+    .check-name { font-weight: 600; font-size: 0.8rem; color: var(--text-primary); }
+    .check-layer-tag {
+      font-size: 0.58rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-tertiary);
+      background: var(--surface);
+      padding: 1px 5px;
+      border-radius: 4px;
+    }
+    .check-msg { font-size: 0.74rem; color: var(--text-secondary); margin-top: 2px; line-height: 1.3; }
+    .check-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 3px;
+    }
+    .check-time { font-size: 0.64rem; color: var(--text-tertiary); }
+    .check-expand-btn {
+      background: none;
+      border: none;
+      color: var(--text-tertiary);
+      font-size: 0.64rem;
+      cursor: pointer;
+      padding: 0;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    .check-expand-btn:hover { color: var(--text-secondary); }
+
+    /* ── Card Expandable ── */
+    .check-expand {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .check-expand-inner {
+      padding: 0 10px 8px;
+    }
+    .check-details-box {
       font-family: var(--font-mono);
-      font-size: 0.74rem;
+      font-size: 0.7rem;
       color: var(--text-secondary);
       white-space: pre-wrap;
-      overflow-x: auto;
       word-break: break-word;
+      background: rgba(10,12,16,0.35);
+      border-radius: 6px;
+      padding: 5px 8px;
+      margin-bottom: 6px;
     }
-    .details-panel.open { display: block; }
-
-    .remediation {
-      margin-top: auto;
-      border-top: 1px solid transparent;
-      display: none;
-      padding: 10px;
+    .check-remediation {
+      border-radius: 6px;
+      padding: 6px 8px;
+      font-size: 0.7rem;
+      display: flex;
+      align-items: flex-start;
       gap: 8px;
-      align-items: center;
-      justify-content: space-between;
       flex-wrap: wrap;
-      font-size: 0.75rem;
     }
-    .remediation.visible { display: flex; }
-    .remediation.yellow { background: rgba(230, 126, 34, 0.28); border-color: rgba(230, 126, 34, 0.45); }
-    .remediation.red { background: rgba(192, 57, 43, 0.3); border-color: rgba(192, 57, 43, 0.45); }
-    .remediation-text { font-family: var(--font-mono); flex: 1; min-width: 160px; word-break: break-word; }
-    .remediation-actions { display: flex; gap: 8px; }
+    .check-remediation.yellow { background: rgba(212,136,28,0.15); }
+    .check-remediation.red { background: rgba(192,57,43,0.15); }
+    .remediation-text { font-family: var(--font-mono); flex: 1; min-width: 140px; word-break: break-word; color: var(--text-secondary); }
+    .remediation-actions { display: flex; gap: 6px; flex-shrink: 0; }
     .mini-btn {
-      border: 1px solid rgba(255, 255, 255, 0.3);
-      background: rgba(10, 12, 16, 0.35);
-      color: #fff;
-      border-radius: 7px;
-      padding: 8px 10px;
-      font-size: 0.72rem;
-      min-height: 44px;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: rgba(10,12,16,0.3);
+      color: #dfe6e9;
+      border-radius: 5px;
+      padding: 3px 8px;
+      font-size: 0.64rem;
+      min-height: 26px;
       cursor: pointer;
+      transition: background 0.15s;
     }
+    .mini-btn:hover { background: rgba(10,12,16,0.55); color: #fff; }
+    .mini-btn:disabled { opacity: 0.5; cursor: wait; }
 
-    .timeline {
+    /* ── Timeline ── */
+    .timeline-section {
       background: var(--bg-secondary);
       border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 12px;
+      border-radius: 10px;
+      padding: 10px 12px;
     }
-    .timeline h2 { font-size: 0.98rem; margin-bottom: 10px; }
-    .timeline-list { display: grid; gap: 8px; }
-    .timeline-item {
+    .timeline-title { font-size: 0.86rem; margin-bottom: 8px; font-weight: 700; }
+    .timeline-list { display: grid; gap: 4px; }
+    .tl-item {
       border: 1px solid var(--border-subtle);
-      border-radius: 9px;
-      padding: 9px;
+      border-radius: 6px;
+      padding: 5px 9px;
       background: var(--bg-tertiary);
-      display: grid;
-      gap: 4px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 4px 10px;
+      font-size: 0.72rem;
     }
-    .timeline-top { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 0.76rem; }
-    .timeline-time { color: var(--text-tertiary); }
-    .timeline-layer { color: var(--text-secondary); }
-    .timeline-message { font-size: 0.78rem; color: var(--text-primary); }
-    .status-pair { display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem; }
-    .muted { color: var(--text-tertiary); font-size: 0.8rem; }
+    .tl-time { color: var(--text-tertiary); font-size: 0.66rem; }
+    .tl-layer { color: var(--text-secondary); font-weight: 500; }
+    .tl-message { font-size: 0.7rem; color: var(--text-primary); width: 100%; }
+    .tl-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+    .tl-dot.green { background: #27AE60; }
+    .tl-dot.yellow { background: #D4881C; }
+    .tl-dot.red { background: #C0392B; }
+    .tl-dot.unknown { background: #636e72; }
+    .tl-arrow { display: inline-flex; align-items: center; gap: 3px; font-size: 0.66rem; color: var(--text-tertiary); }
+    .muted { color: var(--text-tertiary); font-size: 0.76rem; padding: 4px 0; }
 
-    @media (max-width: 1024px) {
-      .security-grid { grid-template-columns: repeat(2, 1fr); }
-    }
     @media (max-width: 640px) {
-      .security-grid { grid-template-columns: 1fr; }
-      .security-banner { flex-direction: column; align-items: stretch; }
-      .security-banner .btn { width: 100%; }
+      .overall-banner { flex-direction: column; align-items: stretch; padding: 8px 12px; }
+      .overall-banner .btn-recheck { width: 100%; min-height: 44px; }
+      .tier-banner { padding: 10px 12px; }
+      .tier-desc { display: none; }
+      .mini-btn { min-height: 44px; padding: 8px 10px; font-size: 0.7rem; }
     }
   </style>
 </head>
@@ -167,311 +273,439 @@
   <main class="main">
     <div class="page-header">
       <h1>Security</h1>
-      <p class="subtitle">Layered health checks, remediation signals, and transition timeline.</p>
+      <p class="subtitle">Defense-in-depth posture across 8 layers.</p>
     </div>
 
-    <section id="securityBanner" class="security-banner status-unknown">
-      <div class="security-banner-main">
-        <div id="bannerTitle" class="security-banner-title">Security Status Unknown — Data Stale or Unavailable</div>
-        <div id="bannerMeta" class="security-banner-meta">Waiting for security check data…</div>
+    <section id="overallBanner" class="overall-banner unknown">
+      <div>
+        <div id="overallTitle" class="overall-title">Security Status Unknown</div>
+        <div id="overallMeta" class="overall-meta">Waiting for data...</div>
       </div>
-      <button id="runCheckBtn" class="btn" type="button">Run Check Now</button>
+      <button id="recheckBtn" class="btn-recheck" type="button">Run Check Now</button>
     </section>
 
-    <section id="securityGrid" class="security-grid"></section>
+    <div id="tierAccordions" class="tier-accordions"></div>
 
-    <section class="timeline">
-      <h2>Security Event Timeline</h2>
+    <section class="timeline-section">
+      <div class="timeline-title">Event Timeline</div>
       <div id="timelineList" class="timeline-list">
-        <div class="muted">Loading timeline…</div>
+        <div class="muted">Loading...</div>
       </div>
     </section>
   </main>
 
+  <script src="/layout.js"></script>
   <script>
-    const SECURITY_ORDER = [
-      { name: 'UFW Firewall', key: 'network_firewall', layer: 'Layer 1: Network' },
-      { name: 'fail2ban', key: 'network_brute_force', layer: 'Layer 1: Network' },
-      { name: 'Tailscale', key: 'access', layer: 'Layer 2: Access' },
-      { name: 'Cloudflare Access', key: 'public', layer: 'Layer 3: Public' },
-      { name: 'Gateway Bind', key: 'gateway', layer: 'Layer 4: Gateway' },
-      { name: 'Channel Allowlist', key: 'channel', layer: 'Layer 5: Channel' },
-      { name: 'SOUL.md Integrity', key: 'reasoning', layer: 'Layer 6: Reasoning' },
-      { name: 'Tool Policy', key: 'operational', layer: 'Layer 7: Operational' },
-      { name: 'Memory Security', key: 'memory', layer: 'Layer 8: Memory' }
+    /* ══════════════════════════════════════════════════
+       DATA
+    ══════════════════════════════════════════════════ */
+    const TIERS = [
+      {
+        id: 'infra', label: 'Infrastructure', icon: '🛡',
+        desc: 'Network perimeter, brute-force protection, and mesh access',
+        checks: [
+          { name: 'UFW Firewall', key: 'network_firewall', tag: 'L1' },
+          { name: 'fail2ban', key: 'network_brute_force', tag: 'L1' },
+          { name: 'Tailscale', key: 'access', tag: 'L2' },
+        ]
+      },
+      {
+        id: 'app', label: 'Application Boundary', icon: '🔒',
+        desc: 'Public access, gateway bind, and channel policy',
+        checks: [
+          { name: 'Cloudflare Access', key: 'public', tag: 'L3' },
+          { name: 'Gateway Bind', key: 'gateway', tag: 'L4' },
+          { name: 'Channel Allowlist', key: 'channel', tag: 'L5' },
+        ]
+      },
+      {
+        id: 'agent', label: 'Agent', icon: '🧠',
+        desc: 'Identity integrity, tool sandboxing, and memory security',
+        checks: [
+          { name: 'SOUL.md Integrity', key: 'reasoning', tag: 'L6' },
+          { name: 'Tool Policy', key: 'operational', tag: 'L7' },
+          { name: 'Memory Security', key: 'memory', tag: 'L8' },
+        ]
+      }
     ];
 
-    const state = {
-      health: null,
-      transitions: [],
-      pollTimer: null,
-      runningCheck: false,
-    };
+    const state = { health: null, transitions: [], pollTimer: null, running: false };
+    const openTiers = new Set();    // track which tiers are expanded
+    const openCards = new Set();    // track which card details are expanded
+    const $ = id => document.getElementById(id);
 
-    const $ = (id) => document.getElementById(id);
-
-    function esc(value) {
-      return String(value ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+    /* ══════════════════════════════════════════════════
+       HELPERS
+    ══════════════════════════════════════════════════ */
+    function esc(v) {
+      return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     }
 
-    function relativeTime(isoString) {
-      if (!isoString) return 'unknown';
-      const diff = Date.now() - new Date(isoString).getTime();
-      const mins = Math.floor(diff / 60000);
-      if (mins < 1) return 'just now';
-      if (mins < 60) return `${mins} min ago`;
-      const hours = Math.floor(mins / 60);
-      if (hours < 24) return `${hours}h ago`;
-      const days = Math.floor(hours / 24);
-      return `${days}d ago`;
+    function relTime(iso) {
+      if (!iso) return 'unknown';
+      const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+      if (m < 1) return 'just now';
+      if (m < 60) return `${m}m ago`;
+      const h = Math.floor(m / 60);
+      if (h < 24) return `${h}h ago`;
+      return `${Math.floor(h / 24)}d ago`;
     }
 
     async function api(path, init = {}) {
       const res = await fetch(path, {
-        cache: 'no-store',
-        credentials: 'same-origin',
+        cache: 'no-store', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', ...(init.headers || {}) },
-        ...init,
+        ...init
       });
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      if (!res.ok) throw new Error(`${res.status}`);
       return res.json();
     }
 
-    function statusToken(raw, stale = false) {
-      const status = String(raw || '').toLowerCase();
+    function tok(raw, stale) {
       if (stale) return 'unknown';
-      if (status === 'green' || status === 'secure' || status === 'ok' || status === 'success') return 'green';
-      if (status === 'yellow' || status === 'warning' || status === 'warn' || status === 'degraded') return 'yellow';
-      if (status === 'red' || status === 'critical' || status === 'error' || status === 'failed') return 'red';
+      const s = String(raw || '').toLowerCase();
+      if (['green','secure','ok','success'].includes(s)) return 'green';
+      if (['yellow','warning','warn','degraded'].includes(s)) return 'yellow';
+      if (['red','critical','error','failed'].includes(s)) return 'red';
       return 'unknown';
     }
 
-    function statusLabel(token) {
-      if (token === 'green') return 'Secure';
-      if (token === 'yellow') return 'Warning';
-      if (token === 'red') return 'Critical';
-      return 'Unknown';
+    function worstStatus(statuses) {
+      if (statuses.includes('red')) return 'red';
+      if (statuses.includes('yellow')) return 'yellow';
+      if (statuses.includes('unknown')) return 'unknown';
+      return 'green';
     }
 
-    function applyBanner() {
-      const banner = $('securityBanner');
-      const health = state.health || {};
-      const checks = Array.isArray(health.checks) ? health.checks : [];
-      const stale = !!health.stale;
-      const overall = statusToken(health.overall_status, stale);
-      const badCount = checks.filter((check) => {
-        const token = statusToken(check.status, stale || check.stale);
-        return token === 'yellow' || token === 'red';
-      }).length;
+    const CHEVRON_SVG = `<svg class="tier-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
 
-      banner.className = `security-banner status-${overall}`;
-      if (overall === 'green') {
-        $('bannerTitle').textContent = 'All Systems Secure';
-        $('bannerMeta').textContent = health.checked_at ? `Last check ${relativeTime(health.checked_at)}` : 'Last check time unavailable';
-      } else if (overall === 'yellow') {
-        $('bannerTitle').textContent = 'Warnings Detected';
-        $('bannerMeta').textContent = `${badCount} layer${badCount === 1 ? '' : 's'} need attention`;
-      } else if (overall === 'red') {
-        $('bannerTitle').textContent = 'Security Issues Detected';
-        $('bannerMeta').textContent = `${badCount} layer${badCount === 1 ? '' : 's'} in warning/critical state`;
-      } else {
-        $('bannerTitle').textContent = 'Security Status Unknown — Data Stale or Unavailable';
-        $('bannerMeta').textContent = 'Security data is stale or unavailable';
-      }
+    /* ══════════════════════════════════════════════════
+       OVERALL BANNER
+    ══════════════════════════════════════════════════ */
+    function renderBanner() {
+      const h = state.health || {};
+      const checks = Array.isArray(h.checks) ? h.checks : [];
+      const overall = tok(h.overall_status, h.stale);
+      const bad = checks.filter(c => { const t = tok(c.status); return t === 'yellow' || t === 'red'; }).length;
+
+      const banner = $('overallBanner');
+      banner.className = `overall-banner ${overall}`;
+
+      const titles = {
+        green: 'All Systems Secure',
+        yellow: 'Warnings Detected',
+        red: 'Security Issues Detected',
+        unknown: 'Security Status Unknown'
+      };
+      const metas = {
+        green: h.generated_at ? `Checked ${relTime(h.generated_at)}` : '',
+        yellow: `${bad} layer${bad !== 1 ? 's' : ''} need attention`,
+        red: `${bad} layer${bad !== 1 ? 's' : ''} in warning or critical state`,
+        unknown: 'Data stale or unavailable'
+      };
+
+      $('overallTitle').textContent = titles[overall];
+      $('overallMeta').textContent = metas[overall];
     }
 
-    function cardMarkup(cardDef, check, staleAll) {
-      const stale = staleAll || !!check?.stale;
-      const token = statusToken(check?.status, stale);
-      const remediation = check?.remediation || '';
+    /* ══════════════════════════════════════════════════
+       TIER ACCORDIONS
+    ══════════════════════════════════════════════════ */
+    function buildSummaryBadges(checks, byLayer, staleAll) {
+      const counts = { green: 0, yellow: 0, red: 0 };
+      checks.forEach(d => {
+        const t = tok(byLayer[d.key]?.status, staleAll);
+        if (t === 'green') counts.green++;
+        else if (t === 'yellow') counts.yellow++;
+        else if (t === 'red') counts.red++;
+      });
+      let html = '';
+      if (counts.green) html += `<span class="tier-badge badge-green">${counts.green} secure</span>`;
+      if (counts.yellow) html += `<span class="tier-badge badge-yellow">${counts.yellow} warning</span>`;
+      if (counts.red) html += `<span class="tier-badge badge-red">${counts.red} critical</span>`;
+      if (!html) html = `<span class="tier-badge" style="opacity:0.5">no data</span>`;
+      return html;
+    }
+
+    function buildCardHTML(def, check, staleAll) {
+      const t = tok(check?.status, staleAll);
+      const rem = check?.remediation || '';
       const details = check?.details || 'No details available.';
-      const detailId = `details-${cardDef.key}`;
+      const expandId = `cexp-${def.key}`;
+      const isOpen = openCards.has(def.key);
 
-      const ackBtn = cardDef.key === 'reasoning'
-        ? `<button class="mini-btn" data-action="ack" data-layer="reasoning" type="button">Acknowledge</button>`
+      const remBlock = (t === 'yellow' || t === 'red') && rem
+        ? `<div class="check-remediation ${t}">
+            <div class="remediation-text">${esc(rem)}</div>
+            <div class="remediation-actions">
+              <button class="mini-btn" type="button" data-action="copy" data-text="${esc(rem)}">Copy</button>
+              ${def.key === 'reasoning' ? '<button class="mini-btn" data-action="ack" type="button">Acknowledge</button>' : ''}
+            </div>
+          </div>`
         : '';
 
       return `
-        <article class="security-card status-${token}" data-layer="${cardDef.key}">
-          <header class="card-head">
-            <div class="layer-label">${esc(cardDef.layer)}</div>
-            <div class="card-title">${esc(cardDef.name)}</div>
-            <div class="status-row">
-              <span class="status-dot ${token}"></span>
-              <span>${statusLabel(token)}</span>
-            </div>
-          </header>
-          <div class="card-body">
-            <div class="card-msg">${esc(check?.message || 'No status message available.')}</div>
-            <div class="card-time">Last checked ${relativeTime(check?.checked_at || state.health?.checked_at)}</div>
-            <button class="details-toggle" type="button" data-action="toggle" data-target="${detailId}">Details ▾</button>
-            <pre id="${detailId}" class="details-panel">${esc(details)}</pre>
-          </div>
-          <div class="remediation ${token === 'yellow' || token === 'red' ? `visible ${token}` : ''}">
-            <div class="remediation-text">${esc(remediation)}</div>
-            <div class="remediation-actions">
-              <button class="mini-btn" type="button" data-action="copy" data-text="${(remediation || '').replace(/"/g, '&quot;')}">Copy</button>
-              ${ackBtn}
+        <div class="check-card card-${t}" data-layer="${def.key}">
+          <div class="check-row">
+            <span class="check-dot ${t}"></span>
+            <div class="check-info">
+              <div class="check-top">
+                <span class="check-name">${esc(def.name)}</span>
+                <span class="check-layer-tag">${esc(def.tag)}</span>
+              </div>
+              <div class="check-msg">${esc(check?.message || 'No data.')}</div>
+              <div class="check-meta">
+                <span class="check-time">${relTime(check?.checked_at)}</span>
+                <button class="check-expand-btn" type="button" data-action="card-toggle" data-key="${def.key}" data-expand="${expandId}">${isOpen ? 'hide' : 'details'}</button>
+              </div>
             </div>
           </div>
-        </article>
-      `;
+          <div id="${expandId}" class="check-expand" ${isOpen ? 'data-open="1"' : ''}>
+            <div class="check-expand-inner">
+              <div class="check-details-box">${esc(details)}</div>
+              ${remBlock}
+            </div>
+          </div>
+        </div>`;
     }
 
-    function renderCards() {
+    function renderTiers() {
       const checks = Array.isArray(state.health?.checks) ? state.health.checks : [];
-      const checkByLayer = Object.fromEntries(checks.map((c) => [c.layer || c.key, c]));
+      const byLayer = Object.fromEntries(checks.map(c => [c.layer, c]));
       const staleAll = !!state.health?.stale;
-      $('securityGrid').innerHTML = SECURITY_ORDER.map((card) => cardMarkup(card, checkByLayer[card.key], staleAll)).join('');
+
+      $('tierAccordions').innerHTML = TIERS.map(tier => {
+        const tierStatuses = tier.checks.map(d => tok(byLayer[d.key]?.status, staleAll));
+        const tierStatus = worstStatus(tierStatuses);
+        const isOpen = openTiers.has(tier.id);
+
+        return `
+          <div class="tier tier-${tierStatus} ${isOpen ? 'open' : ''}" data-tier="${tier.id}">
+            <div class="tier-banner" data-action="tier-toggle" data-tier="${tier.id}">
+              <span class="tier-icon">${tier.icon}</span>
+              <div class="tier-info">
+                <div class="tier-name">${esc(tier.label)}</div>
+                <div class="tier-desc">${esc(tier.desc)}</div>
+              </div>
+              <div class="tier-summary">
+                ${buildSummaryBadges(tier.checks, byLayer, staleAll)}
+              </div>
+              ${CHEVRON_SVG}
+            </div>
+            <div class="tier-body" id="tbody-${tier.id}" ${isOpen ? 'data-open="1"' : ''}>
+              <div class="tier-body-inner">
+                ${tier.checks.map(d => buildCardHTML(d, byLayer[d.key], staleAll)).join('')}
+              </div>
+            </div>
+          </div>`;
+      }).join('');
+
+      // Restore open states after render
+      requestAnimationFrame(() => {
+        openTiers.forEach(id => {
+          const body = $(`tbody-${id}`);
+          if (body) body.style.maxHeight = body.scrollHeight + 'px';
+        });
+        openCards.forEach(key => {
+          const el = $(`cexp-${key}`);
+          if (el) el.style.maxHeight = el.scrollHeight + 'px';
+        });
+      });
     }
 
-    function transitionRow(event) {
-      const from = statusToken(event.old_status || event.from_status);
-      const to = statusToken(event.new_status || event.to_status);
-      const layer = event.layer_label || event.layer || 'Unknown layer';
-      return `
-        <div class="timeline-item">
-          <div class="timeline-top">
-            <span class="timeline-time">${relativeTime(event.checked_at || event.timestamp)}</span>
-            <span class="timeline-layer">${esc(layer)}</span>
-            <span class="status-pair">
-              <span class="status-dot ${esc(from)}"></span>
-              <span>${esc(from)}</span>
-              <span>→</span>
-              <span class="status-dot ${esc(to)}"></span>
-              <span>${esc(to)}</span>
-            </span>
-          </div>
-          <div class="timeline-message">${esc(event.message || 'Status changed.')}</div>
-        </div>
-      `;
-    }
-
+    /* ══════════════════════════════════════════════════
+       TIMELINE
+    ══════════════════════════════════════════════════ */
     function renderTimeline() {
       const entries = state.transitions || [];
-      $('timelineList').innerHTML = entries.length
-        ? entries.map(transitionRow).join('')
-        : '<div class="muted">No status changes recorded yet.</div>';
+      if (!entries.length) {
+        $('timelineList').innerHTML = '<div class="muted">No status changes recorded yet.</div>';
+        return;
+      }
+      $('timelineList').innerHTML = entries.map(e => {
+        const from = tok(e.old_status);
+        const to = tok(e.new_status);
+        return `<div class="tl-item">
+          <span class="tl-time">${relTime(e.checked_at || e.timestamp)}</span>
+          <span class="tl-layer">${esc(e.name || e.layer)}</span>
+          <span class="tl-arrow">
+            <span class="tl-dot ${from}"></span> ${from}
+            <span style="opacity:0.4">→</span>
+            <span class="tl-dot ${to}"></span> ${to}
+          </span>
+          <span class="tl-message">${esc(e.message || '')}</span>
+        </div>`;
+      }).join('');
     }
 
+    /* ══════════════════════════════════════════════════
+       DATA LOADING
+    ══════════════════════════════════════════════════ */
     async function loadHealth() {
-      try {
-        state.health = await api('/api/security/health');
-      } catch {
-        state.health = { overall_status: 'unknown', checks: [], stale: true };
-      }
-      applyBanner();
-      renderCards();
+      try { state.health = await api('/api/security/health'); }
+      catch { state.health = { overall_status: 'unknown', checks: [], stale: true }; }
+      renderBanner();
+      renderTiers();
       if (window.refreshSecurityBadge) window.refreshSecurityBadge();
     }
 
     async function loadTransitions() {
       try {
         const data = await api('/api/security/transitions?limit=20');
-        state.transitions = Array.isArray(data) ? data : (data.transitions || data.events || []);
-      } catch {
-        state.transitions = [];
-      }
+        state.transitions = Array.isArray(data) ? data : [];
+      } catch { state.transitions = []; }
       renderTimeline();
     }
 
+    async function refresh() { await Promise.all([loadHealth(), loadTransitions()]); }
+
     async function runCheckNow() {
-      if (state.runningCheck) return;
-      state.runningCheck = true;
-      const btn = $('runCheckBtn');
-      const originalText = btn.textContent;
-      btn.disabled = true;
-      btn.textContent = 'Checking...';
-      try {
-        state.health = await api('/api/security/recheck', { method: 'POST', body: '{}' });
-      } catch {
-        // handled by fallback refresh below
-      } finally {
-        btn.disabled = false;
-        btn.textContent = originalText;
-        state.runningCheck = false;
-      }
-      await Promise.all([loadHealth(), loadTransitions()]);
+      if (state.running) return;
+      state.running = true;
+      const btn = $('recheckBtn');
+      btn.disabled = true; btn.textContent = 'Checking...';
+      try { state.health = await api('/api/security/recheck', { method: 'POST', body: '{}' }); } catch {}
+      btn.disabled = false; btn.textContent = 'Run Check Now'; state.running = false;
+      await refresh();
     }
 
     async function acknowledgeReasoning() {
       try {
         await api('/api/security/acknowledge', {
           method: 'POST',
-          body: JSON.stringify({ layer: 'reasoning', note: 'Approved from dashboard' }),
+          body: JSON.stringify({ layer: 'reasoning', note: 'Approved from dashboard' })
         });
         await runCheckNow();
-      } catch (error) {
-        if (window.showToast) window.showToast(`Acknowledge failed: ${error.message}`, 'error');
+      } catch (e) {
+        if (window.showToast) window.showToast(`Acknowledge failed: ${e.message}`, 'error');
       }
     }
 
     async function copyText(text) {
-      const value = (text || '').trim();
-      if (!value) return;
-      try {
-        await navigator.clipboard.writeText(value);
-      } catch {
-        const ta = document.createElement('textarea');
-        ta.value = value;
-        ta.style.position = 'fixed';
-        ta.style.opacity = '0';
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        ta.remove();
+      if (!text?.trim()) return;
+      try { await navigator.clipboard.writeText(text.trim()); }
+      catch {
+        const t = document.createElement('textarea');
+        t.value = text.trim(); t.style.cssText = 'position:fixed;opacity:0';
+        document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove();
       }
-      if (window.showToast) window.showToast('Copied remediation command', 'success');
+      if (window.showToast) window.showToast('Copied', 'success');
+    }
+
+    /* ══════════════════════════════════════════════════
+       INTERACTIONS
+    ══════════════════════════════════════════════════ */
+    function toggleTier(tierId) {
+      const body = $(`tbody-${tierId}`);
+      const tier = body?.closest('.tier');
+      if (!body || !tier) return;
+
+      if (openTiers.has(tierId)) {
+        openTiers.delete(tierId);
+        body.style.maxHeight = '0';
+        tier.classList.remove('open');
+      } else {
+        openTiers.add(tierId);
+        body.style.maxHeight = body.scrollHeight + 'px';
+        tier.classList.add('open');
+      }
+    }
+
+    function toggleCard(key, expandId) {
+      const el = $(expandId);
+      if (!el) return;
+
+      if (openCards.has(key)) {
+        openCards.delete(key);
+        el.style.maxHeight = '0';
+      } else {
+        openCards.add(key);
+        el.style.maxHeight = el.scrollHeight + 'px';
+      }
     }
 
     function bindEvents() {
-      $('runCheckBtn').onclick = runCheckNow;
-      $('securityGrid').onclick = async (event) => {
-        const btn = event.target.closest('button[data-action]');
+      $('recheckBtn').onclick = runCheckNow;
+
+      $('tierAccordions').onclick = async (e) => {
+        // Tier toggle
+        const tierBanner = e.target.closest('[data-action="tier-toggle"]');
+        if (tierBanner) {
+          toggleTier(tierBanner.dataset.tier);
+          return;
+        }
+
+        // Button actions inside cards
+        const btn = e.target.closest('button[data-action]');
         if (!btn) return;
-        const action = btn.getAttribute('data-action');
-        if (action === 'toggle') {
-          const target = document.getElementById(btn.getAttribute('data-target'));
-          const isOpen = target.classList.toggle('open');
-          btn.textContent = isOpen ? 'Details ▴' : 'Details ▾';
+        const action = btn.dataset.action;
+
+        if (action === 'card-toggle') {
+          toggleCard(btn.dataset.key, btn.dataset.expand);
+          btn.textContent = openCards.has(btn.dataset.key) ? 'hide' : 'details';
+          return;
         }
-        if (action === 'copy') {
-          await copyText(btn.getAttribute('data-text'));
-        }
-        if (action === 'ack') {
-          btn.disabled = true;
-          await acknowledgeReasoning();
-          btn.disabled = false;
-        }
+        if (action === 'copy') { await copyText(btn.dataset.text); return; }
+        if (action === 'ack') { btn.disabled = true; await acknowledgeReasoning(); btn.disabled = false; return; }
       };
     }
 
+    /* ══════════════════════════════════════════════════
+       LIFECYCLE
+    ══════════════════════════════════════════════════ */
+    function startPolling() {
+      if (state.pollTimer) clearInterval(state.pollTimer);
+      state.pollTimer = setInterval(() => refresh(), 60000);
+    }
+
     function cleanupSecurityTab() {
-      if (state.pollTimer) {
-        clearInterval(state.pollTimer);
-        state.pollTimer = null;
-      }
+      if (state.pollTimer) { clearInterval(state.pollTimer); state.pollTimer = null; }
       window.__securityInitRoot = null;
     }
 
     async function initSecurityTab() {
-      const initRoot = $('securityGrid');
-      if (!initRoot || window.__securityInitRoot === initRoot) return;
-      window.__securityInitRoot = initRoot;
+      const root = $('tierAccordions');
+      if (!root) return;
+      if (window.__securityInitRoot === root && state.pollTimer) return;
+      window.__securityInitRoot = root;
+
+      // Auto-expand tiers that have warnings/issues on first load
+      openTiers.clear();
+      openCards.clear();
 
       bindEvents();
-      await Promise.all([loadHealth(), loadTransitions()]);
-      if (state.pollTimer) clearInterval(state.pollTimer);
-      state.pollTimer = setInterval(() => {
-        loadHealth();
-        loadTransitions();
-      }, 60000);
+      await refresh();
+
+      // After first load, auto-expand degraded tiers
+      if (state.health && !state.health.stale) {
+        const checks = state.health.checks || [];
+        const byLayer = Object.fromEntries(checks.map(c => [c.layer, c]));
+        TIERS.forEach(tier => {
+          const hasIssue = tier.checks.some(d => {
+            const t = tok(byLayer[d.key]?.status);
+            return t === 'yellow' || t === 'red';
+          });
+          if (hasIssue) {
+            openTiers.add(tier.id);
+            const body = $(`tbody-${tier.id}`);
+            const tierEl = body?.closest('.tier');
+            if (body) { body.style.maxHeight = body.scrollHeight + 'px'; }
+            if (tierEl) { tierEl.classList.add('open'); }
+          }
+        });
+      }
+
+      startPolling();
     }
 
     window.cleanupSecurityTab = cleanupSecurityTab;
     window.initSecurityTab = initSecurityTab;
-    initSecurityTab();
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => initSecurityTab());
+    } else {
+      initSecurityTab();
+    }
   </script>
-<script src="/layout.js"></script>
 </body>
 </html>
