@@ -18,6 +18,7 @@
   window.hostState = window.hostState || {};
   let evtSource = null;
   let cliUsagePollTimer = null;
+  let securityBadgeTimer = null;
   let cliUsageState = null;
   let expandedCliProvider = null;
 
@@ -34,6 +35,7 @@
     '/tasks.html': 'tasks',
     '/apis.html': 'apis',
     '/ops.html': 'ops',
+    '/security.html': 'security',
     '/create.html': 'create',
     '/analytics.html': 'analytics',
     '/tokens.html': 'tokens',
@@ -277,6 +279,18 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
 .nav-badge.warn { background: var(--warning-bg); color: var(--warning); }
 .nav-badge.fail { background: var(--error-bg); color: var(--error); }
 .nav-badge.info { background: var(--info-bg); color: var(--info); }
+
+.security-nav-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #95A5A6;
+  flex-shrink: 0;
+}
+.security-nav-dot.green { background: #27AE60; }
+.security-nav-dot.yellow { background: #E67E22; }
+.security-nav-dot.red { background: #C0392B; }
+.security-nav-dot.unknown { background: #95A5A6; }
 
 .sidebar-spacer { flex: 1; }
 
@@ -534,6 +548,9 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
     // Start CLI usage polling
     initCliUsage();
 
+    // Start security nav badge polling
+    initSecurityBadgePolling();
+
     // Refresh lucide icons if already loaded
     refreshIcons();
   }
@@ -570,6 +587,11 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
       <a href="/ops.html" class="nav-item${isActive('ops')}">
         <span class="nav-emoji">⚙️</span>
         <span class="nav-label">Operations</span>
+      </a>
+      <a href="/security.html" class="nav-item${isActive('security')}">
+        <i data-lucide="shield" class="nav-icon"></i>
+        <span class="nav-label">Security</span>
+        <span class="security-nav-dot unknown" id="securityNavDot" aria-label="Security status"></span>
       </a>
 
       <div class="sidebar-section">Agents</div>
@@ -787,6 +809,37 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
     if (cliUsagePollTimer) clearInterval(cliUsagePollTimer);
     cliUsagePollTimer = setInterval(() => refreshCliUsage(), 60000);
   }
+
+
+  function mapSecurityStatus(status, stale) {
+    if (stale) return 'unknown';
+    const token = String(status || '').toLowerCase();
+    if (token === 'green' || token === 'secure' || token === 'ok' || token === 'success') return 'green';
+    if (token === 'yellow' || token === 'warning' || token === 'warn' || token === 'degraded') return 'yellow';
+    if (token === 'red' || token === 'critical' || token === 'error' || token === 'failed') return 'red';
+    return 'unknown';
+  }
+
+  async function refreshSecurityBadge() {
+    const dot = document.getElementById('securityNavDot');
+    if (!dot) return;
+    try {
+      const res = await fetch('/api/security/health', { cache: 'no-store', credentials: 'same-origin' });
+      if (!res.ok) throw new Error('health fetch failed');
+      const data = await res.json();
+      dot.className = `security-nav-dot ${mapSecurityStatus(data.overall_status, data.stale)}`;
+    } catch {
+      dot.className = 'security-nav-dot unknown';
+    }
+  }
+
+  function initSecurityBadgePolling() {
+    if (securityBadgeTimer) clearInterval(securityBadgeTimer);
+    refreshSecurityBadge();
+    securityBadgeTimer = setInterval(() => refreshSecurityBadge(), 60000);
+  }
+
+  window.refreshSecurityBadge = refreshSecurityBadge;
 
   async function refreshCliUsage(withSpin = false) {
     const refreshBtn = document.getElementById('cliUsageRefreshBtn');
@@ -1252,6 +1305,11 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
 
   async function spaNavigate(href, pushState = true) {
     try {
+      const currentPath = window.location.pathname;
+      if (currentPath === '/security.html' && typeof window.cleanupSecurityTab === 'function') {
+        window.cleanupSecurityTab();
+      }
+
       const res = await fetch(href, { credentials: 'same-origin' });
       if (!res.ok || res.redirected) { window.location.href = href; return; }
       const contentType = res.headers.get('content-type') || '';
@@ -1365,6 +1423,9 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
 
     if (pathname === '/ops.html' && typeof window.initOpsTab === 'function') {
       window.initOpsTab();
+    }
+    if (pathname === '/security.html' && typeof window.initSecurityTab === 'function') {
+      window.initSecurityTab();
     }
   }
 
