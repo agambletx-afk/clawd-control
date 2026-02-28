@@ -229,6 +229,54 @@
     .mini-btn:hover { background: rgba(10,12,16,0.55); color: #fff; }
     .mini-btn:disabled { opacity: 0.5; cursor: wait; }
 
+
+    .version-card {
+      border: 1px solid var(--border-subtle);
+      border-left: 3px solid #636e72;
+      border-radius: 8px;
+      background: var(--bg-tertiary);
+      margin-bottom: 12px;
+      padding: 10px 12px;
+    }
+    .version-card.status-green { border-left-color: #27AE60; }
+    .version-card.status-yellow { border-left-color: #D4881C; background: rgba(212,136,28,0.05); }
+    .version-card.status-red { border-left-color: #C0392B; background: rgba(192,57,43,0.06); }
+    .version-card.status-unknown { border-left-color: #636e72; }
+    .version-card-header { display:flex; align-items:center; gap:8px; justify-content:space-between; flex-wrap:wrap; }
+    .version-card-title { display:flex; align-items:center; gap:8px; font-size:0.86rem; font-weight:700; }
+    .status-dot { width:9px; height:9px; border-radius:50%; display:inline-block; }
+    .status-dot.green { background:#27AE60; }
+    .status-dot.yellow { background:#D4881C; }
+    .status-dot.red { background:#C0392B; }
+    .status-dot.unknown { background:#636e72; }
+    .version-card-body { font-size:0.76rem; color:var(--text-secondary); margin-top:8px; line-height:1.4; }
+    .version-grid { display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; margin:0.5rem 0; }
+    .version-grid code { font-family:'JetBrains Mono','Fira Code',monospace; }
+    .version-missed { font-size:0.85rem; color:var(--text-secondary); margin:0.5rem 0; }
+    .version-card-footer { margin-top:8px; display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:0.68rem; }
+    .version-card-footer a { color: var(--text-secondary); }
+    .version-remediation { margin-top:8px; border-radius:6px; padding:6px 8px; font-size:0.7rem; display:flex; align-items:flex-start; gap:8px; flex-wrap:wrap; }
+    .version-remediation.yellow { background: rgba(212,136,28,0.15); }
+    .version-remediation.red { background: rgba(192,57,43,0.15); }
+    .version-badge { border-radius:10px; padding:2px 8px; font-size:0.7rem; font-weight:700; }
+    .version-badge.green { background: rgba(39,174,96,0.2); color:#2ecc71; }
+    .version-badge.yellow { background: rgba(212,136,28,0.2); color:#f0a836; }
+    .version-badge.red { background: rgba(192,57,43,0.2); color:#e74c3c; }
+    .version-security-yes { color: #e74c3c; font-weight: 700; }
+    .version-security-no { color: #2ecc71; }
+    .btn { border:1px solid rgba(255,255,255,0.2); background: rgba(10,12,16,0.3); color:#dfe6e9; border-radius:6px; cursor:pointer; }
+    .btn:hover { background: rgba(10,12,16,0.55); color:#fff; }
+    .btn:disabled { opacity:0.5; cursor:not-allowed; }
+    .btn-sm { padding:4px 10px; font-size:0.68rem; min-height:28px; }
+    .btn-primary { border-color:rgba(212,136,28,0.7); background:rgba(212,136,28,0.25); color:#ffd27a; }
+
+    .toast-notification {
+      position: fixed; bottom: 2rem; right: 2rem; background: var(--bg-secondary, #2d3748); color: var(--text-primary, #fff);
+      padding: 0.75rem 1.25rem; border-radius: 0.5rem; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      opacity: 0; transform: translateY(10px); transition: opacity 0.3s, transform 0.3s; z-index: 1000;
+    }
+    .toast-notification.show { opacity: 1; transform: translateY(0); }
+
     /* ── Timeline ── */
     .timeline-section {
       background: var(--bg-secondary);
@@ -266,6 +314,8 @@
       .tier-banner { padding: 10px 12px; }
       .tier-desc { display: none; }
       .mini-btn { min-height: 44px; padding: 8px 10px; font-size: 0.7rem; }
+      .version-grid { grid-template-columns: 1fr; }
+      .version-card-footer { flex-direction: column; align-items: flex-start; }
     }
   </style>
 </head>
@@ -273,7 +323,7 @@
   <main class="main">
     <div class="page-header">
       <h1>Security</h1>
-      <p class="subtitle">Defense-in-depth posture across 8 layers.</p>
+      <p class="subtitle">Defense-in-depth posture across 10 checks.</p>
     </div>
 
     <section id="overallBanner" class="overall-banner unknown">
@@ -283,6 +333,9 @@
       </div>
       <button id="recheckBtn" class="btn-recheck" type="button">Run Check Now</button>
     </section>
+
+    <!-- Version Currency Card (Check 10) - full width, above tier accordions -->
+    <div id="version-card" class="version-card" style="display:none;"></div>
 
     <div id="tierAccordions" class="tier-accordions"></div>
 
@@ -329,7 +382,7 @@
       }
     ];
 
-    const state = { health: null, transitions: [], pollTimer: null, running: false };
+    const state = { health: null, transitions: [], pollTimer: null, running: false, versionCheck: null };
     const openTiers = new Set();    // track which tiers are expanded
     const openCards = new Set();    // track which card details are expanded
     const $ = id => document.getElementById(id);
@@ -378,6 +431,100 @@
     }
 
     const CHEVRON_SVG = `<svg class="tier-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
+
+
+    function normalizeMeta(raw) {
+      if (!raw) return {};
+      if (typeof raw === 'string') {
+        try { return JSON.parse(raw); } catch { return {}; }
+      }
+      return typeof raw === 'object' ? raw : {};
+    }
+
+    function showToast(message, duration = 5000) {
+      if (window.showToast && window.showToast !== showToast) {
+        window.showToast(message);
+        return;
+      }
+      const toast = document.createElement('div');
+      toast.className = 'toast-notification';
+      toast.textContent = message;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.classList.add('show'), 10);
+      setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+      }, duration);
+    }
+
+    function renderVersionCard(check) {
+      const card = $('version-card');
+      if (!card || !check) {
+        if (card) card.style.display = 'none';
+        return;
+      }
+
+      const status = tok(check.status, false);
+      const meta = normalizeMeta(check.metadata);
+      const releaseUrl = meta.release_notes_url || 'https://github.com/openclaw/openclaw/releases';
+      const current = meta.current_version ? `v${meta.current_version}` : 'unknown';
+      const latest = meta.latest_version ? `v${meta.latest_version}` : 'unknown';
+      const behind = Number.isFinite(meta.versions_behind) ? meta.versions_behind : Number.parseInt(meta.versions_behind, 10);
+      const safeBehind = Number.isFinite(behind) ? behind : null;
+      const missed = Array.isArray(meta.missed_versions) ? meta.missed_versions : [];
+      const preview = missed.slice(0, 5);
+      const more = missed.length > 5 ? ` and ${missed.length - 5} more` : '';
+      const securityFlag = meta.security_flag === true;
+      const badge = safeBehind == null ? '' : `<span class="version-badge ${safeBehind === 0 ? 'green' : safeBehind === 1 ? 'yellow' : 'red'}">${safeBehind}</span>`;
+      const updateDisabled = status === 'green' || status === 'unknown';
+
+      let body = `<span class="version-current">${esc(check.message || 'No version data.')}</span>`;
+      if (status === 'yellow' || status === 'red') {
+        body = `
+          <div class="version-grid">
+            <div>Current: <code>${esc(current)}</code></div>
+            <div>Latest: <code>${esc(latest)}</code></div>
+            <div>Versions behind: ${badge}</div>
+            <div>Security flag: <span class="${securityFlag ? 'version-security-yes' : 'version-security-no'}">${securityFlag ? '⚠ Yes' : 'No'}</span></div>
+          </div>
+          ${preview.length ? `<div class="version-missed">Missed: ${esc(preview.join(', '))}${esc(more)}</div>` : ''}
+          ${check.details ? `<div class="version-missed">${esc(check.details)}</div>` : ''}
+        `;
+      } else if (status === 'unknown' && check.details) {
+        body = `<span class="version-current">${esc(check.message || 'No version data.')}</span><div class="version-missed">${esc(check.details)}</div>`;
+      }
+
+      const remediation = (status === 'yellow' || status === 'red') && check.remediation
+        ? `<div class="version-remediation ${status}">⚠ Remediation: <span class="remediation-text">${esc(check.remediation)}</span><button class="mini-btn" type="button" data-action="copy" data-text="${esc(check.remediation)}">Copy</button></div>`
+        : '';
+
+      card.className = `version-card status-${status}`;
+      card.style.display = '';
+      card.innerHTML = `
+        <div class="version-card-header">
+          <div class="version-card-title">
+            <span class="status-dot ${status}"></span>
+            <span class="check-name">OpenClaw Version</span>
+          </div>
+          <button class="btn btn-sm ${updateDisabled ? '' : 'btn-primary'}" id="update-now-btn" ${updateDisabled ? 'disabled' : ''}>Update Now</button>
+        </div>
+        <div class="version-card-body">${body}</div>
+        <div class="version-card-footer">
+          <a href="${esc(releaseUrl)}" target="_blank" rel="noopener">Release Notes ↗</a>
+          <span class="check-time">Checked: ${relTime(check.checked_at)}</span>
+        </div>
+        ${remediation}
+      `;
+
+      card.querySelector('#update-now-btn')?.addEventListener('click', async () => {
+        try {
+          const data = await api('/api/security/update-openclaw', { method: 'POST' });
+          showToast(data.message || 'Update endpoint reached.');
+        } catch {
+          showToast('Failed to contact update endpoint.');
+        }
+      });
+    }
 
     /* ══════════════════════════════════════════════════
        OVERALL BANNER
@@ -471,7 +618,11 @@
 
     function renderTiers() {
       const checks = Array.isArray(state.health?.checks) ? state.health.checks : [];
-      const byLayer = Object.fromEntries(checks.map(c => [c.layer, c]));
+      const versionCheck = checks.find(c => c.layer === 'version') || null;
+      state.versionCheck = versionCheck;
+      renderVersionCard(versionCheck);
+      const tierChecks = checks.filter(c => c.layer !== 'version');
+      const byLayer = Object.fromEntries(tierChecks.map(c => [c.layer, c]));
       const staleAll = !!state.health?.stale;
 
       $('tierAccordions').innerHTML = TIERS.map(tier => {
@@ -577,7 +728,7 @@
         });
         await runCheckNow();
       } catch (e) {
-        if (window.showToast) window.showToast(`Acknowledge failed: ${e.message}`, 'error');
+        showToast(`Acknowledge failed: ${e.message}`);
       }
     }
 
@@ -589,7 +740,7 @@
         t.value = text.trim(); t.style.cssText = 'position:fixed;opacity:0';
         document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove();
       }
-      if (window.showToast) window.showToast('Copied', 'success');
+      showToast('Copied');
     }
 
     /* ══════════════════════════════════════════════════
@@ -647,6 +798,12 @@
         }
         if (action === 'copy') { await copyText(btn.dataset.text); return; }
         if (action === 'ack') { btn.disabled = true; await acknowledgeReasoning(); btn.disabled = false; return; }
+      };
+
+      $('version-card').onclick = async (e) => {
+        const btn = e.target.closest("button[data-action='copy']");
+        if (!btn) return;
+        await copyText(btn.dataset.text);
       };
     }
 

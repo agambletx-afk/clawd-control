@@ -2895,6 +2895,28 @@ const server = createServer((req, res) => {
     return;
   }
 
+  if (path === '/api/security/update-openclaw' && req.method === 'POST') {
+    try {
+      logAction({
+        category: 'security',
+        action: 'update_openclaw_attempted',
+        target: 'openclaw-version',
+        status: 'success',
+        detail: 'Button clicked, not yet implemented',
+      });
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        status: 'not_implemented',
+        message: 'Automated updates coming soon. Run manually: cp ~/.openclaw/openclaw.json ~/.openclaw/openclaw.json.bak && npm update -g openclaw@latest && openclaw doctor'
+      }));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
   if (path === '/api/security/acknowledge' && req.method === 'POST') {
     readJsonBody(req).then((body) => {
       try {
