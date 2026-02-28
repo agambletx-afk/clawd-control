@@ -11,21 +11,23 @@
 
     /* ── Overall Status Banner ── */
     .overall-banner {
-      border-radius: 10px;
-      margin-bottom: 16px;
-      padding: 6px 12px;
+      border-radius: 0;
+      margin: 0 -16px 14px -16px;
+      width: calc(100% + 32px);
+      padding: 8px 16px;
       display: flex;
       justify-content: space-between;
       align-items: center;
       gap: 10px;
       color: #fff;
-      transition: background 0.3s;
+      border-left: 4px solid transparent;
+      transition: background 0.3s, border-color 0.3s;
     }
-    .overall-banner.green { background: #27AE60; }
-    .overall-banner.yellow { background: #D4881C; }
-    .overall-banner.red { background: #C0392B; }
-    .overall-banner.unknown { background: #636e72; }
-    .overall-title { font-size: 0.82rem; font-weight: 700; }
+    .overall-banner.green { background: rgba(39,174,96,0.08); border-left-color: #27AE60; }
+    .overall-banner.yellow { background: rgba(212,136,28,0.10); border-left-color: #D4881C; }
+    .overall-banner.red { background: rgba(192,57,43,0.10); border-left-color: #C0392B; }
+    .overall-banner.unknown { background: rgba(99,110,114,0.08); border-left-color: #636e72; }
+    .overall-title { font-size: 0.84rem; font-weight: 600; letter-spacing: 0.01em; }
     .overall-meta { font-size: 0.68rem; opacity: 0.92; margin-top: 1px; }
     .btn-recheck {
       border: 1px solid rgba(255,255,255,0.3);
