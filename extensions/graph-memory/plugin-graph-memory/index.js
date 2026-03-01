@@ -167,6 +167,66 @@ function closeDb() {
 // Activation & Co-occurrence operations
 // ---------------------------------------------------------------------------
 
+
+const TTL_SECONDS = {
+    permanent: null,
+    stable: 90 * 24 * 3600,
+    active: 14 * 24 * 3600,
+    session: 24 * 3600,
+    checkpoint: 4 * 3600,
+};
+
+let _hasDecayColumns = null;
+
+function refreshAccessedFacts(db, factIds) {
+    if (!db || factIds.length === 0) return;
+
+    try {
+        if (_hasDecayColumns === null) {
+            const cols = db.prepare('PRAGMA table_info(facts)').all();
+            const colNames = new Set(cols.map(c => c.name));
+            _hasDecayColumns = colNames.has('decay_class')
+                && colNames.has('expires_at')
+                && colNames.has('last_confirmed_at')
+                && colNames.has('confidence');
+        }
+
+        if (!_hasDecayColumns) return;
+
+        const nowSec = Math.floor(Date.now() / 1000);
+        const stmt = db.prepare(`
+            UPDATE facts
+            SET last_confirmed_at = @now,
+                confidence = 1.0,
+                expires_at = CASE decay_class
+                    WHEN 'stable' THEN @now + @stableTtl
+                    WHEN 'active' THEN @now + @activeTtl
+                    ELSE expires_at
+                END
+            WHERE id = @id
+              AND decay_class IN ('stable', 'active')
+        `);
+
+        const tx = db.transaction((ids) => {
+            for (const id of ids) {
+                stmt.run({
+                    now: nowSec,
+                    stableTtl: TTL_SECONDS.stable,
+                    activeTtl: TTL_SECONDS.active,
+                    id,
+                });
+            }
+        });
+
+        tx(factIds);
+    } catch (err) {
+        if (err.message?.includes('no such column')) {
+            _hasDecayColumns = false;
+            return;
+        }
+        console.error(`[graph-memory] refreshAccessedFacts error: ${err.message}`);
+    }
+}
 function bumpActivations(db, factIds, amount) {
     if (!db || factIds.length === 0) return;
     try {
@@ -408,6 +468,7 @@ module.exports = {
                 // Bump activations for retrieved facts
                 if (db && topFactIds.length > 0) {
                     bumpActivations(db, topFactIds, config.activationBump);
+                    refreshAccessedFacts(db, topFactIds);
                     wireCoOccurrences(db, topFactIds);
                 }
 
