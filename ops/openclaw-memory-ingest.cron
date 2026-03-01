@@ -1,0 +1,2 @@
+# /etc/cron.d/openclaw-memory-ingest
+0 8 * * * openclaw . /home/openclaw/.profile && python3 /home/openclaw/.openclaw/scripts/graph-ingest-daily.py --days 1 >> /home/openclaw/.openclaw/memory/ingest.log 2>&1
