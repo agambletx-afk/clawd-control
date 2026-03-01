@@ -1,0 +1,18 @@
+# Enable when janitor transitions from on-demand to persistent.
+[Unit]
+Description=Jarvis Janitor Agent
+After=network.target openclaw.service
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+[Service]
+Type=simple
+User=openclaw
+WorkingDirectory=/home/openclaw/.openclaw/workspaces/janitor
+ExecStart=/usr/bin/openclaw agent start janitor
+Restart=always
+RestartSec=10
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target
