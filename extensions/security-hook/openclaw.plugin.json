@@ -1,0 +1,7 @@
+{
+  "id": "security-hook",
+  "name": "Security Hook",
+  "version": "1.0.0",
+  "description": "Pre-execution tool call filtering with blocklist, protected paths, allowlist overrides, and blocked-call JSONL logging",
+  "configSchema": {}
+}

@@ -1,0 +1,9 @@
+{
+  "plugins": {
+    "entries": {
+      "security-hook": {
+        "enabled": true
+      }
+    }
+  }
+}
