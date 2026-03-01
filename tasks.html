@@ -24,6 +24,8 @@
     .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
     .btn-danger { border-color: rgba(239,68,68,0.4); color: #fca5a5; }
     .btn-danger:hover { border-color: #ef4444; }
+    .btn-warning { border-color: rgba(245,158,11,0.45); color: #fcd34d; }
+    .btn-warning:hover { border-color: #f59e0b; }
     .btn-small { padding: 4px 8px; font-size: 0.72rem; }
 
     .stats-bar {
@@ -104,6 +106,11 @@
       color: var(--text-secondary);
       background: var(--bg-secondary);
       white-space: nowrap;
+    }
+    .badge-muted {
+      color: var(--text-tertiary);
+      border-color: var(--border-subtle);
+      background: rgba(17, 24, 39, 0.35);
     }
     .meta-sub { margin-top: 3px; display: flex; align-items: center; justify-content: space-between; color: var(--text-tertiary); font-size: 0.62rem; line-height: 1.1; }
     .failure-badge-dot {
@@ -300,6 +307,32 @@
     .form-field textarea { min-height: 90px; resize: vertical; }
     .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 
+    .toast-wrap {
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 300;
+    }
+    .toast {
+      min-width: 260px;
+      max-width: min(420px, calc(100vw - 32px));
+      border: 1px solid var(--border);
+      border-left-width: 4px;
+      border-radius: 10px;
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      padding: 9px 10px;
+      font-size: 0.78rem;
+      box-shadow: var(--shadow-md);
+    }
+    .toast-success { border-left-color: #22c55e; }
+    .toast-warning { border-left-color: #eab308; }
+    .toast-caution { border-left-color: #f97316; }
+    .toast-error { border-left-color: #ef4444; }
+
     @media (max-width: 980px) {
       .stats-bar { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
       .page-header h1 { font-size: 1.7rem; }
@@ -411,6 +444,8 @@
       </div>
     </div>
 
+    <div class="toast-wrap" id="toastWrap"></div>
+
     <script>
       function initTasksTab() {
         const FETCH_OPTS = { credentials: 'same-origin' };
@@ -447,6 +482,21 @@
         const esc = (s) => String(s ?? '').replace(/[&<>\"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
         function normalizeStatus(s) { return (s || '').toLowerCase().replace(/[- ]/g, '_'); }
 
+        function notify(message, tone = 'success') {
+          const wrap = document.getElementById('toastWrap');
+          if (!wrap) {
+            alert(message);
+            return;
+          }
+          const toast = document.createElement('div');
+          toast.className = `toast toast-${tone}`;
+          toast.textContent = message;
+          wrap.appendChild(toast);
+          setTimeout(() => {
+            toast.remove();
+          }, 4000);
+        }
+
         function ageLabel(iso) {
           const t = Date.parse(iso);
           if (!Number.isFinite(t)) return '--';
@@ -470,7 +520,10 @@
             return `<button class="btn btn-small" data-action="start" data-id="${task.id}">Start</button>`;
           }
           if (status === 'in_progress') {
-            return `<button class="btn btn-small" data-action="complete" data-id="${task.id}">Complete</button>`;
+            return `
+              <button class="btn btn-small" data-action="complete" data-id="${task.id}">Complete</button>
+              <button class="btn btn-small btn-warning" data-action="cancel" data-id="${task.id}">Cancel</button>
+            `;
           }
           if (status === 'review') {
             return `
@@ -497,7 +550,15 @@
           return names.join(', ');
         }
 
-        function cardHtml(task) {
+        function getInProgressQueueMap() {
+          const list = state.tasks
+            .filter((task) => task.status === 'in_progress')
+            .slice()
+            .sort((a, b) => Date.parse(a.updated_at) - Date.parse(b.updated_at) || a.id - b.id);
+          return new Map(list.map((task, idx) => [task.id, idx === 0 ? 'Running' : `Queued #${idx + 1}`]));
+        }
+
+        function cardHtml(task, queueLabel = null) {
           const agentLabel = task.assigned_agent ? `🤖 ${task.assigned_agent}` : '';
           const blocked = Array.isArray(task.blocked_by) && task.blocked_by.length > 0;
           const createdBy = task.created_by ? task.created_by[0].toUpperCase() + task.created_by.slice(1) : 'Unknown';
@@ -508,6 +569,7 @@
               <div class="meta-row">
                 <span class="badge">${esc(task.priority)}</span>
                 ${agentLabel ? `<span class="badge">${esc(agentLabel)}</span>` : ''}
+                ${queueLabel ? `<span class="badge badge-muted">${esc(queueLabel)}</span>` : ''}
                 ${task.token_actual != null ? `<span class="badge">📊 ${esc(fmtTokens(task.token_actual))} tokens</span>` : ''}
                 <span class="badge">${esc(createdBy)}</span>
               </div>
@@ -545,11 +607,12 @@
         }
 
         function renderColumns() {
+          const inProgressQueue = getInProgressQueueMap();
           for (const status of STATUS_ORDER) {
             const tasks = getColumnTasks(status);
             const container = document.getElementById(`col-${status}`);
             if (!container) continue;
-            container.innerHTML = tasks.map(cardHtml).join('') || `<div class="badge" style="display:inline-flex">No tasks</div>`;
+            container.innerHTML = tasks.map((task) => cardHtml(task, inProgressQueue.get(task.id) || null)).join('') || `<div class="badge" style="display:inline-flex">No tasks</div>`;
             if (status !== 'archive') {
               const countEl = document.getElementById(`count-${status}`);
               if (countEl) countEl.textContent = String(tasks.length);
@@ -676,6 +739,7 @@
             if (action === 'approve') await patchTask(taskId, { status: 'backlog' });
             if (action === 'reject') await patchTask(taskId, { status: 'archive' });
             if (action === 'complete') await patchTask(taskId, { status: 'review' });
+            if (action === 'cancel') await patchTask(taskId, { status: 'backlog' });
             if (action === 'approve-review') await patchTask(taskId, { status: 'done' });
             if (action === 'return-review') await patchTask(taskId, { status: 'backlog' });
             if (action === 'archive') await patchTask(taskId, { status: 'archive' });
@@ -700,11 +764,19 @@
               return;
             }
             if (action === 'start') {
-              const task = state.tasks.find((item) => item.id === taskId);
-              const current = task?.assigned_agent || 'jarvis';
-              const agent = prompt('Assign agent before starting (leave blank for unassigned):', current);
-              if (agent === null) return;
-              await patchTask(taskId, { status: 'in_progress', assigned_agent: agent.trim() || null });
+              const res = await fetch(`/api/tasks/${taskId}/dispatch`, {
+                ...FETCH_OPTS,
+                method: 'POST',
+              });
+              const data = await res.json();
+              if (!res.ok) throw new Error(data.error || 'Failed to dispatch task');
+              if (data.trigger_error) {
+                notify('Task started but worker trigger failed. Will retry on next poll.', 'caution');
+              } else if (data.triggered) {
+                notify('Task dispatched. Worker starting.', 'success');
+              } else {
+                notify('Task queued. Will run after current task completes.', 'warning');
+              }
             }
             await refreshAll();
             if (state.selectedTaskId === taskId) {

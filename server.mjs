@@ -3117,6 +3117,78 @@ const server = createServer((req, res) => {
     return;
   }
 
+  if (path.startsWith('/api/tasks/') && path.endsWith('/dispatch') && req.method === 'POST') {
+    const segments = path.split('/');
+    const taskId = Number.parseInt(segments[3], 10);
+    if (!Number.isInteger(taskId) || taskId <= 0) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid task id' }));
+      return;
+    }
+
+    try {
+      const task = getTaskById(taskId);
+      if (!task) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Task not found' }));
+        return;
+      }
+
+      if (task.status !== 'backlog') {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Only backlog tasks can be dispatched' }));
+        return;
+      }
+
+      const inProgressTasks = getAllTasks({ status: 'in_progress' })
+        .slice()
+        .sort((a, b) => Date.parse(a.updated_at) - Date.parse(b.updated_at) || a.id - b.id);
+      const queuedBehindTask = inProgressTasks[0] || null;
+      const hasRunningTask = Boolean(queuedBehindTask);
+
+      updateTask(taskId, { status: 'in_progress' });
+      addHistory(taskId, 'system', 'dispatch', 'Task dispatched');
+
+      const response = {
+        dispatched: true,
+        triggered: !hasRunningTask,
+        task_id: taskId,
+      };
+      if (hasRunningTask) {
+        response.queued_behind = queuedBehindTask.id;
+      }
+
+      if (!hasRunningTask) {
+        try {
+          execSync('openclaw cron run task-worker --force', {
+            encoding: 'utf8',
+            stdio: 'pipe',
+            timeout: 10000,
+          });
+        } catch (e) {
+          response.trigger_error = true;
+          response.error = truncateOutput((e.stderr || '') || (e.stdout || '') || e.message || 'Cron trigger failed');
+        }
+      }
+
+      logAction({
+        category: 'task',
+        action: 'dispatch',
+        target: task.title,
+        status: response.trigger_error ? 'failed' : 'success',
+        detail: JSON.stringify(response),
+      });
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(response));
+    } catch (e) {
+      console.error('[API] /api/tasks/:id/dispatch error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Internal server error' }));
+    }
+    return;
+  }
+
   if (path.startsWith('/api/tasks/') && path.endsWith('/failures') && req.method === 'GET') {
     const segments = path.split('/');
     const taskId = Number.parseInt(segments[3], 10);
