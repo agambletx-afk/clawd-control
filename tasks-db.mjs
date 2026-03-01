@@ -511,3 +511,25 @@ export function recordFailure(id, reason) {
 
   return tx();
 }
+
+export function resetTaskRetries(id) {
+  const conn = getDb();
+  const task = conn.prepare('SELECT id, max_retries FROM tasks WHERE id = ?').get(id);
+  if (!task) return null;
+
+  const tx = conn.transaction(() => {
+    conn
+      .prepare(`UPDATE tasks
+                SET failure_count = 0,
+                    last_failure_reason = NULL,
+                    status = 'backlog',
+                    updated_at = datetime('now')
+                WHERE id = ?`)
+      .run(id);
+
+    addHistory(id, 'system', 'retries_reset', `Retries reset (max ${task.max_retries}) and moved to backlog`);
+    return getTaskById(id);
+  });
+
+  return tx();
+}
