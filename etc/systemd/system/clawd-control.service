@@ -1,0 +1,17 @@
+[Unit]
+Description=Clawd Control Dashboard
+After=network.target openclaw.service
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+[Service]
+Type=simple
+User=openclaw
+WorkingDirectory=/workspace/clawd-control
+ExecStart=/usr/bin/node /workspace/clawd-control/server.mjs
+Restart=always
+RestartSec=10
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target
