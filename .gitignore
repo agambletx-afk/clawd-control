@@ -27,3 +27,4 @@ tasks.db-shm
 tasks.db-wal
 ops-log.db-shm
 ops-log.db-wal
+extensions/graph-memory/node_modules/
