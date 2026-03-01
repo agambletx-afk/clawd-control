@@ -5,7 +5,7 @@ const DB_PATH = join(new URL('.', import.meta.url).pathname, 'tasks.db');
 
 let db;
 
-const VALID_STATUSES = new Set(['proposed', 'backlog', 'in_progress', 'review', 'done', 'archive', 'failed']);
+const VALID_STATUSES = new Set(['proposed', 'backlog', 'in_progress', 'review', 'done', 'archive']);
 const VALID_PRIORITIES = new Set(['critical', 'high', 'medium', 'low']);
 const VALID_SOURCES = new Set(['dashboard', 'telegram', 'cron', 'agent']);
 
@@ -42,9 +42,6 @@ function sanitizeCreateData(data = {}) {
   if (Object.hasOwn(data, 'token_actual')) {
     out.token_actual = data.token_actual == null ? null : Number.parseInt(data.token_actual, 10);
   }
-  if (Object.hasOwn(data, 'max_retries')) {
-    out.max_retries = data.max_retries == null ? null : Number.parseInt(data.max_retries, 10);
-  }
   return out;
 }
 
@@ -59,7 +56,6 @@ function sanitizeUpdateData(data = {}) {
     'handoff_payload',
     'token_estimate',
     'token_actual',
-    'max_retries',
   ];
   const out = {};
   for (const key of allowed) {
@@ -82,8 +78,6 @@ function sanitizeUpdateData(data = {}) {
       out.token_estimate = data.token_estimate == null ? null : Number.parseInt(data.token_estimate, 10);
     } else if (key === 'token_actual') {
       out.token_actual = data.token_actual == null ? null : Number.parseInt(data.token_actual, 10);
-    } else if (key === 'max_retries') {
-      out.max_retries = data.max_retries == null ? null : Number.parseInt(data.max_retries, 10);
     }
   }
   return out;
@@ -123,7 +117,7 @@ export function getDb() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT NOT NULL CHECK(length(title) <= 100),
       description TEXT DEFAULT '' CHECK(length(description) <= 2000),
-      status TEXT NOT NULL DEFAULT 'backlog' CHECK(status IN ('proposed','backlog','in_progress','review','done','archive','failed')),
+      status TEXT NOT NULL DEFAULT 'backlog' CHECK(status IN ('proposed','backlog','in_progress','review','done','archive')),
       priority TEXT NOT NULL DEFAULT 'medium' CHECK(priority IN ('critical','high','medium','low')),
       assigned_agent TEXT DEFAULT NULL,
       depends_on TEXT DEFAULT NULL,
@@ -150,18 +144,6 @@ export function getDb() {
     CREATE INDEX IF NOT EXISTS idx_tasks_assigned ON tasks(assigned_agent);
     CREATE INDEX IF NOT EXISTS idx_history_task ON task_history(task_id);
   `);
-
-
-  const taskColumns = new Set(db.prepare('PRAGMA table_info(tasks)').all().map((row) => row.name));
-  if (!taskColumns.has('failure_count')) {
-    db.exec('ALTER TABLE tasks ADD COLUMN failure_count INTEGER NOT NULL DEFAULT 0');
-  }
-  if (!taskColumns.has('max_retries')) {
-    db.exec('ALTER TABLE tasks ADD COLUMN max_retries INTEGER NOT NULL DEFAULT 2');
-  }
-  if (!taskColumns.has('last_failure_reason')) {
-    db.exec('ALTER TABLE tasks ADD COLUMN last_failure_reason TEXT');
-  }
 
   return db;
 }
@@ -192,8 +174,7 @@ function listTasksRaw(filters = {}) {
       WHEN 'review' THEN 4
       WHEN 'done' THEN 5
       WHEN 'archive' THEN 6
-      WHEN 'failed' THEN 7
-      ELSE 8
+      ELSE 7
     END,
     CASE priority
       WHEN 'critical' THEN 1
@@ -302,7 +283,7 @@ export function createTask(data) {
     const stmt = conn.prepare(`
       INSERT INTO tasks (
         title, description, status, priority, assigned_agent, depends_on,
-        handoff_payload, created_by, source, token_estimate, token_actual, max_retries
+        handoff_payload, created_by, source, token_estimate, token_actual
       ) VALUES (
         @title,
         @description,
@@ -314,8 +295,7 @@ export function createTask(data) {
         @created_by,
         @source,
         @token_estimate,
-        @token_actual,
-        @max_retries
+        @token_actual
       )
     `);
 
@@ -331,7 +311,6 @@ export function createTask(data) {
       source: payload.source ?? 'dashboard',
       token_estimate: Number.isFinite(payload.token_estimate) ? payload.token_estimate : null,
       token_actual: Number.isFinite(payload.token_actual) ? payload.token_actual : null,
-      max_retries: Number.isInteger(payload.max_retries) && payload.max_retries >= 0 ? payload.max_retries : 2,
     });
 
     addHistory(result.lastInsertRowid, payload.created_by ?? 'adam', 'created', '');
@@ -377,7 +356,6 @@ export function getTaskStats() {
     review: 0,
     done: 0,
     archive: 0,
-    failed: 0,
   };
   const byPriority = {
     critical: 0,
@@ -462,52 +440,4 @@ export function getCurrentTaskSummary(agent) {
 export function computeBlockedByForTask(task) {
   const statusById = getStatusByIdMap();
   return computeBlockedByIds(task, statusById);
-}
-
-export function getTaskFailures(id) {
-  const conn = getDb();
-  return conn
-    .prepare('SELECT failure_count, max_retries, last_failure_reason FROM tasks WHERE id = ?')
-    .get(id) || null;
-}
-
-export function recordFailure(id, reason) {
-  const conn = getDb();
-  const task = conn.prepare('SELECT id, failure_count, max_retries FROM tasks WHERE id = ?').get(id);
-  if (!task) return null;
-
-  const safeReason = reason == null ? '' : String(reason).trim();
-  const tx = conn.transaction(() => {
-    conn
-      .prepare(`UPDATE tasks
-                SET failure_count = failure_count + 1,
-                    last_failure_reason = @reason,
-                    status = CASE
-                      WHEN (failure_count + 1) <= max_retries THEN 'backlog'
-                      ELSE 'failed'
-                    END,
-                    updated_at = datetime('now')
-                WHERE id = @id`)
-      .run({ id, reason: safeReason || null });
-
-    const updated = conn
-      .prepare('SELECT failure_count, max_retries, last_failure_reason, status FROM tasks WHERE id = ?')
-      .get(id);
-
-    addHistory(
-      id,
-      'system',
-      'failure_recorded',
-      `${safeReason || 'Task failed'} (attempt ${updated.failure_count}/${updated.max_retries})`,
-    );
-
-    return {
-      retrying: updated.failure_count <= updated.max_retries,
-      failure_count: updated.failure_count,
-      max_retries: updated.max_retries,
-      reason: updated.last_failure_reason || '',
-    };
-  });
-
-  return tx();
 }
