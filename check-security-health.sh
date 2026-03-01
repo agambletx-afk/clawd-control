@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # check-security-health.sh — Security health checks for Jarvis/OpenClaw
+# Runs 14 checks.
 # Runs as openclaw user via cron. Writes JSON to /tmp/security-health-results.json.
 
 set +e
@@ -800,6 +801,8 @@ journalctl_safe() {
 
 openclaw_boot_logs=$(journalctl_safe -u openclaw --boot -q --no-pager)
 openclaw_24h_logs=$(journalctl_safe -u openclaw --since '24 hours ago' -q --no-pager)
+BOOT_LOGS="$openclaw_boot_logs"
+RECENT_LOGS="$openclaw_24h_logs"
 
 # Check 12: Homoglyph Normalizer
 homoglyph_registered='false'
@@ -882,6 +885,39 @@ credential_metadata=$(node -e "
 
 add_check "$(make_check_json 'injection-defense' 'Credential Scanner' "$credential_status" "$credential_message" "$credential_details" "$credential_remediation" "$credential_metadata")"
 update_overall "$credential_status"
+
+# Check 14: Security Hook
+security_hook_registered='false'
+if echo "$BOOT_LOGS" | grep -q 'security-hook: registered'; then
+  security_hook_registered='true'
+fi
+security_hook_blocked_count=$(echo "$RECENT_LOGS" | grep -c 'security-hook: blocked')
+
+security_hook_status='red'
+security_hook_message='Security hook plugin not registered in current boot logs.'
+security_hook_details="registered=${security_hook_registered}; blocked=${security_hook_blocked_count}; window=24h"
+security_hook_remediation='Check plugin at ~/.openclaw/extensions/security-hook/. Verify openclaw.json has security-hook in plugins.entries. Restart: sudo systemctl restart openclaw'
+
+if [ "$security_hook_registered" = 'true' ]; then
+  if [ "$security_hook_blocked_count" -gt 0 ]; then
+    security_hook_status='yellow'
+    security_hook_message="Security hook active with ${security_hook_blocked_count} blocked call(s) in last 24h."
+  else
+    security_hook_status='green'
+    security_hook_message='Security hook registered; no blocked calls in last 24h.'
+    security_hook_remediation=''
+  fi
+fi
+
+security_hook_metadata=$(node -e "
+  console.log(JSON.stringify({
+    registered: process.argv[1] === 'true',
+    blocked_count: parseInt(process.argv[2], 10) || 0
+  }));
+" "$security_hook_registered" "$security_hook_blocked_count" 2>/dev/null)
+
+add_check "$(make_check_json 'injection-defense' 'Security Hook' "$security_hook_status" "$security_hook_message" "$security_hook_details" "$security_hook_remediation" "$security_hook_metadata")"
+update_overall "$security_hook_status"
 
 final_json=$(node -e "
   const out = {
