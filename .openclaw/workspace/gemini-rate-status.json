@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-03-01T04:35:58Z",
+  "gemini_requests_today": 0,
+  "gemini_rpm_current": 0,
+  "daily_limit": 250,
+  "daily_warning": 200,
+  "daily_hard_stop": 230,
+  "status": "green"
+}
