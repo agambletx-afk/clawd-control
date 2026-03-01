@@ -388,6 +388,9 @@
     });
 
     (async function init() {
+      localStorage.setItem('clawd-chat-lastSeen', new Date().toISOString());
+      document.dispatchEvent(new CustomEvent('chat-seen'));
+
       try {
         await loadInitialMessages();
       } catch {
