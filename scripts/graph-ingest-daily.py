@@ -15,7 +15,7 @@ FACTS_DB = os.environ.get("FACTS_DB", os.path.join(WORKSPACE, "memory", "facts.d
 MEMORY_DIR = os.path.join(WORKSPACE, "memory")
 
 SENSITIVE_RE = re.compile(
-    r"password|passwd|api.?key|secret|token|sk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{36}|\\b\\d{3}-\\d{2}-\\d{4}\\b|\\b\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}\\b",
+    r"password|passwd|api.?key|secret(?:[_\s]?=|[_\s]key|[_\s]token)|(?:(?:auth|access|bearer|refresh|api)[_\s]token|token(?:[_\s]?=\S+|[_\s]?:\s*\S+))|sk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{36}|\b\d{3}-\d{2}-\d{4}\b|\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b",
     re.IGNORECASE,
 )
 EMOJI_RE = re.compile(
@@ -86,7 +86,7 @@ def detect_category(line):
         return "work"
     if any(term in lower for term in ("i am", "i'm", "my name", "adam", "we are", "identity")):
         return "identity"
-    return "work"
+    return "work"  # Default to work because most daily memories are project-related; revisit if memory scope expands beyond Jarvis/work context.
 
 
 def extract_structured(line):
