@@ -37,7 +37,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { logAction, getLog, getLogStats, pruneLog } from './ops-log-db.mjs';
 import { storeChecks, getHistory as getSecurityHistory, getTransitions } from './security-db.mjs';
 import { createSnapshot, listSnapshots, getSnapshotManifest, restoreSnapshot, deleteSnapshot, enforceRetention } from './ops-backup.mjs';
-import { ChatGatewayClient, getChatMessages } from './chat-api.mjs';
+import { ChatGatewayClient, getChatMessages, getLatestMessage } from './chat-api.mjs';
 
 const PORT = parseInt(process.argv.find((_, i, a) => a[i - 1] === '--port') || '3100');
 const DIR = new URL('.', import.meta.url).pathname;
@@ -3516,6 +3516,20 @@ const server = createServer((req, res) => {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       console.error('[API] /api/chat/messages error:', e.message);
       res.end(JSON.stringify({ error: 'Failed to load chat messages' }));
+    }
+    return;
+  }
+
+  // ── Chat Latest Message ──
+  if (path === '/api/chat/latest' && req.method === 'GET') {
+    try {
+      const result = getLatestMessage();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      console.error('[API] /api/chat/latest error:', e.message);
+      res.end(JSON.stringify({ error: 'Failed to load latest chat message' }));
     }
     return;
   }

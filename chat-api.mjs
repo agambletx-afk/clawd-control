@@ -153,6 +153,62 @@ function cleanDisplayContent(role, text) {
   return cleaned.trim();
 }
 
+function shouldSkipNormalizedMessage(normalized, rawText, text) {
+  if (normalized.aborted) return true;
+  if (normalized.role !== 'user' && normalized.role !== 'assistant') return true;
+  if (!text) return true;
+
+  // Skip system-injected cron/heartbeat messages that have role "user"
+  if (normalized.role === 'user' && (
+    /^System:\s*\[/.test(rawText) ||
+    /Read HEARTBEAT\.md/i.test(rawText) ||
+    /^Conversation info \(untrusted metadata\)/m.test(rawText) ||
+    /Exec failed/i.test(rawText) ||
+    /You remember these earlier conversations/i.test(rawText) ||
+    /\[GRAPH MEMORY\]/i.test(rawText) ||
+    /Speak from this memory naturally/i.test(rawText)
+  )) return true;
+
+  // Skip heartbeat responses
+  if (normalized.role === 'assistant' && /^(\[\[reply_to[^\]]*\]\]\s*)?HEARTBEAT_OK\b/.test(rawText)) return true;
+
+  return false;
+}
+
+export function getLatestMessage() {
+  const root = findSessionRoot();
+  const sessionsPath = join(root, 'sessions.json');
+  if (!existsSync(sessionsPath)) return null;
+
+  const sessions = safeParseJson(readFileSync(sessionsPath, 'utf8')) || {};
+  const entry = sessions[MAIN_SESSION_KEY] || sessions.main || sessions.default || null;
+  const sessionId = typeof entry === 'string' ? entry : entry?.sessionId || entry?.id || null;
+  if (!sessionId) return null;
+
+  const transcriptPath = join(root, `${sessionId}.jsonl`);
+  if (!existsSync(transcriptPath)) return null;
+
+  const lines = readFileSync(transcriptPath, 'utf8').split('\n').filter((line) => line.trim());
+  for (let index = lines.length - 1; index >= 0; index--) {
+    const entry = safeParseJson(lines[index]);
+    if (!entry) continue;
+
+    const normalized = normalizeRoleEntry(entry);
+    if (!normalized) continue;
+
+    const rawText = normalizeContent(normalized.role, normalized.content);
+    const text = cleanDisplayContent(normalized.role, rawText);
+    if (shouldSkipNormalizedMessage(normalized, rawText, text)) continue;
+
+    return {
+      timestamp: normalized.timestamp || null,
+      role: normalized.role,
+    };
+  }
+
+  return null;
+}
+
 export function getChatMessages({ limit = 100, after = null } = {}) {
   const root = findSessionRoot();
   const sessionsPath = join(root, 'sessions.json');
@@ -184,26 +240,10 @@ export function getChatMessages({ limit = 100, after = null } = {}) {
 
     const normalized = normalizeRoleEntry(entry);
     if (!normalized) continue;
-    if (normalized.aborted) continue;
-    if (normalized.role !== 'user' && normalized.role !== 'assistant') continue;
 
     const rawText = normalizeContent(normalized.role, normalized.content);
     const text = cleanDisplayContent(normalized.role, rawText);
-    if (!text) continue;
-
-    // Skip system-injected cron/heartbeat messages that have role "user"
-    if (normalized.role === 'user' && (
-      /^System:\s*\[/.test(rawText) ||
-      /Read HEARTBEAT\.md/i.test(rawText) ||
-      /^Conversation info \(untrusted metadata\)/m.test(rawText) ||
-      /Exec failed/i.test(rawText) ||
-      /You remember these earlier conversations/i.test(rawText) ||
-      /\[GRAPH MEMORY\]/i.test(rawText) ||
-      /Speak from this memory naturally/i.test(rawText)
-    )) continue;
-
-    // Skip heartbeat responses
-    if (normalized.role === 'assistant' && /^(\[\[reply_to[^\]]*\]\]\s*)?HEARTBEAT_OK\b/.test(rawText)) continue;
+    if (shouldSkipNormalizedMessage(normalized, rawText, text)) continue;
 
     const timestamp = normalized.timestamp || null;
     if (afterTs && timestamp) {
