@@ -19,6 +19,7 @@
   let evtSource = null;
   let cliUsagePollTimer = null;
   let securityBadgeTimer = null;
+  let chatUnreadTimer = null;
   let cliUsageState = null;
   let expandedCliProvider = null;
 
@@ -267,6 +268,14 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
 .nav-item .nav-icon { width: 16px; height: 16px; opacity: 0.6; flex-shrink: 0; }
 .nav-item .nav-emoji { font-size: 1rem; flex-shrink: 0; width: 20px; text-align: center; }
 .nav-item .nav-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-unread-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22C55E;
+  display: inline-block;
+  margin-left: 6px;
+}
 
 /* Sidebar badges */
 .nav-badges { display: flex; gap: 3px; flex-shrink: 0; }
@@ -551,6 +560,9 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
     // Start security nav badge polling
     initSecurityBadgePolling();
 
+    // Start chat unread indicator polling
+    initChatUnreadPolling();
+
     // Refresh lucide icons if already loaded
     refreshIcons();
   }
@@ -562,9 +574,9 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
         <i data-lucide="layout-dashboard" class="nav-icon"></i>
         <span class="nav-label">Overview</span>
       </a>
-      <a href="/chat.html" class="nav-item${isActive('chat')}">
+      <a href="/chat.html" id="chatNavItem" class="nav-item${isActive('chat')}">
         <i data-lucide="message-circle" class="nav-icon"></i>
-        <span class="nav-label">Chat</span>
+        <span class="nav-label" id="chatNavLabel">Chat</span>
       </a>
 
       <div class="sidebar-section">Monitoring</div>
@@ -837,6 +849,88 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
     if (securityBadgeTimer) clearInterval(securityBadgeTimer);
     refreshSecurityBadge();
     securityBadgeTimer = setInterval(() => refreshSecurityBadge(), 60000);
+  }
+
+  function getChatLastSeen() {
+    const value = localStorage.getItem('clawd-chat-lastSeen');
+    if (!value) return new Date(0);
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? new Date(0) : parsed;
+  }
+
+  function setChatLastSeen(ts = new Date().toISOString()) {
+    localStorage.setItem('clawd-chat-lastSeen', ts);
+  }
+
+  function getChatUnreadDot() {
+    return document.getElementById('chatUnreadDot');
+  }
+
+  function showChatUnreadDot() {
+    const label = document.getElementById('chatNavLabel');
+    if (!label || getChatUnreadDot()) return;
+    const dot = document.createElement('span');
+    dot.id = 'chatUnreadDot';
+    dot.className = 'chat-unread-dot';
+    dot.setAttribute('aria-label', 'Unread chat messages');
+    label.appendChild(dot);
+  }
+
+  function hideChatUnreadDot() {
+    const dot = getChatUnreadDot();
+    if (dot) dot.remove();
+  }
+
+  async function refreshChatUnreadIndicator() {
+    try {
+      if (window.location.pathname === '/chat.html') {
+        setChatLastSeen();
+        hideChatUnreadDot();
+        return;
+      }
+
+      const res = await fetch('/api/chat/latest', { cache: 'no-store', credentials: 'same-origin' });
+      if (!res.ok) return;
+      const latest = await res.json();
+      if (!latest || !latest.timestamp || latest.role !== 'assistant') {
+        hideChatUnreadDot();
+        return;
+      }
+
+      const latestTs = new Date(latest.timestamp);
+      if (Number.isNaN(latestTs.getTime())) return;
+
+      const lastSeen = getChatLastSeen();
+      if (latestTs > lastSeen) {
+        showChatUnreadDot();
+      } else {
+        hideChatUnreadDot();
+      }
+    } catch {
+      // no-op
+    }
+  }
+
+  function initChatUnreadPolling() {
+    if (chatUnreadTimer) clearInterval(chatUnreadTimer);
+
+    document.addEventListener('chat-seen', () => {
+      setChatLastSeen();
+      hideChatUnreadDot();
+    });
+
+    window.addEventListener('storage', (event) => {
+      if (event.key === 'clawd-chat-lastSeen') {
+        refreshChatUnreadIndicator();
+      }
+    });
+
+    refreshChatUnreadIndicator();
+    chatUnreadTimer = setInterval(() => {
+      if (window.location.pathname !== '/chat.html') {
+        refreshChatUnreadIndicator();
+      }
+    }, 5000);
   }
 
   window.refreshSecurityBadge = refreshSecurityBadge;
