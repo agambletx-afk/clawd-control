@@ -1,0 +1,18 @@
+[Unit]
+Description=OpenClaw Service
+After=network.target
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+[Service]
+Type=simple
+User=openclaw
+WorkingDirectory=/home/openclaw/.openclaw
+ExecStart=/usr/bin/openclaw serve
+Restart=always
+RestartSec=10
+# WatchdogSec: skip, OpenClaw does not support sd_notify
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target
