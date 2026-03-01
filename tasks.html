@@ -106,6 +106,83 @@
       white-space: nowrap;
     }
     .meta-sub { margin-top: 3px; display: flex; align-items: center; justify-content: space-between; color: var(--text-tertiary); font-size: 0.62rem; line-height: 1.1; }
+    .failure-badge-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #ef4444;
+      display: inline-block;
+      box-shadow: 0 0 0 1px rgba(239,68,68,0.3);
+    }
+
+    .retry-status {
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      background: var(--bg-tertiary);
+      padding: 8px;
+    }
+    .retry-line {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.8rem;
+      color: var(--text-primary);
+      margin-bottom: 6px;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .status-dot.green { background: #2ecc71; }
+    .status-dot.yellow { background: #f59e0b; }
+    .status-dot.red { background: #ef4444; }
+    .retry-controls {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .retry-controls input {
+      width: 84px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      padding: 5px 7px;
+      font-size: 0.78rem;
+    }
+    .retry-reason-box {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--text-secondary);
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: rgba(10,12,16,0.35);
+      border-radius: 6px;
+      padding: 6px 8px;
+      margin-top: 6px;
+      line-height: 1.4;
+    }
+    .retry-reason-box.collapsed {
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .expand-toggle {
+      margin-top: 4px;
+      background: none;
+      border: none;
+      color: var(--text-tertiary);
+      font-size: 0.68rem;
+      cursor: pointer;
+      padding: 0;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    .expand-toggle:hover { color: var(--text-secondary); }
 
     .priority-critical { border-left-color: #f87171; }
     .priority-high { border-left-color: #fb923c; }
@@ -347,6 +424,8 @@
           history: [],
           archiveCollapsed: true,
           pollTimer: null,
+          failureMeta: null,
+          failureReasonExpanded: false,
         };
 
         const cstFormatter = new Intl.DateTimeFormat('en-US', {
@@ -405,6 +484,9 @@
           if (status === 'archive') {
             return `<button class="btn btn-small" data-action="restore" data-id="${task.id}">Restore</button>`;
           }
+          if (status === 'failed') {
+            return `<button class="btn btn-small" data-action="reset-retries" data-id="${task.id}">Reset & Retry</button>`;
+          }
           return '';
         }
 
@@ -419,6 +501,7 @@
           const agentLabel = task.assigned_agent ? `🤖 ${task.assigned_agent}` : '';
           const blocked = Array.isArray(task.blocked_by) && task.blocked_by.length > 0;
           const createdBy = task.created_by ? task.created_by[0].toUpperCase() + task.created_by.slice(1) : 'Unknown';
+          const failureCount = Number(task.failure_count || 0);
           return `
             <article class="task-card priority-${esc(task.priority)}" data-id="${task.id}">
               <div class="task-title" title="${esc(task.title)}">${esc(task.title)}</div>
@@ -431,6 +514,7 @@
               <div class="meta-sub">
                 <span>${ageLabel(task.created_at)}</span>
                 <span>${blocked ? `🔒` : ''}</span>
+                <span>${failureCount > 0 ? `<span class="failure-badge-dot" title="${esc(`${failureCount} failure${failureCount === 1 ? '' : 's'}`)}"></span>` : ''}</span>
               </div>
               ${blocked ? `<div class="meta-sub" title="${esc(getBlockingTitle(task))}"><span>Blocked by: ${esc(task.blocked_by.join(','))}</span></div>` : ''}
             </article>
@@ -482,6 +566,8 @@
           document.getElementById('detailPanel').classList.remove('open');
           state.selectedTaskId = null;
           state.history = [];
+          state.failureMeta = null;
+          state.failureReasonExpanded = false;
         }
 
         async function loadHistory(taskId) {
@@ -489,6 +575,12 @@
           if (!res.ok) throw new Error('Failed to load history');
           const data = await res.json();
           state.history = Array.isArray(data.history) ? data.history : [];
+        }
+
+        async function loadFailureMeta(taskId) {
+          const res = await fetch(`/api/tasks/${taskId}/failures`, FETCH_OPTS);
+          if (!res.ok) throw new Error('Failed to load retry status');
+          state.failureMeta = await res.json();
         }
 
         function renderPanel() {
@@ -500,6 +592,19 @@
             try { return JSON.stringify(JSON.parse(task.handoff_payload), null, 2); }
             catch { return task.handoff_payload; }
           })() : '';
+
+          const failureMeta = state.failureMeta || {};
+          const failureCount = Number(failureMeta.failure_count ?? task.failure_count ?? 0);
+          const maxRetries = Number(failureMeta.max_retries ?? task.max_retries ?? 0);
+          const lastReason = String(failureMeta.last_failure_reason || '').trim();
+          const retriesExhausted = failureCount > 0 && failureCount >= maxRetries;
+          const failedStatus = normalizeStatus(task.status) === 'failed';
+          const retryDot = failureCount === 0 ? 'green' : ((failedStatus || retriesExhausted) ? 'red' : 'yellow');
+          const retryText = (failedStatus || retriesExhausted)
+            ? `Retries exhausted (${failureCount} / ${maxRetries})`
+            : `Retries: ${failureCount} / ${maxRetries}`;
+          const reasonLines = lastReason ? lastReason.split(/\r?\n/).length : 0;
+          const needsReasonToggle = reasonLines > 3;
 
           const detailsHtml = `
             <div class="field"><div class="label">Status</div><div class="value">${esc(task.status)}</div></div>
@@ -515,6 +620,21 @@
             <div class="field"><div class="label">Updated At (CST)</div><div class="value">${esc(cstFormatter.format(new Date(task.updated_at)))}</div></div>
             <div class="field"><div class="label">Description</div><div class="value">${esc(task.description || '')}</div></div>
             <div class="field"><div class="label">Handoff Payload</div><div class="value">${payloadText ? `<pre>${esc(payloadText)}</pre>` : 'None'}</div></div>
+            <div class="field"><div class="label">Retry Status</div>
+              <div class="retry-status">
+                <div class="retry-line"><span class="status-dot ${retryDot}"></span><span>${esc(retryText)}</span></div>
+                ${lastReason ? `
+                  <div class="label" style="margin: 0;">Last Failure Reason</div>
+                  <div class="retry-reason-box ${(!state.failureReasonExpanded && needsReasonToggle) ? 'collapsed' : ''}">${esc(lastReason)}</div>
+                  ${needsReasonToggle ? `<button class="expand-toggle" type="button" data-action="toggle-failure-reason">${state.failureReasonExpanded ? 'hide' : 'details'}</button>` : ''}
+                ` : '<div class="value">No recorded failures.</div>'}
+                <div class="retry-controls">
+                  <label for="panelMaxRetries" class="label" style="margin:0;">Max retries</label>
+                  <input type="number" id="panelMaxRetries" min="0" value="${esc(maxRetries)}">
+                  <button class="btn btn-small" data-action="save-max-retries" data-id="${task.id}">Save</button>
+                </div>
+              </div>
+            </div>
             <div class="field"><div class="label">History</div>
               <div class="history-list">
                 ${state.history.length ? state.history.map((entry) => `
@@ -532,7 +652,8 @@
 
         async function openPanel(taskId) {
           state.selectedTaskId = taskId;
-          await loadHistory(taskId);
+          state.failureReasonExpanded = false;
+          await Promise.all([loadHistory(taskId), loadFailureMeta(taskId)]);
           renderPanel();
           document.getElementById('panelBackdrop').classList.add('open');
           document.getElementById('detailPanel').classList.add('open');
@@ -559,6 +680,25 @@
             if (action === 'return-review') await patchTask(taskId, { status: 'backlog' });
             if (action === 'archive') await patchTask(taskId, { status: 'archive' });
             if (action === 'restore') await patchTask(taskId, { status: 'backlog' });
+            if (action === 'save-max-retries') {
+              const input = document.getElementById('panelMaxRetries');
+              const nextValue = Number.parseInt(input?.value || '', 10);
+              if (!Number.isInteger(nextValue) || nextValue < 0) {
+                alert('max_retries must be a non-negative integer');
+                return;
+              }
+              await patchTask(taskId, { max_retries: nextValue });
+            }
+            if (action === 'reset-retries') {
+              const res = await fetch(`/api/tasks/${taskId}/reset-retries`, { ...FETCH_OPTS, method: 'PATCH' });
+              const data = await res.json();
+              if (!res.ok) throw new Error(data.error || 'Failed to reset retries');
+            }
+            if (action === 'toggle-failure-reason') {
+              state.failureReasonExpanded = !state.failureReasonExpanded;
+              renderPanel();
+              return;
+            }
             if (action === 'start') {
               const task = state.tasks.find((item) => item.id === taskId);
               const current = task?.assigned_agent || 'jarvis';

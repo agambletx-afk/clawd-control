@@ -29,6 +29,7 @@ import {
   getCurrentTaskSummary,
   recordFailure,
   getTaskFailures,
+  resetTaskRetries,
 } from './tasks-db.mjs';
 
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
@@ -3173,6 +3174,32 @@ const server = createServer((req, res) => {
       res.writeHead(code, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: e.message === 'Payload too large' ? 'Payload too large' : 'Invalid JSON body' }));
     });
+    return;
+  }
+
+  if (path.startsWith('/api/tasks/') && path.endsWith('/reset-retries') && req.method === 'PATCH') {
+    const segments = path.split('/');
+    const taskId = Number.parseInt(segments[3], 10);
+    if (!Number.isInteger(taskId) || taskId <= 0) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid task id' }));
+      return;
+    }
+
+    try {
+      const task = resetTaskRetries(taskId);
+      if (!task) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Task not found' }));
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ task }));
+    } catch (e) {
+      console.error('[API] /api/tasks/:id/reset-retries error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Internal server error' }));
+    }
     return;
   }
 
