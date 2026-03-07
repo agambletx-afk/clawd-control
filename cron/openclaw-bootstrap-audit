@@ -1,0 +1,2 @@
+# Weekly bootstrap content audit - Sunday 4:00 AM UTC
+0 4 * * 0 openclaw /usr/local/bin/bootstrap-audit.py >> /home/openclaw/.openclaw/workspace/bootstrap-audit.log 2>&1
