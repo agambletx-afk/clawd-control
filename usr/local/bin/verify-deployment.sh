@@ -541,7 +541,7 @@ check_svc_anthropic() {
   local code
   code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 -H "x-api-key: ${ANTHROPIC_API_KEY}" -H "anthropic-version: 2023-06-01" "https://api.anthropic.com/v1/models" 2>/dev/null)
   if [ "$code" = "200" ]; then CHECK_MSG="anthropic models endpoint returned 200"; return 0; fi
-  if is_known_warn_service "openai"; then CHECK_MSG="anthropic endpoint failed (HTTP $code), downgraded via known_warn_services"; return 2; fi
+  if is_known_warn_service "anthropic"; then CHECK_MSG="anthropic endpoint failed (HTTP $code), downgraded via known_warn_services"; return 2; fi
   CHECK_MSG="anthropic endpoint failed (HTTP ${code:-000})"
   return 1
 }
