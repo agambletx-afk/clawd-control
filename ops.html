@@ -868,7 +868,7 @@
       Object.entries(categories).forEach(([name, category]) => {
         const catSummary = category.summary || {};
         if ((catSummary.fail || 0) > 0 || (catSummary.warn || 0) > 0) {
-          state.verificationCategoryExpanded[name] = true;
+          if (!(name in state.verificationCategoryExpanded)) state.verificationCategoryExpanded[name] = true;
         }
       });
       const staleBadge = data.stale ? '<span class="verification-stale">⚠️ stale</span>' : '';
