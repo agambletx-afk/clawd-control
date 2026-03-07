@@ -44,6 +44,113 @@
     .btn-recheck:hover { background: rgba(0,0,0,0.3); }
     .btn-recheck:disabled { opacity: 0.6; cursor: wait; }
 
+    /* ── Security Test Panel ── */
+    .security-test-panel {
+      border: 1px solid var(--border-subtle);
+      border-left: 4px solid #636e72;
+      border-radius: 10px;
+      background: rgba(10,12,16,0.35);
+      overflow: hidden;
+      margin-bottom: 12px;
+    }
+    .security-test-panel.status-pass { border-left-color: #27AE60; }
+    .security-test-panel.status-fail { border-left-color: #C0392B; }
+    .security-test-panel.status-warn { border-left-color: #D4881C; }
+    .security-test-panel.status-skip,
+    .security-test-panel.status-never { border-left-color: #636e72; }
+    .security-test-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 10px 12px;
+      cursor: pointer;
+      user-select: none;
+      background: rgba(99,110,114,0.09);
+    }
+    .security-test-main { min-width: 0; flex: 1; }
+    .security-test-title { font-size: 0.82rem; font-weight: 700; color: var(--text-primary); }
+    .security-test-meta { font-size: 0.68rem; color: var(--text-tertiary); margin-top: 2px; }
+    .security-test-actions { display: flex; align-items: center; gap: 8px; }
+    .btn-test-run {
+      border: 1px solid rgba(255,255,255,0.22);
+      background: rgba(10,12,16,0.3);
+      color: #dfe6e9;
+      padding: 4px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.68rem;
+      min-height: 30px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-test-run:hover { background: rgba(10,12,16,0.52); color: #fff; }
+    .btn-test-run:disabled { opacity: 0.7; cursor: wait; }
+    .test-spinner {
+      width: 11px;
+      height: 11px;
+      border: 2px solid rgba(255,255,255,0.25);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      display: inline-block;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .security-test-body {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .security-test-panel.open .tier-chevron { transform: rotate(180deg); }
+    .security-test-body-inner { padding: 8px 10px 10px; display: grid; gap: 8px; }
+    .test-summary { font-size: 0.72rem; color: var(--text-secondary); }
+    .test-summary .pass { color: #27AE60; font-weight: 700; }
+    .test-summary .fail { color: #C0392B; font-weight: 700; }
+    .test-summary .warn { color: #D4881C; font-weight: 700; }
+    .test-summary .skip { color: #636e72; font-weight: 700; }
+
+    .probe-list { display: grid; gap: 6px; }
+    .probe-item {
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      background: var(--bg-tertiary);
+      overflow: hidden;
+    }
+    .probe-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 7px 9px;
+      cursor: pointer;
+    }
+    .probe-icon { font-size: 0.88rem; width: 16px; text-align: center; }
+    .probe-icon.pass { color: #27AE60; }
+    .probe-icon.fail { color: #C0392B; }
+    .probe-icon.warn { color: #D4881C; }
+    .probe-icon.skip { color: #636e72; }
+    .probe-info { flex: 1; min-width: 0; }
+    .probe-name { font-size: 0.77rem; font-weight: 600; color: var(--text-primary); }
+    .probe-msg { font-size: 0.7rem; color: var(--text-secondary); margin-top: 2px; }
+    .probe-expand {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .probe-expand-inner { padding: 0 9px 9px; display: grid; gap: 6px; }
+    .probe-details {
+      font-family: var(--font-mono);
+      font-size: 0.69rem;
+      color: var(--text-secondary);
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: rgba(10,12,16,0.35);
+      border-radius: 6px;
+      padding: 6px 8px;
+    }
+    .test-footer { font-size: 0.66rem; color: var(--text-tertiary); display: flex; flex-wrap: wrap; gap: 8px; }
+
     /* ── Tier Accordion ── */
     .tier-accordions { display: grid; gap: 8px; margin-bottom: 16px; }
 
@@ -431,6 +538,24 @@
       <button id="recheckBtn" class="btn-recheck" type="button">Run Check Now</button>
     </section>
 
+    <section id="securityTestPanel" class="security-test-panel status-never">
+      <div id="securityTestHeader" class="security-test-header" role="button" tabindex="0">
+        <div class="security-test-main">
+          <div id="securityTestTitle" class="security-test-title">Security Test: Never run</div>
+          <div id="securityTestMeta" class="security-test-meta">Run active probes to verify protections block risky actions.</div>
+        </div>
+        <div class="security-test-actions">
+          <button id="securityTestRunBtn" class="btn-test-run" type="button">Run Security Test</button>
+          <svg class="tier-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+      </div>
+      <div id="securityTestBody" class="security-test-body">
+        <div id="securityTestBodyInner" class="security-test-body-inner">
+          <div class="muted">No test results yet.</div>
+        </div>
+      </div>
+    </section>
+
     <!-- Version Currency Card (Check 10) - full width, above tier accordions -->
     <div id="version-card" class="version-card" style="display:none;"></div>
 
@@ -503,11 +628,14 @@
       'gateway-health': 'L10'
     };
 
-    const state = { health: null, transitions: [], gatewayTrend: [], pollTimer: null, running: false, versionCheck: null };
+    const state = { health: null, transitions: [], gatewayTrend: [], pollTimer: null, running: false, versionCheck: null, securityTest: null, securityTestRunning: false, securityTestElapsed: 0 };
     const openTiers = new Set();    // track which tiers are expanded
     const openCards = new Set();    // track which card details are expanded
     let timelineOpen = false;
     let versionCardOpen = false;
+    let securityTestOpen = false;
+    let securityTestProbeOpen = null;
+    let securityTestTimer = null;
     const $ = id => document.getElementById(id);
 
     /* ══════════════════════════════════════════════════
@@ -525,6 +653,115 @@
       const h = Math.floor(m / 60);
       if (h < 24) return `${h}h ago`;
       return `${Math.floor(h / 24)}d ago`;
+    }
+
+    function probeIcon(status) {
+      if (status === 'pass') return '✔';
+      if (status === 'fail') return '✖';
+      if (status === 'warn') return '⚠';
+      return '⏭';
+    }
+
+    function renderSecurityTestPanel() {
+      const panel = $('securityTestPanel');
+      const title = $('securityTestTitle');
+      const meta = $('securityTestMeta');
+      const body = $('securityTestBody');
+      const inner = $('securityTestBodyInner');
+      const runBtn = $('securityTestRunBtn');
+      if (!panel || !title || !meta || !body || !inner || !runBtn) return;
+
+      const data = state.securityTest;
+      const hasResults = data && !data.never_run;
+      const overall = hasResults ? String(data.overall || 'skip') : 'never';
+
+      panel.className = `security-test-panel status-${overall}`;
+
+      if (!hasResults) {
+        title.textContent = 'Security Test: Never run';
+        meta.textContent = 'Run active probes to verify protections block risky actions.';
+        inner.innerHTML = '<div class="muted">No test results yet.</div>';
+      } else {
+        const summary = data.summary || {};
+        const summaryText = `${Number(summary.passed || 0)} passed, ${Number(summary.failed || 0)} failed${Number(summary.warned || 0) ? `, ${Number(summary.warned || 0)} warning` : ''}${Number(summary.skipped || 0) ? `, ${Number(summary.skipped || 0)} skipped` : ''}`;
+        title.textContent = `Last Security Test: ${relTime(data.generated_at)} — ${summaryText}`;
+        meta.textContent = `Generated ${new Date(data.generated_at).toLocaleString()}`;
+
+        const probes = Array.isArray(data.probes) ? data.probes : [];
+        inner.innerHTML = `
+          <div class="test-summary"><span class="pass">${Number(summary.passed || 0)} passed</span>, <span class="fail">${Number(summary.failed || 0)} failed</span>, <span class="warn">${Number(summary.warned || 0)} warning</span>${Number(summary.skipped || 0) ? `, <span class="skip">${Number(summary.skipped || 0)} skipped</span>` : ''}</div>
+          <div class="probe-list">
+            ${probes.map((probe, idx) => {
+              const pid = esc(probe.id || `probe-${idx}`);
+              const pstatus = esc(probe.status || 'skip');
+              const isOpen = securityTestProbeOpen === pid;
+              return `
+                <div class="probe-item">
+                  <div class="probe-row" data-action="probe-toggle" data-probe-id="${pid}">
+                    <div class="probe-icon ${pstatus}">${probeIcon(probe.status)}</div>
+                    <div class="probe-info">
+                      <div class="probe-name">${esc(probe.name || pid)}</div>
+                      <div class="probe-msg">${esc(probe.message || '')}</div>
+                    </div>
+                    ${CHEVRON_SVG}
+                  </div>
+                  <div id="probe-expand-${pid}" class="probe-expand" ${isOpen ? 'data-open="1"' : ''}>
+                    <div class="probe-expand-inner">
+                      <div class="probe-details">${esc(probe.details || 'No details')}</div>
+                      ${((probe.status === 'fail' || probe.status === 'warn') && probe.remediation) ? `
+                        <div class="check-remediation ${probe.status === 'fail' ? 'red' : 'yellow'}">
+                          <div class="remediation-text">${esc(probe.remediation)}</div>
+                          <div class="remediation-actions">
+                            <button class="mini-btn" type="button" data-action="copy" data-text="${esc(probe.remediation)}">Copy</button>
+                          </div>
+                        </div>
+                      ` : ''}
+                    </div>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+          <div class="test-footer">
+            <span>Completed in ${(Number(data.duration_ms || 0) / 1000).toFixed(1)}s</span>
+            <span>Passive recheck: ${esc(data.passive_recheck || 'unknown')}</span>
+          </div>
+        `;
+
+        probes.forEach((probe, idx) => {
+          const pid = esc(probe.id || `probe-${idx}`);
+          const el = $(`probe-expand-${pid}`);
+          if (el && el.getAttribute('data-open') === '1') {
+            el.style.maxHeight = `${el.scrollHeight}px`;
+          }
+        });
+      }
+
+      if (state.securityTestRunning) {
+        runBtn.disabled = true;
+        runBtn.innerHTML = `<span class="test-spinner"></span> Testing... (${state.securityTestElapsed}s)`;
+      } else {
+        runBtn.disabled = false;
+        runBtn.textContent = 'Run Security Test';
+      }
+
+      if (securityTestOpen) {
+        panel.classList.add('open');
+        body.style.maxHeight = `${body.scrollHeight}px`;
+      } else {
+        panel.classList.remove('open');
+        body.style.maxHeight = '0';
+      }
+    }
+
+    function toggleSecurityTestPanel() {
+      securityTestOpen = !securityTestOpen;
+      renderSecurityTestPanel();
+    }
+
+    function toggleProbe(id) {
+      securityTestProbeOpen = securityTestProbeOpen === id ? null : id;
+      renderSecurityTestPanel();
     }
 
     async function api(path, init = {}) {
@@ -1139,6 +1376,17 @@
 
     async function refresh() { await Promise.all([loadHealth(), loadTransitions(), loadGatewayTrend()]); }
 
+    async function loadSecurityTestResults() {
+      try {
+        const data = await api('/api/security/test-results');
+        state.securityTest = data;
+        securityTestOpen = !data?.never_run;
+      } catch {
+        state.securityTest = { never_run: true };
+      }
+      renderSecurityTestPanel();
+    }
+
     async function runCheckNow() {
       if (state.running) return;
       state.running = true;
@@ -1147,6 +1395,33 @@
       try { state.health = await api('/api/security/recheck', { method: 'POST', body: '{}' }); } catch {}
       btn.disabled = false; btn.textContent = 'Run Check Now'; state.running = false;
       await refresh();
+    }
+
+    async function runSecurityTest() {
+      if (state.securityTestRunning) return;
+      state.securityTestRunning = true;
+      state.securityTestElapsed = 0;
+      clearInterval(securityTestTimer);
+      securityTestTimer = setInterval(() => {
+        state.securityTestElapsed += 1;
+        renderSecurityTestPanel();
+      }, 1000);
+      renderSecurityTestPanel();
+
+      try {
+        const data = await api('/api/security/test', { method: 'POST', body: '{}' });
+        state.securityTest = data;
+        securityTestOpen = true;
+        securityTestProbeOpen = null;
+        renderSecurityTestPanel();
+      } catch (e) {
+        showToast(`Security test failed: ${e.message}`);
+      } finally {
+        state.securityTestRunning = false;
+        clearInterval(securityTestTimer);
+        securityTestTimer = null;
+        renderSecurityTestPanel();
+      }
     }
 
     async function acknowledgeReasoning() {
@@ -1269,6 +1544,32 @@
 
     function bindEvents() {
       $('recheckBtn').onclick = runCheckNow;
+      $('securityTestRunBtn').onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        runSecurityTest();
+      };
+      $('securityTestHeader').onclick = (e) => {
+        if (e.target.closest('#securityTestRunBtn')) return;
+        toggleSecurityTestPanel();
+      };
+      $('securityTestHeader').onkeydown = (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggleSecurityTestPanel();
+        }
+      };
+      $('securityTestBody').onclick = async (e) => {
+        const btn = e.target.closest('button[data-action]');
+        if (btn && btn.dataset.action === 'copy') {
+          await copyText(btn.dataset.text || '');
+          return;
+        }
+        const probeToggle = e.target.closest('[data-action="probe-toggle"]');
+        if (probeToggle) {
+          toggleProbe(probeToggle.dataset.probeId);
+        }
+      };
       $('timelineBanner').onclick = toggleTimeline;
       $('timelineBanner').onkeydown = (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -1336,8 +1637,10 @@
 
       openTiers.clear();
       openCards.clear();
+      securityTestProbeOpen = null;
 
       await refresh();
+      await loadSecurityTestResults();
       bindEvents();
       window.addEventListener('resize', renderGatewayTrendChart);
       startPolling();
