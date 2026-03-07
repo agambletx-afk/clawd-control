@@ -11,7 +11,7 @@ const { createServer } = http;
 import { readFileSync, existsSync, writeFileSync, copyFileSync, readdirSync, statSync, unlinkSync } from 'fs';
 import { join, extname, resolve, sep } from 'path';
 import { gzipSync } from 'zlib';
-import { exec, execFileSync, execSync, spawnSync } from 'child_process';
+import { exec, execFileSync, execSync, spawn, spawnSync } from 'child_process';
 import { AgentCollector } from './collector.mjs';
 import { createAgent } from './create-agent.mjs';
 import { discoverAgents } from './discover.mjs';
@@ -3311,11 +3311,12 @@ const server = createServer((req, res) => {
 
       if (!hasRunningTask) {
         try {
-          execSync('openclaw cron run task-worker --force', {
-            encoding: 'utf8',
-            stdio: 'pipe',
-            timeout: 10000,
+          const child = spawn('openclaw', ['cron', 'run', 'e6981a1c-70cf-48d0-8b51-a5855aeaa972'], {
+            detached: true,
+            stdio: 'ignore',
+            
           });
+              child.unref();
         } catch (e) {
           response.trigger_error = true;
           response.error = truncateOutput((e.stderr || '') || (e.stdout || '') || e.message || 'Cron trigger failed');
