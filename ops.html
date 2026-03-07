@@ -35,6 +35,92 @@
       margin-bottom: 10px;
     }
 
+    .version-check-banner {
+      display: grid;
+      gap: 8px;
+      margin-bottom: 14px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--bg-secondary);
+      cursor: pointer;
+    }
+
+    .version-check-main {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .version-check-summary {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      font-size: 0.84rem;
+    }
+
+    .version-check-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex: 0 0 10px;
+    }
+
+    .version-green { background: #22c55e; }
+    .version-yellow { background: #f59e0b; }
+    .version-red { background: #ef4444; }
+    .version-gray { background: #94a3b8; }
+
+    .version-check-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--text-tertiary);
+    }
+
+    .icon-btn {
+      border: 1px solid var(--border);
+      background: transparent;
+      color: inherit;
+      border-radius: 6px;
+      padding: 2px 6px;
+      cursor: pointer;
+      font-size: 0.82rem;
+      line-height: 1;
+    }
+
+    .icon-btn:hover { background: var(--surface-hover); }
+
+    .spin {
+      display: inline-block;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    .version-check-details {
+      border-top: 1px solid var(--border-subtle);
+      padding-top: 8px;
+      display: none;
+    }
+
+    .version-check-details.open {
+      display: block;
+    }
+
+    .version-check-release {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 0.78rem;
+      margin-top: 4px;
+    }
+
     .row {
       display: flex;
       gap: 10px;
@@ -343,6 +429,20 @@
       <div class="subtitle">Service controls, cron triggers, backups, and full audit trail.</div>
     </div>
 
+    <section id="versionCheckBanner" class="version-check-banner" aria-label="OpenClaw version check">
+      <div class="version-check-main">
+        <div id="versionCheckSummary" class="version-check-summary">
+          <span class="version-check-dot version-gray"></span>
+          <span>Version check unavailable</span>
+        </div>
+        <div class="version-check-actions">
+          <button id="versionRefreshBtn" class="icon-btn" title="Refresh version check" aria-label="Refresh version check">↻</button>
+          <button id="versionToggleBtn" class="icon-btn" title="Show release details" aria-label="Show release details">▾</button>
+        </div>
+      </div>
+      <div id="versionCheckDetails" class="version-check-details"></div>
+    </section>
+
     <!-- Service Controls -->
     <section class="section">
       <h2>Service Controls</h2>
@@ -449,10 +549,12 @@
   <script>
     const state = {
       logOffset: 0,
-      logCategory: ''
+      logCategory: '',
+      versionCheckExpanded: false
     };
 
     const $ = (id) => document.getElementById(id);
+    const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 
     // Show toast notification.
     const toast = (msg) => {
@@ -498,6 +600,88 @@
         throw new Error(payload.error || 'Request failed');
       }
       return payload;
+    }
+
+    function getVersionCheckView(data = {}) {
+      const status = data.status || 'check_failed';
+      const installed = data.current_version || data.installed_version || 'unknown';
+      const latest = data.latest_version || 'unknown';
+
+      if (status === 'up_to_date') {
+        return {
+          color: 'version-green',
+          message: `✅ OpenClaw ${installed} is up to date`
+        };
+      }
+
+      if (status === 'update_available') {
+        if (data.has_security_patch) {
+          return {
+            color: 'version-red',
+            message: `🚨 ${installed} → ${latest} (${data.versions_behind || '?'} behind) security update available`
+          };
+        }
+        if (data.has_breaking_changes) {
+          return {
+            color: 'version-yellow',
+            message: `⚠️ ${installed} → ${latest} (${data.versions_behind || '?'} behind) includes breaking changes`
+          };
+        }
+        return {
+          color: 'version-yellow',
+          message: `⬆️ ${installed} → ${latest} (${data.versions_behind || '?'} behind)`
+        };
+      }
+
+      return {
+        color: 'version-gray',
+        message: `OpenClaw ${installed} · check unavailable`
+      };
+    }
+
+    function renderVersionCheck(data = {}) {
+      const view = getVersionCheckView(data);
+      $('versionCheckSummary').innerHTML = `
+        <span class="version-check-dot ${view.color}"></span>
+        <span>${esc(view.message)}</span>
+      `;
+
+      const releases = Array.isArray(data.releases_between) ? data.releases_between : [];
+      const detailRows = releases.map((release) => {
+        const flags = [release.has_security_patch ? 'security' : '', release.has_breaking_changes ? 'breaking' : ''].filter(Boolean).join(', ');
+        return `
+          <div class="version-check-release">
+            <span><strong>${esc(release.version || 'unknown')}</strong> · ${esc(release.date || 'unknown date')}</span>
+            <span class="muted">${esc(flags || 'standard')}</span>
+          </div>
+        `;
+      }).join('');
+
+      $('versionCheckDetails').innerHTML = detailRows || '<div class="muted">No intermediate releases listed.</div>';
+      $('versionCheckDetails').classList.toggle('open', state.versionCheckExpanded);
+      $('versionToggleBtn').textContent = state.versionCheckExpanded ? '▴' : '▾';
+    }
+
+    async function loadVersionCheck() {
+      const data = await api('/api/ops/version-check');
+      renderVersionCheck(data);
+    }
+
+    async function refreshVersionCheck(btn) {
+      if (!btn) return;
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spin">↻</span>';
+      try {
+        const data = await api('/api/ops/version-check/refresh', { method: 'POST' });
+        renderVersionCheck(data);
+        toast('Version check refreshed');
+        await resetLogs();
+      } catch (error) {
+        toast(error.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '↻';
+      }
     }
 
     // Load and render service cards.
@@ -800,6 +984,21 @@
       window.__opsInitRoot = initRoot;
 
       $('freshSessionBtn').onclick = handleFreshSession;
+      $('versionCheckBanner').onclick = () => {
+        state.versionCheckExpanded = !state.versionCheckExpanded;
+        $('versionCheckDetails').classList.toggle('open', state.versionCheckExpanded);
+        $('versionToggleBtn').textContent = state.versionCheckExpanded ? '▴' : '▾';
+      };
+      $('versionRefreshBtn').onclick = (event) => {
+        event.stopPropagation();
+        refreshVersionCheck(event.currentTarget);
+      };
+      $('versionToggleBtn').onclick = (event) => {
+        event.stopPropagation();
+        state.versionCheckExpanded = !state.versionCheckExpanded;
+        $('versionCheckDetails').classList.toggle('open', state.versionCheckExpanded);
+        $('versionToggleBtn').textContent = state.versionCheckExpanded ? '▴' : '▾';
+      };
       $('cleanupBtn').onclick = handleCleanup;
       $('loadMoreLogBtn').onclick = () => loadLog(true);
       $('logCategory').onchange = async (event) => {
@@ -815,10 +1014,13 @@
       };
 
       try {
-        await Promise.all([loadServices(), loadCrons(), loadBackups()]);
+        await Promise.all([loadServices(), loadVersionCheck(), loadCrons(), loadBackups()]);
         await resetLogs();
         if (window.__opsServicesRefreshTimer) clearInterval(window.__opsServicesRefreshTimer);
-        window.__opsServicesRefreshTimer = setInterval(loadServices, 30000);
+        window.__opsServicesRefreshTimer = setInterval(() => {
+          loadServices().catch((error) => toast(error.message));
+          loadVersionCheck().catch((error) => toast(error.message));
+        }, 60000);
       } catch (error) {
         toast(error.message);
       }
