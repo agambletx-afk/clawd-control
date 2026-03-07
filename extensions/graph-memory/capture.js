@@ -24,6 +24,14 @@ const SENSITIVE_PATTERNS = [
     /-----BEGIN (?:RSA |EC |DSA )?PRIVATE KEY-----/i,
 ];
 
+function splitIntoSentences(text) {
+    // Split on sentence boundaries and newlines
+    return text
+        .split(/(?<=[.!?])\s+|\n+/)
+        .map(s => s.trim())
+        .filter(s => s.length > 0);
+}
+
 function initCapture(api, db, config = {}) {
     if (config.capture === false) {
         api.logger?.info?.('[graph-memory] per-turn capture disabled by config');
@@ -46,19 +54,31 @@ function initCapture(api, db, config = {}) {
             const lastUserText = extractMessageText(lastUser).trim();
             if (!lastUserText || lastUserText.length < 5) return;
 
+            // Skip heartbeat/cron turns - low value for fact capture
+            if (/^\[STABILITY|^\[GRAPH MEMORY|^\[CONTINUITY|heartbeat|cron|reminder|no tasks|check.?in|maintenance cycle|TASK-WORKER|Read HEARTBEAT|Follow its instructions|health-status|run your|Read.*workspace/i.test(lastUserText)) return;
+
             const assistantTexts = messages
                 .filter((m) => m?.role === 'assistant')
                 .map((m) => extractMessageText(m))
                 .map((s) => s.trim())
                 .filter(Boolean);
 
-            let inserted = 0;
+            // Split responses into sentences for pattern matching
+            const sentences = [];
             for (const text of assistantTexts) {
+                for (const s of splitIntoSentences(text)) {
+                    sentences.push(s);
+                }
+            }
+
+            let inserted = 0;
+            for (const text of sentences) {
                 if (inserted >= MAX_FACTS_PER_TURN) break;
                 if (!shouldCapture(text)) continue;
 
-                const category = detectCategory(text);
-                let { entity, key, value } = extractStructuredFields(text);
+                const cleaned = stripMarkdown(text);
+                const category = detectCategory(cleaned);
+                let { entity, key, value } = extractStructuredFields(cleaned);
 
                 if (!entity || !key || !value) {
                     entity = category === 'system' ? 'Jarvis' : 'Adam';
@@ -116,6 +136,7 @@ function shouldCapture(text) {
 function hasXmlOrHtml(text) {
     if (/<\/?[A-Za-z][^>]*>/.test(text)) return true;
     if (/\[GRAPH MEMORY\]/i.test(text)) return true;
+    if (/\[\[[a-z_]+\]\]/.test(text)) return true;
     if (/relevant-memories/i.test(text)) return true;
     return false;
 }
@@ -127,6 +148,7 @@ function hasHeavyMarkdown(text) {
     const hasBold = /\*\*[^*]+\*\*/.test(text) || /__[^_]+__/.test(text);
     const hasList = /^\s*[-*+]\s+/m.test(text) || /^\s*\d+\.\s+/m.test(text);
     if (hasHeader || (hasBold && hasList)) return true;
+    if (/^\s*>/.test(text)) return true;
 
     return false;
 }
@@ -134,6 +156,16 @@ function hasHeavyMarkdown(text) {
 function countEmoji(text) {
     const matches = text.match(/[\u{1F300}-\u{1FAFF}]/gu);
     return matches ? matches.length : 0;
+}
+
+function stripMarkdown(text) {
+    return text
+        .replace(/^>\s*/gm, '')        // blockquotes
+        .replace(/\*\*([^*]+)\*\*/g, '$1')  // bold
+        .replace(/\*([^*]+)\*/g, '$1')      // italic
+        .replace(/`([^`]+)`/g, '$1')        // inline code
+        .replace(/^\s*[-*+]\s+/gm, '')      // list markers
+        .trim();
 }
 
 function detectCategory(text) {
@@ -292,12 +324,10 @@ function insertFact(db, fact) {
 
     db.prepare(`
         INSERT INTO facts (
-            id, text, category, importance, entity, key, value,
+            category, importance, entity, key, value,
             source, created_at, decay_class, expires_at, last_confirmed_at, confidence
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-        crypto.randomUUID(),
-        fact.text,
         fact.category,
         0.7,
         fact.entity,
