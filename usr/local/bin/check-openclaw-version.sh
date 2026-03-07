@@ -53,9 +53,9 @@ sanitize_version() {
 
 if [[ -r "$ENV_FILE" ]]; then
   # shellcheck disable=SC1090
-  set -a
+  set +u; set -a
   . "$ENV_FILE"
-  set +a
+  set +a; set -u
 fi
 
 timestamp="$(iso_now)"
