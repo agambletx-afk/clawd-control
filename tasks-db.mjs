@@ -22,6 +22,10 @@ function normalizeDependsOn(value) {
   return ids.length ? ids.join(',') : null;
 }
 
+function nowEpochSeconds() {
+  return Math.floor(Date.now() / 1000);
+}
+
 function sanitizeCreateData(data = {}) {
   const out = {};
   if (typeof data.title === 'string') out.title = data.title.trim();
@@ -133,7 +137,8 @@ export function getDb() {
       token_estimate INTEGER DEFAULT NULL,
       token_actual INTEGER DEFAULT NULL,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      last_activity_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER))
     );
 
     CREATE TABLE IF NOT EXISTS task_history (
@@ -148,6 +153,7 @@ export function getDb() {
     CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
     CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority);
     CREATE INDEX IF NOT EXISTS idx_tasks_assigned ON tasks(assigned_agent);
+    CREATE INDEX IF NOT EXISTS idx_tasks_last_activity ON tasks(last_activity_at);
     CREATE INDEX IF NOT EXISTS idx_history_task ON task_history(task_id);
   `);
 
@@ -162,6 +168,24 @@ export function getDb() {
   if (!taskColumns.has('last_failure_reason')) {
     db.exec('ALTER TABLE tasks ADD COLUMN last_failure_reason TEXT');
   }
+  if (!taskColumns.has('last_activity_at')) {
+    db.exec('ALTER TABLE tasks ADD COLUMN last_activity_at INTEGER');
+  }
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_tasks_last_activity ON tasks(last_activity_at);
+
+    UPDATE tasks
+    SET last_activity_at = COALESCE(
+      (
+        SELECT CAST(strftime('%s', MAX(created_at)) AS INTEGER)
+        FROM task_history
+        WHERE task_id = tasks.id
+      ),
+      CAST(strftime('%s', created_at) AS INTEGER)
+    )
+    WHERE last_activity_at IS NULL OR last_activity_at <= 0;
+  `);
 
   return db;
 }
@@ -265,6 +289,10 @@ export function addHistory(taskId, actor, action, detail = '') {
       .prepare('INSERT INTO task_history (task_id, actor, action, detail) VALUES (?, ?, ?, ?)')
       .run(taskId, safeActor, safeAction, safeDetail);
 
+    conn
+      .prepare('UPDATE tasks SET last_activity_at = ? WHERE id = ?')
+      .run(nowEpochSeconds(), taskId);
+
     const count = conn.prepare('SELECT COUNT(*) AS c FROM task_history WHERE task_id = ?').get(taskId).c;
     if (count > 50) {
       const overflow = count - 50;
@@ -302,7 +330,7 @@ export function createTask(data) {
     const stmt = conn.prepare(`
       INSERT INTO tasks (
         title, description, status, priority, assigned_agent, depends_on,
-        handoff_payload, created_by, source, token_estimate, token_actual, max_retries
+        handoff_payload, created_by, source, token_estimate, token_actual, max_retries, last_activity_at
       ) VALUES (
         @title,
         @description,
@@ -315,7 +343,8 @@ export function createTask(data) {
         @source,
         @token_estimate,
         @token_actual,
-        @max_retries
+        @max_retries,
+        @last_activity_at
       )
     `);
 
@@ -332,6 +361,7 @@ export function createTask(data) {
       token_estimate: Number.isFinite(payload.token_estimate) ? payload.token_estimate : null,
       token_actual: Number.isFinite(payload.token_actual) ? payload.token_actual : null,
       max_retries: Number.isInteger(payload.max_retries) && payload.max_retries >= 0 ? payload.max_retries : 2,
+      last_activity_at: nowEpochSeconds(),
     });
 
     addHistory(result.lastInsertRowid, payload.created_by ?? 'adam', 'created', '');
@@ -353,9 +383,17 @@ export function updateTask(id, data) {
   if (!fields.length) return getTaskById(id);
 
   const tx = conn.transaction(() => {
-    const setClause = fields.map((field) => `${field} = @${field}`).join(', ');
+    const updatePayload = { id, ...payload };
+    let setFields = [...fields];
+
+    if (Object.hasOwn(payload, 'status') && payload.status !== current.status) {
+      setFields.push('last_activity_at');
+      updatePayload.last_activity_at = nowEpochSeconds();
+    }
+
+    const setClause = setFields.map((field) => `${field} = @${field}`).join(', ');
     const stmt = conn.prepare(`UPDATE tasks SET ${setClause}, updated_at = datetime('now') WHERE id = @id`);
-    stmt.run({ id, ...payload });
+    stmt.run(updatePayload);
 
     const detail = fields.join(', ');
     addHistory(id, 'system', 'updated', detail);
@@ -445,6 +483,52 @@ export function getTaskStats() {
   };
 }
 
+export function getStaleTasks(softThreshold = 48, hardThreshold = 120) {
+  const conn = getDb();
+  const safeSoft = Number.isFinite(softThreshold) && softThreshold >= 1 ? Math.floor(softThreshold) : 48;
+  const safeHardInput = Number.isFinite(hardThreshold) && hardThreshold >= 1 ? Math.floor(hardThreshold) : 120;
+  const safeHard = Math.max(safeHardInput, safeSoft);
+  const nowEpoch = nowEpochSeconds();
+  const staleCutoff = nowEpoch - (safeSoft * 3600);
+
+  const rows = conn.prepare(`
+    SELECT id, title, assigned_agent, status, last_activity_at, failure_count, max_retries, depends_on
+    FROM tasks
+    WHERE status = 'in_progress'
+      AND assigned_agent IS NOT NULL
+      AND trim(assigned_agent) != ''
+      AND assigned_agent != 'orchestrator'
+      AND last_activity_at IS NOT NULL
+      AND last_activity_at <= ?
+    ORDER BY last_activity_at ASC, id ASC
+  `).all(staleCutoff);
+
+  const stale = rows.map((row) => {
+    const hoursSinceUpdate = Math.floor((nowEpoch - row.last_activity_at) / 3600);
+    const severity = hoursSinceUpdate >= safeHard ? 'hard' : 'soft';
+    return {
+      id: row.id,
+      title: row.title,
+      assignedTo: row.assigned_agent,
+      status: row.status,
+      hoursSinceUpdate,
+      severity,
+      lastUpdated: new Date(row.last_activity_at * 1000).toISOString(),
+      failureCount: row.failure_count,
+      maxRetries: row.max_retries,
+      dependsOn: row.depends_on,
+    };
+  });
+
+  const counts = stale.reduce((acc, item) => {
+    acc[item.severity] += 1;
+    acc.total += 1;
+    return acc;
+  }, { soft: 0, hard: 0, total: 0 });
+
+  return { stale, counts };
+}
+
 export function getProposalCount(date) {
   const conn = getDb();
   return conn
@@ -486,9 +570,10 @@ export function recordFailure(id, reason) {
                       WHEN (failure_count + 1) <= max_retries THEN 'backlog'
                       ELSE 'failed'
                     END,
+                    last_activity_at = @now_epoch,
                     updated_at = datetime('now')
                 WHERE id = @id`)
-      .run({ id, reason: safeReason || null });
+      .run({ id, reason: safeReason || null, now_epoch: nowEpochSeconds() });
 
     const updated = conn
       .prepare('SELECT failure_count, max_retries, last_failure_reason, status FROM tasks WHERE id = ?')
@@ -523,9 +608,10 @@ export function resetTaskRetries(id) {
                 SET failure_count = 0,
                     last_failure_reason = NULL,
                     status = 'backlog',
+                    last_activity_at = ?,
                     updated_at = datetime('now')
                 WHERE id = ?`)
-      .run(id);
+      .run(nowEpochSeconds(), id);
 
     addHistory(id, 'system', 'retries_reset', `Retries reset (max ${task.max_retries}) and moved to backlog`);
     return getTaskById(id);
