@@ -63,6 +63,8 @@ const SECURITY_CHECK_SCRIPT_PATH = '/usr/local/bin/check-security-health.sh';
 const SECURITY_TEST_RESULTS_PATH = '/tmp/security-test-results.json';
 const SECURITY_TEST_SCRIPT_PATH = '/usr/local/bin/run-security-test.sh';
 const SECURITY_TEST_LOCK_PATH = '/tmp/security-test.lock';
+const API_LIVENESS_PATH = '/tmp/openclaw-api-liveness.json';
+const API_LIVENESS_LOG_PATH = '/var/log/openclaw-liveness.log';
 const VERSION_CHECK_RESULTS_PATH = '/tmp/openclaw-version-check.json';
 const VERSION_CHECK_SCRIPT_PATH = '/usr/local/bin/check-openclaw-version.sh';
 const VERIFY_RESULTS_PATH = '/tmp/verify-deployment-results.json';
@@ -2817,6 +2819,50 @@ const server = createServer((req, res) => {
     return;
   }
 
+  if (path === '/api/ops/gateway-events' && req.method === 'GET') {
+    try {
+      const limitRaw = Number.parseInt(url.searchParams.get('limit') || '50', 10);
+      const limit = Math.max(1, Math.min(200, Number.isFinite(limitRaw) ? limitRaw : 50));
+
+      if (!existsSync(API_LIVENESS_LOG_PATH)) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ events: [] }));
+        return;
+      }
+
+      const lines = readFileSync(API_LIVENESS_LOG_PATH, 'utf8')
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean);
+
+      if (lines.length === 0) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ events: [] }));
+        return;
+      }
+
+      const events = lines
+        .slice(-limit)
+        .reverse()
+        .map((line) => {
+          const match = line.match(/^\[([^\]]+)\]\s*(.*)$/);
+          if (!match) return null;
+          return {
+            timestamp: match[1],
+            message: match[2] || '',
+          };
+        })
+        .filter(Boolean);
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ events }));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
   if (path === '/api/ops/version-check' && req.method === 'GET') {
     try {
       if (!existsSync(VERSION_CHECK_RESULTS_PATH)) {
@@ -3293,6 +3339,27 @@ const server = createServer((req, res) => {
       const data = JSON.parse(readFileSync(SECURITY_TEST_RESULTS_PATH, 'utf8'));
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(data));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (path === '/api/security/liveness' && req.method === 'GET') {
+    try {
+      if (!existsSync(API_LIVENESS_PATH)) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ never_run: true }));
+        return;
+      }
+
+      const data = JSON.parse(readFileSync(API_LIVENESS_PATH, 'utf8'));
+      const checkedAtMs = Date.parse(data?.checked_at);
+      const stale = !data?.checked_at || Number.isNaN(checkedAtMs) || (Date.now() - checkedAtMs > 10 * 60 * 1000);
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ...data, stale }));
     } catch (e) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: e.message }));
