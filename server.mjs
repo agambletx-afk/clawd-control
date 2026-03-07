@@ -31,6 +31,7 @@ import {
   getTaskFailures,
   resetTaskRetries,
   getStaleTasks,
+  validateTransition,
 } from './tasks-db.mjs';
 
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
@@ -3559,6 +3560,7 @@ const server = createServer((req, res) => {
           'token_estimate',
           'token_actual',
           'max_retries',
+          'source',
         ]);
         const requestedKeys = Object.keys(body);
         const hasInvalidField = requestedKeys.some((key) => !allowedFields.has(key));
@@ -3583,8 +3585,8 @@ const server = createServer((req, res) => {
           return;
         }
 
+        const source = typeof body.source === 'string' && body.source.trim() ? body.source.trim() : 'human';
         const targetStatus = typeof body.status === 'string' ? body.status : current.status;
-        const targetPriority = typeof body.priority === 'string' ? body.priority : current.priority;
         const targetDepends = Object.hasOwn(body, 'depends_on') ? body.depends_on : current.depends_on;
         const depIds = parseDependsOnIds(targetDepends);
         if (depIds.includes(taskId)) {
@@ -3607,17 +3609,34 @@ const server = createServer((req, res) => {
           }
         }
 
-        let task = updateTask(taskId, body);
+        if (Object.hasOwn(body, 'status') && targetStatus !== current.status) {
+          const validation = validateTransition(current.status, targetStatus, source);
+          if (!validation.valid) {
+            const validList = validation.validTransitions.join(', ');
+            const message = `Cannot move from ${current.status} to ${targetStatus}. Valid next states: ${validList || 'none'}.`;
+            addHistory(taskId, 'system', 'transition_rejected', `${current.status} -> ${targetStatus} (source: ${source})`);
+            res.writeHead(409, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+              error: 'invalid_transition',
+              current_status: current.status,
+              requested_status: targetStatus,
+              message,
+              valid_transitions: validation.validTransitions,
+            }));
+            return;
+          }
+        }
+
+        const updateBody = { ...body };
+        delete updateBody.source;
+        if (Object.hasOwn(updateBody, 'status') && targetStatus !== current.status) {
+          updateBody.transitioned_by = source;
+        }
+
+        const task = updateTask(taskId, updateBody);
 
         if (current.status !== targetStatus) {
           addHistory(taskId, 'system', 'status_changed', `${current.status} -> ${targetStatus}`);
-        }
-
-        if (current.status !== 'review' && targetStatus === 'review' && (targetPriority === 'low' || targetPriority === 'medium')) {
-          addHistory(taskId, 'system', 'review_entered', 'Task moved to review');
-          task = updateTask(taskId, { status: 'done' });
-          addHistory(taskId, 'system', 'auto_approved', `Auto-approved (${targetPriority} priority): review -> done`);
-          addHistory(taskId, 'system', 'status_changed', 'review -> done');
         }
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
