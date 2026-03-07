@@ -1,0 +1,12 @@
+[Unit]
+Description=OpenClaw Session Size Watchdog
+
+[Service]
+Type=oneshot
+User=openclaw
+Environment=SESSIONS_DIR=/home/openclaw/.openclaw/agents/main/sessions
+Environment=MAX_SIZE=256000
+ExecStart=/usr/local/bin/session-watchdog.sh
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=session-watchdog
