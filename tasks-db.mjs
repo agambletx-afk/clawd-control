@@ -8,6 +8,8 @@ let db;
 const VALID_STATUSES = new Set(['proposed', 'backlog', 'in_progress', 'review', 'done', 'archive', 'failed']);
 const VALID_PRIORITIES = new Set(['critical', 'high', 'medium', 'low']);
 const VALID_SOURCES = new Set(['dashboard', 'telegram', 'cron', 'agent']);
+const VALID_GOAL_STATUSES = new Set(['active', 'paused', 'completed', 'archived']);
+const VALID_GOAL_PERIODS = new Set(['day', 'week']);
 
 function normalizeTransitionSource(source) {
   const raw = typeof source === 'string' && source.trim() ? source.trim().toLowerCase() : 'human';
@@ -107,6 +109,10 @@ function sanitizeCreateData(data = {}) {
   if (Object.hasOwn(data, 'max_retries')) {
     out.max_retries = data.max_retries == null ? null : Number.parseInt(data.max_retries, 10);
   }
+  if (Object.hasOwn(data, 'goal_id')) {
+    const goalId = data.goal_id == null ? null : Number.parseInt(data.goal_id, 10);
+    out.goal_id = Number.isInteger(goalId) && goalId > 0 ? goalId : null;
+  }
   return out;
 }
 
@@ -123,6 +129,7 @@ function sanitizeUpdateData(data = {}) {
     'token_actual',
     'max_retries',
     'transitioned_by',
+    'goal_id',
   ];
   const out = {};
   for (const key of allowed) {
@@ -149,7 +156,28 @@ function sanitizeUpdateData(data = {}) {
       out.max_retries = data.max_retries == null ? null : Number.parseInt(data.max_retries, 10);
     } else if (key === 'transitioned_by') {
       out.transitioned_by = data.transitioned_by == null ? null : String(data.transitioned_by).trim() || null;
+    } else if (key === 'goal_id') {
+      const goalId = data.goal_id == null ? null : Number.parseInt(data.goal_id, 10);
+      out.goal_id = Number.isInteger(goalId) && goalId > 0 ? goalId : null;
     }
+  }
+  return out;
+}
+
+function sanitizeGoalData(data = {}) {
+  const out = {};
+  if (typeof data.title === 'string') out.title = data.title.trim();
+  if (Object.hasOwn(data, 'description')) out.description = data.description == null ? '' : String(data.description);
+  if (typeof data.status === 'string' && VALID_GOAL_STATUSES.has(data.status)) out.status = data.status;
+  if (Object.hasOwn(data, 'assigned_agents')) {
+    out.assigned_agents = data.assigned_agents == null ? '[]' : String(data.assigned_agents);
+  }
+  if (Object.hasOwn(data, 'tasks_per_period')) {
+    out.tasks_per_period = data.tasks_per_period == null ? null : Number.parseInt(data.tasks_per_period, 10);
+  }
+  if (typeof data.period === 'string' && VALID_GOAL_PERIODS.has(data.period)) out.period = data.period;
+  if (Object.hasOwn(data, 'max_open_tasks')) {
+    out.max_open_tasks = data.max_open_tasks == null ? null : Number.parseInt(data.max_open_tasks, 10);
   }
   return out;
 }
@@ -215,6 +243,22 @@ export function getDb() {
     CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority);
     CREATE INDEX IF NOT EXISTS idx_tasks_assigned ON tasks(assigned_agent);
     CREATE INDEX IF NOT EXISTS idx_history_task ON task_history(task_id);
+
+    CREATE TABLE IF NOT EXISTS goals (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL CHECK(length(title) <= 200),
+      description TEXT NOT NULL DEFAULT '' CHECK(length(description) <= 2000),
+      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','paused','completed','archived')),
+      assigned_agents TEXT DEFAULT '[]',
+      tasks_per_period INTEGER DEFAULT 1,
+      period TEXT DEFAULT 'day' CHECK(period IN ('day','week')),
+      max_open_tasks INTEGER DEFAULT 3,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_goals_status ON goals(status);
+    CREATE INDEX IF NOT EXISTS idx_goals_created_at ON goals(created_at);
   `);
 
 
@@ -234,9 +278,13 @@ export function getDb() {
   if (!taskColumns.has('transitioned_by')) {
     db.exec('ALTER TABLE tasks ADD COLUMN transitioned_by TEXT');
   }
+  if (!taskColumns.has('goal_id')) {
+    db.exec('ALTER TABLE tasks ADD COLUMN goal_id INTEGER');
+  }
 
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_tasks_last_activity ON tasks(last_activity_at);
+    CREATE INDEX IF NOT EXISTS idx_tasks_goal_id ON tasks(goal_id);
 
     UPDATE tasks
     SET last_activity_at = COALESCE(
@@ -393,7 +441,7 @@ export function createTask(data) {
     const stmt = conn.prepare(`
       INSERT INTO tasks (
         title, description, status, priority, assigned_agent, depends_on,
-        handoff_payload, created_by, source, token_estimate, token_actual, max_retries, last_activity_at
+        handoff_payload, created_by, source, token_estimate, token_actual, max_retries, last_activity_at, goal_id
       ) VALUES (
         @title,
         @description,
@@ -407,7 +455,8 @@ export function createTask(data) {
         @token_estimate,
         @token_actual,
         @max_retries,
-        @last_activity_at
+        @last_activity_at,
+        @goal_id
       )
     `);
 
@@ -425,6 +474,7 @@ export function createTask(data) {
       token_actual: Number.isFinite(payload.token_actual) ? payload.token_actual : null,
       max_retries: Number.isInteger(payload.max_retries) && payload.max_retries >= 0 ? payload.max_retries : 2,
       last_activity_at: nowEpochSeconds(),
+      goal_id: Number.isInteger(payload.goal_id) && payload.goal_id > 0 ? payload.goal_id : null,
     });
 
     addHistory(result.lastInsertRowid, payload.created_by ?? 'adam', 'created', '');
@@ -543,6 +593,156 @@ export function getTaskStats() {
     tokens_by_priority: tokensByPriority,
     completion_rate: total ? Math.round((byStatus.done / total) * 100) / 100 : 0,
     stuck_tasks: stuckTasks,
+  };
+}
+
+
+function getIsoWeekBoundsUtc(now = new Date()) {
+  const date = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const day = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - day);
+  const weekStart = new Date(date);
+  weekStart.setUTCDate(date.getUTCDate() - 3);
+  weekStart.setUTCHours(0, 0, 0, 0);
+  const weekEnd = new Date(weekStart);
+  weekEnd.setUTCDate(weekStart.getUTCDate() + 7);
+  return { start: weekStart.toISOString().slice(0, 19).replace('T', ' '), end: weekEnd.toISOString().slice(0, 19).replace('T', ' ') };
+}
+
+function getDayBoundsUtc(now = new Date()) {
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const end = new Date(start);
+  end.setUTCDate(start.getUTCDate() + 1);
+  return { start: start.toISOString().slice(0, 19).replace('T', ' '), end: end.toISOString().slice(0, 19).replace('T', ' ') };
+}
+
+export function createGoal(data) {
+  const conn = getDb();
+  const payload = sanitizeGoalData(data);
+  if (!payload.title) throw new Error('title is required');
+
+  const result = conn.prepare(`
+    INSERT INTO goals (title, description, status, assigned_agents, tasks_per_period, period, max_open_tasks)
+    VALUES (@title, @description, @status, @assigned_agents, @tasks_per_period, @period, @max_open_tasks)
+  `).run({
+    title: payload.title,
+    description: payload.description ?? '',
+    status: payload.status ?? 'active',
+    assigned_agents: payload.assigned_agents ?? '[]',
+    tasks_per_period: Number.isInteger(payload.tasks_per_period) && payload.tasks_per_period >= 0 ? payload.tasks_per_period : 1,
+    period: payload.period ?? 'day',
+    max_open_tasks: Number.isInteger(payload.max_open_tasks) && payload.max_open_tasks >= 0 ? payload.max_open_tasks : 3,
+  });
+
+  return getGoalById(result.lastInsertRowid);
+}
+
+export function getGoalById(id) {
+  const conn = getDb();
+  return conn.prepare('SELECT * FROM goals WHERE id = ?').get(id) || null;
+}
+
+export function getAllGoals(statusFilter) {
+  const conn = getDb();
+  if (statusFilter && VALID_GOAL_STATUSES.has(statusFilter)) {
+    return conn.prepare('SELECT * FROM goals WHERE status = ? ORDER BY datetime(created_at) DESC, id DESC').all(statusFilter);
+  }
+  return conn.prepare('SELECT * FROM goals ORDER BY datetime(created_at) DESC, id DESC').all();
+}
+
+export function updateGoal(id, data) {
+  const conn = getDb();
+  const current = getGoalById(id);
+  if (!current) return null;
+
+  const payload = sanitizeGoalData(data);
+  const allowed = ['title', 'description', 'status', 'assigned_agents', 'tasks_per_period', 'period', 'max_open_tasks'];
+  const fields = allowed.filter((field) => Object.hasOwn(payload, field));
+  if (!fields.length) return current;
+
+  const stmt = conn.prepare(`UPDATE goals SET ${fields.map((f) => `${f} = @${f}`).join(', ')}, updated_at = datetime('now') WHERE id = @id`);
+  const updateData = { id, ...payload };
+  stmt.run(updateData);
+  return getGoalById(id);
+}
+
+export function archiveGoal(id) {
+  return updateGoal(id, { status: 'archived' });
+}
+
+export function getGoalTasks(goalId) {
+  const conn = getDb();
+  return conn.prepare('SELECT * FROM tasks WHERE goal_id = ? ORDER BY datetime(created_at) DESC, id DESC').all(goalId);
+}
+
+export function getGoalTaskStats(goalId) {
+  const conn = getDb();
+  const rows = conn.prepare('SELECT status, COUNT(*) AS count FROM tasks WHERE goal_id = ? GROUP BY status').all(goalId);
+  const byStatus = {
+    proposed: 0,
+    backlog: 0,
+    in_progress: 0,
+    review: 0,
+    done: 0,
+    archive: 0,
+    failed: 0,
+  };
+  for (const row of rows) {
+    if (Object.hasOwn(byStatus, row.status)) byStatus[row.status] = row.count;
+  }
+  return byStatus;
+}
+
+export function goalNeedsTasks(goalId) {
+  const conn = getDb();
+  const goal = getGoalById(goalId);
+  if (!goal) return null;
+
+  const currentOpen = conn.prepare(`
+    SELECT COUNT(*) AS c FROM tasks
+    WHERE goal_id = ? AND status NOT IN ('done', 'archive', 'failed')
+  `).get(goalId).c;
+
+  const bounds = goal.period === 'week' ? getIsoWeekBoundsUtc() : getDayBoundsUtc();
+  const currentPeriodCreated = conn.prepare(`
+    SELECT COUNT(*) AS c FROM tasks
+    WHERE goal_id = ?
+      AND datetime(created_at) >= datetime(?)
+      AND datetime(created_at) < datetime(?)
+  `).get(goalId, bounds.start, bounds.end).c;
+
+  const maxOpenTasks = Number.isInteger(goal.max_open_tasks) ? goal.max_open_tasks : 3;
+  const tasksPerPeriod = Number.isInteger(goal.tasks_per_period) ? goal.tasks_per_period : 1;
+
+  if (currentOpen >= maxOpenTasks) {
+    return {
+      needs_tasks: false,
+      current_open: currentOpen,
+      max_open_tasks: maxOpenTasks,
+      current_period_created: currentPeriodCreated,
+      tasks_per_period: tasksPerPeriod,
+      reason: `${currentOpen} open tasks, limit is ${maxOpenTasks}`,
+    };
+  }
+
+  if (currentPeriodCreated >= tasksPerPeriod) {
+    return {
+      needs_tasks: false,
+      current_open: currentOpen,
+      max_open_tasks: maxOpenTasks,
+      current_period_created: currentPeriodCreated,
+      tasks_per_period: tasksPerPeriod,
+      reason: `${currentPeriodCreated} tasks created this ${goal.period}, limit is ${tasksPerPeriod}`,
+    };
+  }
+
+  return {
+    needs_tasks: true,
+    current_open: currentOpen,
+    max_open_tasks: maxOpenTasks,
+    current_period_created: currentPeriodCreated,
+    tasks_per_period: tasksPerPeriod,
+    reason: `${currentPeriodCreated} tasks created this ${goal.period}, limit is ${tasksPerPeriod}`,
   };
 }
 

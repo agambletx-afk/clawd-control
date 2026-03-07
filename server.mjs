@@ -32,6 +32,13 @@ import {
   resetTaskRetries,
   getStaleTasks,
   validateTransition,
+  createGoal,
+  getGoalById,
+  getAllGoals,
+  updateGoal,
+  archiveGoal,
+  getGoalTasks,
+  goalNeedsTasks,
 } from './tasks-db.mjs';
 
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
@@ -3174,6 +3181,187 @@ const server = createServer((req, res) => {
     return;
   }
 
+
+  if (path === '/api/goals' && req.method === 'GET') {
+    try {
+      getDb();
+      const status = url.searchParams.get('status') || undefined;
+      const goals = getAllGoals(status);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ goals }));
+    } catch (e) {
+      console.error('[API] /api/goals error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Internal server error' }));
+    }
+    return;
+  }
+
+  if (path === '/api/goals' && req.method === 'POST') {
+    readJsonBody(req).then((body) => {
+      const title = typeof body.title === 'string' ? body.title.trim() : '';
+      if (!title || title.length > 200) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'title is required and must be <= 200 chars' }));
+        return;
+      }
+      if (typeof body.description === 'string' && body.description.length > 2000) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'description must be <= 2000 chars' }));
+        return;
+      }
+      try {
+        const goal = createGoal(body);
+        res.writeHead(201, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ goal }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message || 'Invalid goal payload' }));
+      }
+    }).catch((e) => {
+      const code = e.message === 'Payload too large' ? 413 : 400;
+      res.writeHead(code, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message === 'Payload too large' ? 'Payload too large' : 'Invalid JSON body' }));
+    });
+    return;
+  }
+
+  if (path.startsWith('/api/goals/') && path.endsWith('/tasks') && req.method === 'GET') {
+    const segments = path.split('/');
+    const goalId = Number.parseInt(segments[3], 10);
+    if (!Number.isInteger(goalId) || goalId <= 0) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid goal id' }));
+      return;
+    }
+    try {
+      const goal = getGoalById(goalId);
+      if (!goal) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Goal not found' }));
+        return;
+      }
+      const tasks = getGoalTasks(goalId);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ tasks }));
+    } catch (e) {
+      console.error('[API] /api/goals/:id/tasks error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Internal server error' }));
+    }
+    return;
+  }
+
+  if (path.startsWith('/api/goals/') && path.endsWith('/needs-tasks') && req.method === 'GET') {
+    const segments = path.split('/');
+    const goalId = Number.parseInt(segments[3], 10);
+    if (!Number.isInteger(goalId) || goalId <= 0) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid goal id' }));
+      return;
+    }
+    try {
+      const goal = getGoalById(goalId);
+      if (!goal) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Goal not found' }));
+        return;
+      }
+      const advisory = goalNeedsTasks(goalId);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(advisory));
+    } catch (e) {
+      console.error('[API] /api/goals/:id/needs-tasks error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Internal server error' }));
+    }
+    return;
+  }
+
+  if (path.startsWith('/api/goals/') && path.split('/').length === 4) {
+    const goalId = Number.parseInt(path.split('/')[3], 10);
+    if (!Number.isInteger(goalId) || goalId <= 0) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid goal id' }));
+      return;
+    }
+
+    if (req.method === 'GET') {
+      try {
+        const goal = getGoalById(goalId);
+        if (!goal) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Goal not found' }));
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ goal }));
+      } catch (e) {
+        console.error('[API] /api/goals/:id error:', e.message);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Internal server error' }));
+      }
+      return;
+    }
+
+    if (req.method === 'PATCH') {
+      readJsonBody(req).then((body) => {
+        const allowedFields = new Set(['title', 'description', 'status', 'assigned_agents', 'tasks_per_period', 'period', 'max_open_tasks']);
+        const requestedKeys = Object.keys(body);
+        const hasInvalidField = requestedKeys.some((key) => !allowedFields.has(key));
+        if (hasInvalidField) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid fields in PATCH body' }));
+          return;
+        }
+        if (typeof body.title === 'string' && body.title.trim().length > 200) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'title must be <= 200 chars' }));
+          return;
+        }
+        if (typeof body.description === 'string' && body.description.length > 2000) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'description must be <= 2000 chars' }));
+          return;
+        }
+
+        const goal = updateGoal(goalId, body);
+        if (!goal) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Goal not found' }));
+          return;
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ goal }));
+      }).catch((e) => {
+        const code = e.message === 'Payload too large' ? 413 : 400;
+        res.writeHead(code, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message === 'Payload too large' ? 'Payload too large' : 'Invalid JSON body' }));
+      });
+      return;
+    }
+
+    if (req.method === 'DELETE') {
+      try {
+        const goal = archiveGoal(goalId);
+        if (!goal) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Goal not found' }));
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ goal }));
+      } catch (e) {
+        console.error('[API] /api/goals/:id delete error:', e.message);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Internal server error' }));
+      }
+      return;
+    }
+  }
+
+
   if (path === '/api/tasks' && req.method === 'GET') {
     try {
       getDb();
@@ -3561,6 +3749,7 @@ const server = createServer((req, res) => {
           'token_actual',
           'max_retries',
           'source',
+          'goal_id',
         ]);
         const requestedKeys = Object.keys(body);
         const hasInvalidField = requestedKeys.some((key) => !allowedFields.has(key));
