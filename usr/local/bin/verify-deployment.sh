@@ -385,8 +385,9 @@ check_config_tools_allow() {
   allow_type=$(jq -r '.tools.sandbox.tools.allow | type? // "null"' "$CONFIG_FILE")
   if [ "$allow_type" != "array" ]; then CHECK_MSG="tool allowlist missing/null"; return 3; fi
   missing=$(jq -r --slurpfile s "$SCHEMA_FILE" '
-    ($s[0].sandbox_tool_allow_baseline // [])
-    | map(select((. as $item | (.tools.sandbox.tools.allow // []) | index($item)) | not))
+    . as $cfg
+    | ($s[0].sandbox_tool_allow_baseline // [])
+    | map(select(. as $item | ($cfg.tools.sandbox.tools.allow // []) | index($item) | not))
     | join(",")
   ' "$CONFIG_FILE")
   if [ -z "$missing" ]; then CHECK_MSG="tool allowlist contains baseline entries"; return 0; fi
@@ -398,8 +399,9 @@ check_config_plugins_required() {
   if [ "$CONFIG_AVAILABLE" -ne 1 ]; then CHECK_MSG="config unavailable"; return 1; fi
   local missing
   missing=$(jq -r --slurpfile s "$SCHEMA_FILE" '
-    ($s[0].required_plugins // [])
-    | map(select((. as $p | .plugins.entries[$p].enabled) != true))
+    . as $cfg
+    | ($s[0].required_plugins // [])
+    | map(select(. as $p | ($cfg.plugins.entries[$p].enabled) != true))
     | join(",")
   ' "$CONFIG_FILE")
   if [ -z "$missing" ]; then CHECK_MSG="required plugins enabled"; return 0; fi
@@ -489,13 +491,7 @@ check_mem_facts_count() {
   return 0
 }
 check_mem_crud_store() {
-  local sql
-  sql=$(cat <<SQL
-INSERT INTO facts (id,text,category,importance,entity,key,value,source,decay_class,confidence,expires_at,last_confirmed_at)
-VALUES ('$VERIFY_TEST_ID','verify test row','ops',1.0,'verify','verify_key','$VERIFY_TEST_ID','verify-script','short',1.0,NULL,datetime('now'));
-SQL
-)
-  sqlite3 "$FACTS_DB" "$sql" >/dev/null 2>&1
+  sqlite3 "$FACTS_DB" "INSERT INTO facts (entity,key,value,category,source,decay_class,confidence) VALUES ('__verify_test','$VERIFY_TEST_ID','true','ops','verify-script','session',1.0);" >/dev/null 2>&1
   if [ $? -eq 0 ]; then STORE_OK=1; CHECK_MSG="crud store insert succeeded"; return 0; fi
   STORE_OK=0
   CHECK_MSG="crud store insert failed"
@@ -504,16 +500,15 @@ SQL
 check_mem_crud_recall() {
   if [ "$STORE_OK" -ne 1 ]; then CHECK_MSG="skipped because store failed"; return 3; fi
   local val
-  val=$(sqlite3 "$FACTS_DB" "SELECT value FROM facts WHERE id='$VERIFY_TEST_ID' LIMIT 1;" 2>/dev/null)
-  if [ "$val" = "$VERIFY_TEST_ID" ]; then CHECK_MSG="crud recall matched stored value"; return 0; fi
-  CHECK_MSG="crud recall value mismatch"
+  val=$(sqlite3 "$FACTS_DB" "SELECT value FROM facts WHERE entity='__verify_test' AND key='$VERIFY_TEST_ID' LIMIT 1;" 2>/dev/null)
+  if [ "$val" = "true" ]; then CHECK_MSG="crud recall matched stored value"; return 0; fi
+  CHECK_MSG="crud recall value mismatch (got: ${val:-empty})"
   return 1
 }
 check_mem_crud_cleanup() {
-  sqlite3 "$FACTS_DB" "DELETE FROM facts WHERE id LIKE '__verify_test_%';" >/dev/null 2>&1
-  sqlite3 "$FACTS_DB" "DELETE FROM facts_fts WHERE rowid IN (SELECT rowid FROM facts_fts WHERE facts_fts MATCH '__verify_test_*');" >/dev/null 2>&1
+  sqlite3 "$FACTS_DB" "DELETE FROM facts WHERE entity='__verify_test';" >/dev/null 2>&1
   local left
-  left=$(sqlite3 "$FACTS_DB" "SELECT COUNT(*) FROM facts WHERE id LIKE '__verify_test_%';" 2>/dev/null)
+  left=$(sqlite3 "$FACTS_DB" "SELECT COUNT(*) FROM facts WHERE entity='__verify_test';" 2>/dev/null)
   if [ "$left" = "0" ]; then CHECK_MSG="crud cleanup removed all verify rows"; return 0; fi
   CHECK_MSG="crud cleanup left $left verify rows"
   return 1
