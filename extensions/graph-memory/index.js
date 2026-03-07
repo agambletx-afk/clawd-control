@@ -21,6 +21,7 @@ const { execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const { initCapture } = require('./capture');
 
 // ---------------------------------------------------------------------------
 // Defaults
@@ -40,6 +41,7 @@ const DEFAULTS = {
     cacheTTL: 60000,          // Cache TTL in ms (60 seconds)
     showEmptyResults: false,  // Set to true to show "[GRAPH MEMORY] No matching entities found"
     telemetryPath: "/tmp/openclaw/memory-telemetry.jsonl",
+    capture: true,
     debug: false,             // Set true for redacted diagnostics
 };
 
@@ -542,6 +544,8 @@ module.exports = {
                 return { prependContext: '' };
             }
         }, { priority: 5 });
+
+        initCapture(api, db, DEFAULTS);
 
         // -------------------------------------------------------------------
         // HOOK: gateway_stop — Close DB cleanly
