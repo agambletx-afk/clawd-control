@@ -442,6 +442,12 @@
         desc: 'Config drift baselining and deterministic prompt/plugin defenses',
         layers: ['injection-defense'],
         showWhenEmpty: false
+      },
+      {
+        id: 'health', label: 'Gateway Health', icon: '🫀',
+        desc: 'Gateway event loop, delivery queue, and runtime health',
+        layers: ['gateway-health'],
+        showWhenEmpty: false
       }
     ];
 
@@ -455,7 +461,8 @@
       reasoning: 'L6',
       operational: 'L7',
       memory: 'L8',
-      'injection-defense': 'L9'
+      'injection-defense': 'L9',
+      'gateway-health': 'L10'
     };
 
     const state = { health: null, transitions: [], pollTimer: null, running: false, versionCheck: null };
