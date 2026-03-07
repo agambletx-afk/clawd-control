@@ -320,6 +320,44 @@
     }
     .toast-notification.show { opacity: 1; transform: translateY(0); }
 
+
+
+    .chart-card {
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      background: var(--bg-secondary);
+      padding: 10px;
+    }
+    .chart-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .chart-title { font-size: 0.82rem; font-weight: 700; color: var(--text-primary); }
+    .chart-wrap { position: relative; height: 160px; }
+    .chart-wrap canvas { width: 100%; height: 100%; display: block; }
+    .chart-tooltip {
+      position: absolute;
+      pointer-events: none;
+      z-index: 5;
+      min-width: 160px;
+      background: rgba(10,12,16,0.95);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 8px 9px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.35);
+      color: var(--text-primary);
+      font-size: 0.68rem;
+      transition: opacity 0.12s;
+    }
+    .chart-tooltip.hidden { opacity: 0; }
+    .tooltip-date { color: var(--text-secondary); margin-bottom: 5px; }
+    .tooltip-row { display: flex; justify-content: space-between; gap: 8px; }
+    .tooltip-label { color: var(--text-secondary); }
+    .tooltip-val { color: var(--text-primary); font-weight: 600; }
+
     /* ── Timeline ── */
     .timeline-section {
       background: var(--bg-secondary);
@@ -465,7 +503,7 @@
       'gateway-health': 'L10'
     };
 
-    const state = { health: null, transitions: [], pollTimer: null, running: false, versionCheck: null };
+    const state = { health: null, transitions: [], gatewayTrend: [], pollTimer: null, running: false, versionCheck: null };
     const openTiers = new Set();    // track which tiers are expanded
     const openCards = new Set();    // track which card details are expanded
     let timelineOpen = false;
@@ -822,6 +860,17 @@
             </div>
             <div class="tier-body" id="tbody-${tier.id}" ${isOpen ? 'data-open="1"' : ''}>
               <div class="tier-body-inner">
+                ${tier.id === 'health' ? `
+                  <div class="chart-card">
+                    <div class="chart-header">
+                      <div class="chart-title">Gateway RSS & Latency (48h)</div>
+                    </div>
+                    <div class="chart-wrap" id="gatewayTrendWrap">
+                      <canvas id="gatewayTrendChart"></canvas>
+                      <div class="chart-tooltip hidden" id="gatewayTrendTooltip"></div>
+                    </div>
+                  </div>
+                ` : ''}
                 ${checksForTier.map(check => buildCardHTML(check, staleAll)).join('')}
               </div>
             </div>
@@ -886,6 +935,189 @@
       }
     }
 
+
+    function formatTrendTime(iso) {
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return '--:--';
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    }
+
+    function renderGatewayTrendChart() {
+      const canvas = $('gatewayTrendChart');
+      const wrap = $('gatewayTrendWrap');
+      const tooltip = $('gatewayTrendTooltip');
+      if (!canvas || !wrap || !tooltip) return;
+
+      const ctx = canvas.getContext('2d');
+      const w = wrap.clientWidth;
+      const h = wrap.clientHeight;
+      if (!w || !h) return;
+
+      canvas.width = w * 2;
+      canvas.height = h * 2;
+      canvas.style.width = w + 'px';
+      canvas.style.height = h + 'px';
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.scale(2, 2);
+      ctx.clearRect(0, 0, w, h);
+
+      const trend = Array.isArray(state.gatewayTrend) ? state.gatewayTrend : [];
+      const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim();
+      const mutedColor = getComputedStyle(document.documentElement).getPropertyValue('--text-tertiary').trim() || textColor;
+      const borderColor = getComputedStyle(document.documentElement).getPropertyValue('--border-subtle').trim();
+      const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#f0a836';
+      const responseColor = getComputedStyle(document.documentElement).getPropertyValue('--accent-secondary').trim() || '#4ecdc4';
+      const dangerColor = '#e74c3c';
+
+      if (!trend.length) {
+        tooltip.classList.add('hidden');
+        ctx.fillStyle = mutedColor;
+        ctx.font = '12px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('No data available', w / 2, h / 2);
+        return;
+      }
+
+      const padding = { top: 16, right: 48, bottom: 30, left: 48 };
+      const chartW = w - padding.left - padding.right;
+      const chartH = h - padding.top - padding.bottom;
+      const baseY = padding.top + chartH;
+
+      const minRss = Math.min(...trend.map(d => d.rss_mb), 1200);
+      const maxRss = Math.max(...trend.map(d => d.rss_mb), 1200);
+      const rssRange = Math.max(50, maxRss - minRss);
+      const rssFloor = Math.max(0, minRss - rssRange * 0.1);
+      const rssCeil = maxRss + rssRange * 0.1;
+
+      const minResp = Math.min(...trend.map(d => d.response_ms));
+      const maxResp = Math.max(...trend.map(d => d.response_ms));
+      const respRange = Math.max(20, maxResp - minResp);
+      const respFloor = Math.max(0, minResp - respRange * 0.1);
+      const respCeil = maxResp + respRange * 0.1;
+
+      const toX = (i) => padding.left + (chartW / (trend.length - 1 || 1)) * i;
+      const toYRss = (v) => padding.top + chartH - ((v - rssFloor) / (rssCeil - rssFloor || 1)) * chartH;
+      const toYResp = (v) => padding.top + chartH - ((v - respFloor) / (respCeil - respFloor || 1)) * chartH;
+
+      // Grid + Y labels
+      ctx.strokeStyle = borderColor;
+      ctx.lineWidth = 1;
+      ctx.font = '10px Inter, sans-serif';
+      for (let i = 0; i <= 4; i++) {
+        const y = padding.top + (chartH / 4) * i;
+        ctx.beginPath();
+        ctx.moveTo(padding.left, y);
+        ctx.lineTo(padding.left + chartW, y);
+        ctx.stroke();
+
+        const rssVal = rssCeil - ((rssCeil - rssFloor) * i / 4);
+        const respVal = respCeil - ((respCeil - respFloor) * i / 4);
+
+        ctx.fillStyle = textColor;
+        ctx.textAlign = 'right';
+        ctx.fillText(`${Math.round(rssVal)} MB`, padding.left - 6, y + 3);
+        ctx.textAlign = 'left';
+        ctx.fillText(`${Math.round(respVal)} ms`, padding.left + chartW + 6, y + 3);
+      }
+
+      // Threshold line
+      const thresholdY = toYRss(1200);
+      if (thresholdY >= padding.top && thresholdY <= baseY) {
+        ctx.setLineDash([5, 4]);
+        ctx.strokeStyle = dangerColor;
+        ctx.beginPath();
+        ctx.moveTo(padding.left, thresholdY);
+        ctx.lineTo(padding.left + chartW, thresholdY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = dangerColor;
+        ctx.textAlign = 'left';
+        ctx.fillText('1200MB watchdog', padding.left + 6, thresholdY - 5);
+      }
+
+      const points = trend.map((d, i) => ({
+        x: toX(i),
+        yRss: toYRss(d.rss_mb),
+        yResp: toYResp(d.response_ms),
+        ...d
+      }));
+
+      // RSS area
+      ctx.fillStyle = accentColor + '20';
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, baseY);
+      points.forEach(p => ctx.lineTo(p.x, p.yRss));
+      ctx.lineTo(points[points.length - 1].x, baseY);
+      ctx.closePath();
+      ctx.fill();
+
+      // RSS line
+      ctx.strokeStyle = accentColor;
+      ctx.lineWidth = 2;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      points.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.yRss) : ctx.lineTo(p.x, p.yRss));
+      ctx.stroke();
+
+      // Response line
+      ctx.strokeStyle = responseColor;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      points.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.yResp) : ctx.lineTo(p.x, p.yResp));
+      ctx.stroke();
+
+      // X-axis labels
+      ctx.fillStyle = textColor;
+      ctx.textAlign = 'center';
+      const step = Math.max(1, Math.floor(trend.length / 7));
+      trend.forEach((d, i) => {
+        if (i % step === 0 || i === trend.length - 1) {
+          ctx.fillText(formatTrendTime(d.time), points[i].x, baseY + 18);
+        }
+      });
+
+      canvas.onmousemove = (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        let closest = null;
+        let minDist = Infinity;
+        for (const p of points) {
+          const dist = Math.abs(p.x - mx);
+          if (dist < minDist) {
+            minDist = dist;
+            closest = p;
+          }
+        }
+
+        if (closest && minDist < 28) {
+          tooltip.classList.remove('hidden');
+          tooltip.innerHTML = `
+            <div class="tooltip-date">${new Date(closest.time).toLocaleString()}</div>
+            <div class="tooltip-row"><span class="tooltip-label">RSS</span><span class="tooltip-val" style="color:${accentColor}">${Math.round(closest.rss_mb)} MB</span></div>
+            <div class="tooltip-row"><span class="tooltip-label">Response</span><span class="tooltip-val" style="color:${responseColor}">${Math.round(closest.response_ms)} ms</span></div>
+          `;
+          const tx = Math.min(mx + 12, rect.width - 185);
+          const ty = Math.max((e.clientY - rect.top) - 74, 0);
+          tooltip.style.left = tx + 'px';
+          tooltip.style.top = ty + 'px';
+        } else {
+          tooltip.classList.add('hidden');
+        }
+      };
+      canvas.onmouseleave = () => tooltip.classList.add('hidden');
+    }
+
+    async function loadGatewayTrend() {
+      try {
+        const data = await api('/api/security/gateway-trend');
+        state.gatewayTrend = Array.isArray(data) ? data : [];
+      } catch {
+        state.gatewayTrend = [];
+      }
+      requestAnimationFrame(() => renderGatewayTrendChart());
+    }
+
     /* ══════════════════════════════════════════════════
        DATA LOADING
     ══════════════════════════════════════════════════ */
@@ -905,7 +1137,7 @@
       renderTimeline();
     }
 
-    async function refresh() { await Promise.all([loadHealth(), loadTransitions()]); }
+    async function refresh() { await Promise.all([loadHealth(), loadTransitions(), loadGatewayTrend()]); }
 
     async function runCheckNow() {
       if (state.running) return;
@@ -1092,6 +1324,7 @@
 
     function cleanupSecurityTab() {
       if (state.pollTimer) { clearInterval(state.pollTimer); state.pollTimer = null; }
+      window.removeEventListener('resize', renderGatewayTrendChart);
       window.__securityInitRoot = null;
     }
 
@@ -1106,6 +1339,7 @@
 
       await refresh();
       bindEvents();
+      window.addEventListener('resize', renderGatewayTrendChart);
       startPolling();
     }
 

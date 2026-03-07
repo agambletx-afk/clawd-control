@@ -3012,6 +3012,45 @@ const server = createServer((req, res) => {
     return;
   }
 
+  if (path === '/api/security/gateway-trend' && req.method === 'GET') {
+    try {
+      const rows = getSecurityHistory('gateway-health', 200);
+      const trend = rows
+        .filter(row => row?.name === 'Gateway-Latency')
+        .map(row => {
+          let metadata = row?.metadata;
+          if (typeof metadata === 'string') {
+            try {
+              metadata = JSON.parse(metadata);
+            } catch {
+              return null;
+            }
+          }
+          if (!metadata || typeof metadata !== 'object') return null;
+
+          const rss = Number(metadata.rss_mb);
+          const response = Number(metadata.response_ms);
+          const time = row?.checked_at;
+
+          if (!time || !Number.isFinite(rss) || !Number.isFinite(response)) return null;
+          return {
+            time,
+            rss_mb: rss,
+            response_ms: response,
+          };
+        })
+        .filter(Boolean)
+        .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(trend));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
   if (path === '/api/security/transitions' && req.method === 'GET') {
     try {
       const limit = Number.parseInt(url.searchParams.get('limit') || '50', 10);
