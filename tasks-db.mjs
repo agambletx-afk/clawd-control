@@ -153,7 +153,6 @@ export function getDb() {
     CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
     CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority);
     CREATE INDEX IF NOT EXISTS idx_tasks_assigned ON tasks(assigned_agent);
-    CREATE INDEX IF NOT EXISTS idx_tasks_last_activity ON tasks(last_activity_at);
     CREATE INDEX IF NOT EXISTS idx_history_task ON task_history(task_id);
   `);
 
