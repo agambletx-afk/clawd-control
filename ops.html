@@ -530,6 +530,36 @@
       justify-content: flex-end;
     }
 
+
+    .gateway-events-panel {
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      background: var(--bg-tertiary);
+      overflow: hidden;
+    }
+
+    .gateway-events-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 10px 12px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .gateway-events-meta { display: inline-flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 0.78rem; }
+    .gateway-events-count { border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; font-size: 0.72rem; }
+    .gateway-events-body { max-height: 0; overflow: hidden; transition: max-height 0.25s ease; border-top: 1px solid transparent; }
+    .gateway-events-body.open { border-top-color: var(--border-subtle); }
+    .gateway-events-list { max-height: 280px; overflow-y: auto; padding: 8px; display: grid; gap: 6px; }
+    .gateway-event-row { display: grid; grid-template-columns: 70px 24px 1fr; gap: 8px; align-items: start; padding: 6px 8px; border-radius: 8px; }
+    .gateway-event-row.recent { background: rgba(56, 189, 248, 0.09); }
+    .gateway-event-time { font-size: 0.72rem; color: var(--text-secondary); white-space: nowrap; }
+    .gateway-event-icon { font-size: 0.95rem; line-height: 1; text-align: center; }
+    .gateway-event-msg { font-size: 0.8rem; color: var(--text-primary); }
+    .gateway-event-msg.alert { color: #ef4444; }
+
     /* =========================================================
        Responsive
        ========================================================= */
@@ -632,6 +662,25 @@
       </div>
     </section>
 
+
+    <!-- Gateway Events -->
+    <section class="section">
+      <div id="gatewayEventsPanel" class="gateway-events-panel" aria-label="Gateway events">
+        <div id="gatewayEventsHeader" class="gateway-events-header" role="button" tabindex="0">
+          <h2 style="margin:0;">Gateway Events</h2>
+          <div class="gateway-events-meta">
+            <span id="gatewayEventsCount" class="gateway-events-count">0 in last 24h</span>
+            <span id="gatewayEventsChevron">▾</span>
+          </div>
+        </div>
+        <div id="gatewayEventsBody" class="gateway-events-body">
+          <div id="gatewayEventsList" class="gateway-events-list">
+            <div class="muted">Loading gateway events…</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- Activity Log -->
     <section class="section">
       <h2>Activity Log</h2>
@@ -689,7 +738,9 @@
       verificationExpanded: false,
       verificationRunning: false,
       verificationError: '',
-      verificationCategoryExpanded: {}
+      verificationCategoryExpanded: {},
+      gatewayEventsOpen: false,
+      gatewayEvents: []
     };
 
     const $ = (id) => document.getElementById(id);
@@ -1210,6 +1261,64 @@
       }
     }
 
+
+    function gatewayEventIcon(message) {
+      const msg = String(message || '').toLowerCase();
+      if (msg.includes('restart')) return '🔄';
+      if (msg.includes('reaper') || msg.includes('killed')) return '🧹';
+      if (msg.includes('disk')) return '💾';
+      if (msg.includes('lock')) return '🔓';
+      return '📡';
+    }
+
+    function renderGatewayEvents() {
+      const list = $('gatewayEventsList');
+      const body = $('gatewayEventsBody');
+      const chevron = $('gatewayEventsChevron');
+      const count = $('gatewayEventsCount');
+      if (!list || !body || !chevron || !count) return;
+
+      const events = Array.isArray(state.gatewayEvents) ? state.gatewayEvents : [];
+      const now = Date.now();
+      const last24h = events.filter((event) => {
+        const ts = Date.parse(event.timestamp);
+        return Number.isFinite(ts) && (now - ts) <= 24 * 60 * 60 * 1000;
+      }).length;
+      count.textContent = `${last24h} in last 24h`;
+
+      if (!events.length) {
+        list.innerHTML = '<div class="muted">No gateway events yet.</div>';
+      } else {
+        list.innerHTML = events.map((event) => {
+          const msg = String(event.message || '');
+          const ts = event.timestamp || null;
+          const eventTime = ts ? rel(ts) : '—';
+          const ms = Date.parse(ts);
+          const recent = Number.isFinite(ms) && (now - ms) <= 60 * 60 * 1000;
+          const alert = /restart|critical/i.test(msg);
+          return `<div class="gateway-event-row ${recent ? 'recent' : ''}" title="${esc(ts || '')}">
+            <span class="gateway-event-time">${esc(eventTime)}</span>
+            <span class="gateway-event-icon">${gatewayEventIcon(msg)}</span>
+            <span class="gateway-event-msg ${alert ? 'alert' : ''}">${esc(msg)}</span>
+          </div>`;
+        }).join('');
+      }
+
+      body.classList.toggle('open', state.gatewayEventsOpen);
+      body.style.maxHeight = state.gatewayEventsOpen ? `${body.scrollHeight}px` : '0';
+      chevron.textContent = state.gatewayEventsOpen ? '▴' : '▾';
+    }
+
+    async function loadGatewayEvents() {
+      try {
+        const data = await api('/api/ops/gateway-events?limit=50');
+        state.gatewayEvents = Array.isArray(data.events) ? data.events : [];
+      } catch {
+        state.gatewayEvents = [];
+      }
+      renderGatewayEvents();
+    }
+
     // Get CSS class for category pill.
     function catClass(category) {
       if (category === 'service') return 'service';
@@ -1290,6 +1399,17 @@
         $('verificationToggleBtn').textContent = state.verificationExpanded ? 'Hide Details' : 'Show Details';
       };
       $('cleanupBtn').onclick = handleCleanup;
+      $('gatewayEventsHeader').onclick = () => {
+        state.gatewayEventsOpen = !state.gatewayEventsOpen;
+        renderGatewayEvents();
+      };
+      $('gatewayEventsHeader').onkeydown = (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          state.gatewayEventsOpen = !state.gatewayEventsOpen;
+          renderGatewayEvents();
+        }
+      };
       $('loadMoreLogBtn').onclick = () => loadLog(true);
       $('logCategory').onchange = async (event) => {
         state.logCategory = event.target.value;
@@ -1304,13 +1424,14 @@
       };
 
       try {
-        await Promise.all([loadServices(), loadVersionCheck(), loadVerification(), loadCrons(), loadBackups()]);
+        await Promise.all([loadServices(), loadVersionCheck(), loadVerification(), loadCrons(), loadBackups(), loadGatewayEvents()]);
         await resetLogs();
         if (window.__opsServicesRefreshTimer) clearInterval(window.__opsServicesRefreshTimer);
         window.__opsServicesRefreshTimer = setInterval(() => {
           loadServices().catch((error) => toast(error.message));
           loadVersionCheck().catch((error) => toast(error.message));
           loadVerification().catch((error) => toast(error.message));
+          loadGatewayEvents().catch((error) => toast(error.message));
         }, 60000);
       } catch (error) {
         toast(error.message);

@@ -236,6 +236,7 @@
     .check-card.card-green { border-left: 3px solid #27AE60; }
     .check-card.card-yellow { border-left: 3px solid #D4881C; background: rgba(212,136,28,0.05); }
     .check-card.card-red { border-left: 3px solid #C0392B; background: rgba(192,57,43,0.06); }
+    .check-card.card-unknown { border-left: 3px solid #636e72; background: rgba(99,110,114,0.08); }
 
     .check-row {
       padding: 8px 10px;
@@ -628,7 +629,7 @@
       'gateway-health': 'L10'
     };
 
-    const state = { health: null, transitions: [], gatewayTrend: [], pollTimer: null, running: false, versionCheck: null, securityTest: null, securityTestRunning: false, securityTestElapsed: 0 };
+    const state = { health: null, liveness: null, transitions: [], gatewayTrend: [], pollTimer: null, running: false, versionCheck: null, securityTest: null, securityTestRunning: false, securityTestElapsed: 0 };
     const openTiers = new Set();    // track which tiers are expanded
     const openCards = new Set();    // track which card details are expanded
     let timelineOpen = false;
@@ -1061,6 +1062,81 @@
         </div>`;
     }
 
+
+    function buildLivenessCheck() {
+      const data = state.liveness;
+      if (!data || data.never_run) return null;
+
+      const failureCount = Number(data.consecutive_failures || 0);
+      const stale = !!data.stale;
+      const diskAlert = data.disk_alert ? String(data.disk_alert) : '';
+      const locksCleaned = Number(data.locks_cleaned || 0);
+      const lastRestart = data.last_restart || null;
+
+      let status = 'green';
+      let message = `API Liveness: Healthy`;
+      let details = [
+        `Last check: ${data.checked_at ? new Date(data.checked_at).toLocaleString() : 'unknown'}`,
+        `${failureCount} consecutive failures.`
+      ];
+      let remediation = '';
+
+      if (stale) {
+        status = 'unknown';
+        message = 'API Liveness: Stale';
+        details = [
+          'No fresh liveness update in over 10 minutes.',
+          `Last check: ${data.checked_at ? `${relTime(data.checked_at)} (${new Date(data.checked_at).toLocaleString()})` : 'unknown'}`,
+          'The liveness cron may not be running.'
+        ];
+        remediation = 'Validate liveness cron schedule and execution logs.';
+      } else if (failureCount >= 2) {
+        status = 'red';
+        message = 'API Liveness: Unresponsive';
+        details = [
+          `${failureCount} consecutive failures detected.`,
+          `Last check: ${relTime(data.checked_at)}`
+        ];
+        remediation = 'Investigate gateway health and restart path immediately.';
+      } else if (failureCount === 1) {
+        status = 'yellow';
+        message = 'API Liveness: Degraded';
+        details = [
+          '1 consecutive failure detected.',
+          `Last check: ${relTime(data.checked_at)}`
+        ];
+        remediation = 'Monitor for another failure or trigger manual service restart if degradation continues.';
+      }
+
+      const summaryBits = [];
+      if (!stale) summaryBits.push(`${failureCount} consecutive failure${failureCount === 1 ? '' : 's'}`);
+      if (data.checked_at) summaryBits.push(`Checked ${relTime(data.checked_at)}`);
+      if (diskAlert) {
+        details.push(`Disk alert: ${diskAlert}`);
+        summaryBits.push(diskAlert);
+      }
+      if (lastRestart) {
+        const restartText = `Last auto-restart: ${relTime(lastRestart)} (${new Date(lastRestart).toLocaleString()})`;
+        details.push(restartText);
+        summaryBits.push(`Auto-restart ${relTime(lastRestart)}`);
+      }
+      if (locksCleaned > 0) {
+        const lockText = `Cleaned ${locksCleaned} stale session lock${locksCleaned === 1 ? '' : 's'}.`;
+        details.push(lockText);
+        summaryBits.push(`Cleaned ${locksCleaned} stale lock${locksCleaned === 1 ? '' : 's'}`);
+      }
+
+      return {
+        layer: 'gateway-health',
+        name: 'API-Liveness',
+        status,
+        message: summaryBits.length ? `${message} — ${summaryBits.join(' · ')}` : message,
+        checked_at: data.checked_at,
+        details: details.join('\n'),
+        remediation
+      };
+    }
+
     function renderTiers() {
       const checks = Array.isArray(state.health?.checks) ? state.health.checks : [];
       const versionCheck = checks.find(c => c.layer === 'version') || null;
@@ -1073,6 +1149,11 @@
         const checksForTier = tierChecks
           .filter(check => tier.layers.includes(check.layer))
           .sort((a, b) => layerOrder(a.layer) - layerOrder(b.layer) || String(a.name || '').localeCompare(String(b.name || '')));
+
+        if (tier.id === 'health') {
+          const livenessCheck = buildLivenessCheck();
+          if (livenessCheck) checksForTier.push(livenessCheck);
+        }
 
         if (!tier.showWhenEmpty && checksForTier.length === 0) {
           return '';
@@ -1366,6 +1447,12 @@
       if (window.refreshSecurityBadge) window.refreshSecurityBadge();
     }
 
+    async function loadLiveness() {
+      try { state.liveness = await api('/api/security/liveness'); }
+      catch { state.liveness = { never_run: true }; }
+      renderTiers();
+    }
+
     async function loadTransitions() {
       try {
         const data = await api('/api/security/transitions?limit=20');
@@ -1374,7 +1461,7 @@
       renderTimeline();
     }
 
-    async function refresh() { await Promise.all([loadHealth(), loadTransitions(), loadGatewayTrend()]); }
+    async function refresh() { await Promise.all([loadHealth(), loadLiveness(), loadTransitions(), loadGatewayTrend()]); }
 
     async function loadSecurityTestResults() {
       try {
