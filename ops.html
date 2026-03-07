@@ -648,7 +648,7 @@
 
       const releases = Array.isArray(data.releases_between) ? data.releases_between : [];
       const detailRows = releases.map((release) => {
-        const flags = [release.has_security_patch ? 'security' : '', release.has_breaking_changes ? 'breaking' : ''].filter(Boolean).join(', ');
+        const flags = [release.has_security ? 'security' : '', release.has_breaking ? 'breaking' : ''].filter(Boolean).join(', ');
         return `
           <div class="version-check-release">
             <span><strong>${esc(release.version || 'unknown')}</strong> · ${esc(release.date || 'unknown date')}</span>
