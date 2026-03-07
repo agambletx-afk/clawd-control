@@ -9,6 +9,64 @@ const VALID_STATUSES = new Set(['proposed', 'backlog', 'in_progress', 'review', 
 const VALID_PRIORITIES = new Set(['critical', 'high', 'medium', 'low']);
 const VALID_SOURCES = new Set(['dashboard', 'telegram', 'cron', 'agent']);
 
+function normalizeTransitionSource(source) {
+  const raw = typeof source === 'string' && source.trim() ? source.trim().toLowerCase() : 'human';
+  if (raw === 'human' || raw === 'dashboard') return 'human';
+  if (raw === 'system') return 'system';
+  return 'non_human';
+}
+
+export function validateTransition(currentStatus, newStatus, source) {
+  if (!VALID_STATUSES.has(currentStatus) || !VALID_STATUSES.has(newStatus)) {
+    return { valid: false, reason: 'invalid_status', validTransitions: [] };
+  }
+
+  const sourceKind = normalizeTransitionSource(source);
+  const transitionRules = {
+    proposed: [
+      { to: 'backlog', allowed: new Set(['human']) },
+      { to: 'archive', allowed: new Set(['human']) },
+      { to: 'failed', allowed: new Set(['system']) },
+    ],
+    backlog: [
+      { to: 'in_progress', allowed: new Set(['human', 'non_human', 'system']) },
+      { to: 'failed', allowed: new Set(['system']) },
+    ],
+    in_progress: [
+      { to: 'review', allowed: new Set(['human', 'non_human', 'system']) },
+      { to: 'backlog', allowed: new Set(['human', 'non_human', 'system']) },
+      { to: 'failed', allowed: new Set(['system']) },
+    ],
+    review: [
+      { to: 'done', allowed: new Set(['human']) },
+      { to: 'backlog', allowed: new Set(['human']) },
+      { to: 'failed', allowed: new Set(['system']) },
+    ],
+    done: [
+      { to: 'archive', allowed: new Set(['human', 'non_human', 'system']) },
+      { to: 'failed', allowed: new Set(['system']) },
+    ],
+    archive: [
+      { to: 'backlog', allowed: new Set(['human']) },
+      { to: 'failed', allowed: new Set(['system']) },
+    ],
+    failed: [
+      { to: 'backlog', allowed: new Set(['human', 'system']) },
+      { to: 'failed', allowed: new Set(['system']) },
+    ],
+  };
+
+  const validTransitions = (transitionRules[currentStatus] || []).map((rule) => rule.to);
+  const matched = (transitionRules[currentStatus] || []).find((rule) => rule.to === newStatus);
+  if (!matched) {
+    return { valid: false, reason: 'invalid_transition', validTransitions };
+  }
+  if (!matched.allowed.has(sourceKind)) {
+    return { valid: false, reason: 'source_not_allowed', validTransitions };
+  }
+  return { valid: true };
+}
+
 function parseDependsOn(value) {
   if (value == null) return [];
   if (typeof value !== 'string') return [];
@@ -64,6 +122,7 @@ function sanitizeUpdateData(data = {}) {
     'token_estimate',
     'token_actual',
     'max_retries',
+    'transitioned_by',
   ];
   const out = {};
   for (const key of allowed) {
@@ -88,6 +147,8 @@ function sanitizeUpdateData(data = {}) {
       out.token_actual = data.token_actual == null ? null : Number.parseInt(data.token_actual, 10);
     } else if (key === 'max_retries') {
       out.max_retries = data.max_retries == null ? null : Number.parseInt(data.max_retries, 10);
+    } else if (key === 'transitioned_by') {
+      out.transitioned_by = data.transitioned_by == null ? null : String(data.transitioned_by).trim() || null;
     }
   }
   return out;
@@ -169,6 +230,9 @@ export function getDb() {
   }
   if (!taskColumns.has('last_activity_at')) {
     db.exec('ALTER TABLE tasks ADD COLUMN last_activity_at INTEGER');
+  }
+  if (!taskColumns.has('transitioned_by')) {
+    db.exec('ALTER TABLE tasks ADD COLUMN transitioned_by TEXT');
   }
 
   db.exec(`
@@ -556,11 +620,18 @@ export function getTaskFailures(id) {
 
 export function recordFailure(id, reason) {
   const conn = getDb();
-  const task = conn.prepare('SELECT id, failure_count, max_retries FROM tasks WHERE id = ?').get(id);
+  const task = conn.prepare('SELECT id, status, failure_count, max_retries FROM tasks WHERE id = ?').get(id);
   if (!task) return null;
 
   const safeReason = reason == null ? '' : String(reason).trim();
   const tx = conn.transaction(() => {
+    const nextFailureCount = task.failure_count + 1;
+    const nextStatus = nextFailureCount <= task.max_retries ? 'backlog' : 'failed';
+    const transitionCheck = validateTransition(task.status, nextStatus, 'system');
+    if (!transitionCheck.valid) {
+      throw new Error(`Invalid failure transition: ${task.status} -> ${nextStatus}`);
+    }
+
     conn
       .prepare(`UPDATE tasks
                 SET failure_count = failure_count + 1,
@@ -569,6 +640,7 @@ export function recordFailure(id, reason) {
                       WHEN (failure_count + 1) <= max_retries THEN 'backlog'
                       ELSE 'failed'
                     END,
+                    transitioned_by = 'system',
                     last_activity_at = @now_epoch,
                     updated_at = datetime('now')
                 WHERE id = @id`)

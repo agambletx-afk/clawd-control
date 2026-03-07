@@ -730,7 +730,7 @@
             body: JSON.stringify(body),
           });
           const data = await res.json();
-          if (!res.ok) throw new Error(data.error || 'Failed to update task');
+          if (!res.ok) throw new Error(data.message || data.error || 'Failed to update task');
           return data.task;
         }
 
@@ -783,7 +783,7 @@
               await openPanel(taskId);
             }
           } catch (err) {
-            alert(err.message);
+            notify(err.message || 'Task update failed', 'error');
           }
         }
 
