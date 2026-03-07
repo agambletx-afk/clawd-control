@@ -60,6 +60,9 @@ const LOCAL_HEALTH_SCRIPT_PATH = join(DIR, 'scripts', 'check-api-health.sh');
 const SYSTEM_HEALTH_SCRIPT_PATH = '/usr/local/bin/check-api-health.sh';
 const SECURITY_HEALTH_RESULTS_PATH = '/tmp/security-health-results.json';
 const SECURITY_CHECK_SCRIPT_PATH = '/usr/local/bin/check-security-health.sh';
+const SECURITY_TEST_RESULTS_PATH = '/tmp/security-test-results.json';
+const SECURITY_TEST_SCRIPT_PATH = '/usr/local/bin/run-security-test.sh';
+const SECURITY_TEST_LOCK_PATH = '/tmp/security-test.lock';
 const VERSION_CHECK_RESULTS_PATH = '/tmp/openclaw-version-check.json';
 const VERSION_CHECK_SCRIPT_PATH = '/usr/local/bin/check-openclaw-version.sh';
 const VERIFY_RESULTS_PATH = '/tmp/verify-deployment-results.json';
@@ -3217,6 +3220,83 @@ const server = createServer((req, res) => {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: e.message }));
     });
+    return;
+  }
+
+  if (path === '/api/security/test' && req.method === 'POST') {
+    if (existsSync(SECURITY_TEST_LOCK_PATH)) {
+      res.writeHead(409, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Test already running' }));
+      return;
+    }
+
+    const command = (typeof process.getuid === 'function' && process.getuid() === 0)
+      ? `su -s /bin/bash openclaw -c '${SECURITY_TEST_SCRIPT_PATH}'`
+      : SECURITY_TEST_SCRIPT_PATH;
+
+    exec(command, { timeout: 90000, maxBuffer: 1024 * 1024 * 2 }, (error, stdout, stderr) => {
+      if (error) {
+        const detail = (stderr || error.message || 'Security test failed').trim();
+        logAction({
+          category: 'security',
+          action: 'security-test',
+          target: 'active-probes',
+          status: 'error',
+          detail,
+        });
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: detail }));
+        return;
+      }
+
+      try {
+        const data = JSON.parse(stdout);
+        const passed = Number(data?.summary?.passed || 0);
+        const failed = Number(data?.summary?.failed || 0);
+        const warned = Number(data?.summary?.warned || 0);
+        const summary = `${passed} passed, ${failed} failed${warned ? `, ${warned} warned` : ''}`;
+
+        logAction({
+          category: 'security',
+          action: 'security-test',
+          target: 'active-probes',
+          status: 'success',
+          detail: summary,
+        });
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(data));
+      } catch (e) {
+        const detail = `Invalid test output: ${e.message}`;
+        logAction({
+          category: 'security',
+          action: 'security-test',
+          target: 'active-probes',
+          status: 'error',
+          detail,
+        });
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: detail }));
+      }
+    });
+    return;
+  }
+
+  if (path === '/api/security/test-results' && req.method === 'GET') {
+    try {
+      if (!existsSync(SECURITY_TEST_RESULTS_PATH)) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ never_run: true }));
+        return;
+      }
+
+      const data = JSON.parse(readFileSync(SECURITY_TEST_RESULTS_PATH, 'utf8'));
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(data));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
     return;
   }
 
