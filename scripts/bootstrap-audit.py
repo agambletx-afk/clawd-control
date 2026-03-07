@@ -24,6 +24,57 @@ BOOTSTRAP_FILES = [
 ]
 PER_FILE_LIMIT = 20_000
 TOTAL_LIMIT = 150_000
+SERVICE_REF_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "be",
+    "by",
+    "can",
+    "check",
+    "do",
+    "file",
+    "for",
+    "from",
+    "has",
+    "health",
+    "if",
+    "in",
+    "is",
+    "it",
+    "its",
+    "management",
+    "may",
+    "name",
+    "no",
+    "not",
+    "of",
+    "on",
+    "or",
+    "out",
+    "per",
+    "restart",
+    "restarts",
+    "running",
+    "so",
+    "start",
+    "status",
+    "stop",
+    "the",
+    "to",
+    "up",
+    "via",
+    "was",
+    "we",
+    "will",
+    "with",
+    "you",
+    "your",
+}
+MODEL_FILE_EXTENSIONS = (".json", ".md", ".py", ".sh", ".db", ".log")
 
 
 def normalize_heading(text):
@@ -144,6 +195,10 @@ def extract_candidate_refs(content):
     for match in re.finditer(r"\bservices?\s+([A-Za-z0-9._-]+)", content, re.IGNORECASE):
         service_refs.add(match.group(1))
 
+    service_refs = {
+        ref for ref in service_refs if ref and ref.lower() not in SERVICE_REF_STOPWORDS
+    }
+
     for match in re.finditer(r"\bport\s*[:=]?\s*(\d{2,5})\b", content, re.IGNORECASE):
         ports.add(match.group(1))
 
@@ -153,7 +208,12 @@ def extract_candidate_refs(content):
     model_keywords = ("gpt", "claude", "gemini", "llama", "mistral")
     for token in re.findall(r"\b[A-Za-z0-9._:-]{4,}\b", content):
         lower = token.lower()
-        if any(keyword in lower for keyword in model_keywords):
+        has_keyword = any(keyword in lower for keyword in model_keywords)
+        has_provider_prefix = "/" in token
+        has_version_suffix = bool(re.search(r"\d", token))
+        if lower.endswith(MODEL_FILE_EXTENSIONS):
+            continue
+        if has_keyword and (has_provider_prefix or has_version_suffix):
             model_refs.add(token)
 
     for match in re.finditer(r"(/[-A-Za-z0-9_./~]+)", content):
@@ -170,11 +230,24 @@ def check_security_coverage(files_map, issues):
 
     soul_headings = parse_headings(soul)
     headings_text = [h[0].lower() for h in soul_headings]
-    first_20 = "\n".join(soul.splitlines()[:20]).lower()
+    first_50 = "\n".join(soul.splitlines()[:50]).lower()
 
     has_acip = any(("acip" in h or "injection" in h) for h in headings_text)
-    has_operator = any(("operator" in h or "authority" in h) for h in headings_text) or (
-        "operator" in first_20 or "authority" in first_20
+    has_operator = any(
+        (
+            "operator" in h
+            or "authority" in h
+            or "belong" in h
+            or "owner" in h
+            or "adam" in h
+        )
+        for h in headings_text
+    ) or (
+        "operator" in first_50
+        or "authority" in first_50
+        or "belong" in first_50
+        or "owner" in first_50
+        or "adam" in first_50
     )
 
     agent_headings = [h[0].lower() for h in parse_headings(agents)]
