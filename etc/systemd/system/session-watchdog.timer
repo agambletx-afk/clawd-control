@@ -1,0 +1,10 @@
+[Unit]
+Description=Run OpenClaw session watchdog every 60 minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=60min
+Unit=session-watchdog.service
+
+[Install]
+WantedBy=timers.target
