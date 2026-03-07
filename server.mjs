@@ -53,9 +53,12 @@ const SECURITY_HEALTH_RESULTS_PATH = '/tmp/security-health-results.json';
 const SECURITY_CHECK_SCRIPT_PATH = '/usr/local/bin/check-security-health.sh';
 const VERSION_CHECK_RESULTS_PATH = '/tmp/openclaw-version-check.json';
 const VERSION_CHECK_SCRIPT_PATH = '/usr/local/bin/check-openclaw-version.sh';
+const VERIFY_RESULTS_PATH = '/tmp/verify-deployment-results.json';
+const VERIFY_SCRIPT_PATH = '/usr/local/bin/verify-deployment.sh';
 const SOUL_MD_PATH = '/home/openclaw/.openclaw/workspace/SOUL.md';
 const SOUL_HASH_PATH = '/home/openclaw/.openclaw/.soul-hash';
 let lastStoredSecurityGeneratedAt = null;
+let verificationRunning = false;
 
 // ── Security constants ──
 const MAX_BODY_SIZE = 1024 * 1024; // 1MB max POST body
@@ -2856,6 +2859,94 @@ const server = createServer((req, res) => {
       });
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Failed to refresh version check' }));
+    }
+    return;
+  }
+
+  function getVerificationEnvelope() {
+    if (!existsSync(VERIFY_RESULTS_PATH)) {
+      return {
+        available: false,
+        stale: false,
+        age_seconds: null,
+        results: null,
+      };
+    }
+
+    const fileStat = statSync(VERIFY_RESULTS_PATH);
+    const ageSeconds = Math.max(0, Math.floor((Date.now() - fileStat.mtimeMs) / 1000));
+    const stale = ageSeconds > (24 * 60 * 60);
+    const results = JSON.parse(readFileSync(VERIFY_RESULTS_PATH, 'utf8'));
+    return {
+      available: true,
+      stale,
+      age_seconds: ageSeconds,
+      results,
+    };
+  }
+
+  if (path === '/api/ops/verification' && req.method === 'GET') {
+    try {
+      const payload = getVerificationEnvelope();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(payload));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: `Failed to read verification results: ${e.message}` }));
+    }
+    return;
+  }
+
+  if (path === '/api/ops/verification/run' && req.method === 'POST') {
+    if (verificationRunning) {
+      res.writeHead(409, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Verification already in progress' }));
+      return;
+    }
+
+    verificationRunning = true;
+    const started = Date.now();
+    const sectionValue = (url.searchParams.get('sections') || '').trim();
+    const sections = sectionValue ? sectionValue.split(',').map((section) => section.trim()).filter(Boolean) : [];
+    const args = ['--json-only', '--no-color'];
+    for (const section of sections) {
+      args.push('--section', section);
+    }
+
+    try {
+      execFileSync(VERIFY_SCRIPT_PATH, args, { timeout: 120000, stdio: ['ignore', 'pipe', 'pipe'] });
+      const payload = getVerificationEnvelope();
+      const duration = Date.now() - started;
+      const summary = payload?.results?.summary || {};
+      const detail = `pass=${summary.pass ?? 0}, fail=${summary.fail ?? 0}, warn=${summary.warn ?? 0}, skip=${summary.skip ?? 0}, total=${summary.total ?? 0}`;
+
+      logAction({
+        category: 'verification',
+        action: 'run',
+        target: 'verify-deployment.sh',
+        status: 'success',
+        detail,
+        duration_ms: duration,
+      });
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(payload));
+    } catch (e) {
+      const duration = Date.now() - started;
+      const errorDetail = truncateOutput(e.stderr || e.message);
+      logAction({
+        category: 'verification',
+        action: 'run',
+        target: 'verify-deployment.sh',
+        status: 'failed',
+        detail: errorDetail,
+        duration_ms: duration,
+      });
+
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: `Verification failed: ${errorDetail}` }));
+    } finally {
+      verificationRunning = false;
     }
     return;
   }
