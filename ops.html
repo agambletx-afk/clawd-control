@@ -121,6 +121,129 @@
       margin-top: 4px;
     }
 
+    .verification-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .verification-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      font-size: 0.78rem;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+    }
+
+    .verification-stale {
+      color: #eab308;
+      font-weight: 600;
+    }
+
+    .verification-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .verification-chip {
+      border: 1px solid var(--border);
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      border-radius: 999px;
+      font-size: 0.76rem;
+      padding: 3px 9px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .verification-chip:hover {
+      background: var(--surface-hover);
+    }
+
+    .verification-chip-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      flex: 0 0 9px;
+    }
+
+    .verification-pass { background: #22c55e; }
+    .verification-fail { background: #ef4444; }
+    .verification-warn { background: #eab308; }
+    .verification-skip { background: #6b7280; }
+
+    .verification-counts {
+      font-size: 0.78rem;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+    }
+
+    .verification-details {
+      display: none;
+      border-top: 1px solid var(--border-subtle);
+      padding-top: 8px;
+    }
+
+    .verification-details.open {
+      display: block;
+    }
+
+    .verification-category {
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 8px;
+      margin-bottom: 8px;
+      background: var(--bg-tertiary);
+    }
+
+    .verification-category h3 {
+      margin: 0 0 6px 0;
+      font-size: 0.84rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .verification-test {
+      border-top: 1px solid var(--border-subtle);
+      padding: 6px 0;
+      font-size: 0.78rem;
+    }
+
+    .verification-test:first-of-type {
+      border-top: none;
+      padding-top: 0;
+    }
+
+    .verification-test-main {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .verification-test-left {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .verification-test-message {
+      margin-top: 2px;
+      color: var(--text-secondary);
+      font-size: 0.75rem;
+    }
+
+    .verification-toggle {
+      margin-left: 8px;
+    }
+
     .row {
       display: flex;
       gap: 10px;
@@ -452,6 +575,18 @@
       </div>
     </section>
 
+    <section class="section" aria-label="Deployment verification results">
+      <div class="verification-header">
+        <h2 style="margin-bottom: 0;">Deployment Verification</h2>
+        <div>
+          <button id="verificationRunBtn" class="btn btn-green">Run Verification</button>
+          <button id="verificationToggleBtn" class="btn verification-toggle">Show Details</button>
+        </div>
+      </div>
+      <div id="verificationSummary"></div>
+      <div id="verificationDetails" class="verification-details"></div>
+    </section>
+
     <!-- Cron Jobs -->
     <section class="section">
       <h2>Cron Jobs</h2>
@@ -550,7 +685,11 @@
     const state = {
       logOffset: 0,
       logCategory: '',
-      versionCheckExpanded: false
+      versionCheckExpanded: false,
+      verificationExpanded: false,
+      verificationRunning: false,
+      verificationError: '',
+      verificationCategoryExpanded: {}
     };
 
     const $ = (id) => document.getElementById(id);
@@ -681,6 +820,147 @@
       } finally {
         btn.disabled = false;
         btn.textContent = '↻';
+      }
+    }
+
+    function categoryStatus(summary = {}) {
+      if ((summary.fail || 0) > 0) return 'fail';
+      if ((summary.warn || 0) > 0) return 'warn';
+      if ((summary.pass || 0) > 0 && (summary.fail || 0) === 0 && (summary.warn || 0) === 0) return 'pass';
+      return 'skip';
+    }
+
+    function statusSymbol(status) {
+      if (status === 'pass') return '✅';
+      if (status === 'fail') return '❌';
+      if (status === 'warn') return '⚠️';
+      return '➖';
+    }
+
+    function formatDuration(durationMs) {
+      if (durationMs == null) return '—';
+      if (durationMs < 1000) return `${durationMs}ms`;
+      return `${(durationMs / 1000).toFixed(2)}s`;
+    }
+
+    function renderVerification(data = {}) {
+      const summaryEl = $('verificationSummary');
+      const detailsEl = $('verificationDetails');
+      const runBtn = $('verificationRunBtn');
+      const toggleBtn = $('verificationToggleBtn');
+
+      runBtn.disabled = state.verificationRunning;
+      runBtn.innerHTML = state.verificationRunning ? '<span class="spin">↻</span> Verifying deployment...' : 'Run Verification';
+
+      if (!data.available || !data.results) {
+        summaryEl.innerHTML = '<div class="muted">No verification results found. Click Run Verification to check deployment health.</div>';
+        detailsEl.innerHTML = '';
+        toggleBtn.textContent = 'Show Details';
+        toggleBtn.disabled = true;
+        detailsEl.classList.remove('open');
+        return;
+      }
+
+      toggleBtn.disabled = false;
+      const results = data.results || {};
+      const summary = results.summary || {};
+      const categories = results.categories || {};
+      Object.entries(categories).forEach(([name, category]) => {
+        const catSummary = category.summary || {};
+        if ((catSummary.fail || 0) > 0 || (catSummary.warn || 0) > 0) {
+          state.verificationCategoryExpanded[name] = true;
+        }
+      });
+      const staleBadge = data.stale ? '<span class="verification-stale">⚠️ stale</span>' : '';
+      summaryEl.innerHTML = `
+        <div class="verification-meta">
+          <span>Last run: ${esc(rel(results.timestamp))} ${staleBadge}</span>
+          <span>Duration: ${esc(formatDuration(results.duration_ms))}</span>
+          <span>OpenClaw: ${esc(results.openclaw_version || '—')}</span>
+          <span>SOUL.md: ${esc(results.soul_version || '—')}</span>
+        </div>
+        <div class="verification-chips">${Object.entries(categories).map(([name, category]) => {
+          const status = categoryStatus(category.summary || {});
+          return `<button class="verification-chip" data-category="${esc(name)}"><span class="verification-chip-dot verification-${status}"></span>${statusSymbol(status)} ${esc(name)}</button>`;
+        }).join('')}</div>
+        <div class="verification-counts">${summary.pass || 0} pass, ${summary.fail || 0} fail, ${summary.warn || 0} warn, ${summary.skip || 0} skip</div>
+        ${state.verificationError ? `<div class="verification-stale">${esc(state.verificationError)}</div>` : ''}
+      `;
+
+      const detailHtml = Object.entries(categories).map(([name, category]) => {
+        const catSummary = category.summary || {};
+        const tests = Array.isArray(category.tests) ? category.tests : [];
+        const isExpanded = !!state.verificationCategoryExpanded[name];
+        return `
+          <div class="verification-category">
+            <h3>
+              <span>${esc(name)} · ${catSummary.pass || 0}/${catSummary.total || 0} pass</span>
+              <button class="btn" data-cat-toggle="${esc(name)}">${isExpanded ? 'Hide' : 'Show'}</button>
+            </h3>
+            <div style="display:${isExpanded ? 'block' : 'none'};" data-cat-body="${esc(name)}">
+              ${tests.map((test) => `
+                <div class="verification-test">
+                  <div class="verification-test-main">
+                    <span class="verification-test-left">${statusSymbol(test.status)} <strong>${esc(test.id || 'unknown')}</strong> ${esc(test.name || '')}</span>
+                    <span class="muted">${esc(formatDuration(test.duration_ms))}</span>
+                  </div>
+                  ${(test.status === 'fail' || test.status === 'warn' || test.status === 'skip') && test.message ? `<div class="verification-test-message">${esc(test.message)}</div>` : ''}
+                </div>
+              `).join('') || '<div class="muted">No tests in this category.</div>'}
+            </div>
+          </div>
+        `;
+      }).join('') || '<div class="muted">No category data available.</div>';
+
+      detailsEl.innerHTML = detailHtml;
+      detailsEl.classList.toggle('open', state.verificationExpanded);
+      toggleBtn.textContent = state.verificationExpanded ? 'Hide Details' : 'Show Details';
+
+      summaryEl.querySelectorAll('[data-category]').forEach((btn) => {
+        btn.onclick = (event) => {
+          const category = event.currentTarget.getAttribute('data-category');
+          state.verificationExpanded = true;
+          state.verificationCategoryExpanded[category] = !state.verificationCategoryExpanded[category];
+          renderVerification(data);
+        };
+      });
+
+      detailsEl.querySelectorAll('[data-cat-toggle]').forEach((btn) => {
+        btn.onclick = (event) => {
+          const category = event.currentTarget.getAttribute('data-cat-toggle');
+          state.verificationCategoryExpanded[category] = !state.verificationCategoryExpanded[category];
+          renderVerification(data);
+        };
+      });
+    }
+
+    async function loadVerification() {
+      const data = await api('/api/ops/verification');
+      window.__lastVerificationPayload = data;
+      state.verificationError = '';
+      renderVerification(data);
+    }
+
+    async function runVerification(btn) {
+      if (!btn || state.verificationRunning) return;
+      state.verificationRunning = true;
+      state.verificationError = '';
+      renderVerification(window.__lastVerificationPayload || {});
+      try {
+        const data = await api('/api/ops/verification/run', { method: 'POST' });
+        window.__lastVerificationPayload = data;
+        state.verificationError = '';
+        renderVerification(data);
+        toast('Verification completed');
+        await resetLogs();
+      } catch (error) {
+        const fallback = window.__lastVerificationPayload || {};
+        state.verificationError = error.message;
+        renderVerification(fallback);
+        toast(error.message);
+      } finally {
+        state.verificationRunning = false;
+        renderVerification(window.__lastVerificationPayload || {});
       }
     }
 
@@ -999,6 +1279,16 @@
         $('versionCheckDetails').classList.toggle('open', state.versionCheckExpanded);
         $('versionToggleBtn').textContent = state.versionCheckExpanded ? '▴' : '▾';
       };
+      $('verificationRunBtn').onclick = (event) => {
+        event.stopPropagation();
+        runVerification(event.currentTarget);
+      };
+      $('verificationToggleBtn').onclick = (event) => {
+        event.stopPropagation();
+        state.verificationExpanded = !state.verificationExpanded;
+        $('verificationDetails').classList.toggle('open', state.verificationExpanded);
+        $('verificationToggleBtn').textContent = state.verificationExpanded ? 'Hide Details' : 'Show Details';
+      };
       $('cleanupBtn').onclick = handleCleanup;
       $('loadMoreLogBtn').onclick = () => loadLog(true);
       $('logCategory').onchange = async (event) => {
@@ -1014,12 +1304,13 @@
       };
 
       try {
-        await Promise.all([loadServices(), loadVersionCheck(), loadCrons(), loadBackups()]);
+        await Promise.all([loadServices(), loadVersionCheck(), loadVerification(), loadCrons(), loadBackups()]);
         await resetLogs();
         if (window.__opsServicesRefreshTimer) clearInterval(window.__opsServicesRefreshTimer);
         window.__opsServicesRefreshTimer = setInterval(() => {
           loadServices().catch((error) => toast(error.message));
           loadVersionCheck().catch((error) => toast(error.message));
+          loadVerification().catch((error) => toast(error.message));
         }, 60000);
       } catch (error) {
         toast(error.message);
