@@ -30,6 +30,7 @@ import {
   recordFailure,
   getTaskFailures,
   resetTaskRetries,
+  getStaleTasks,
 } from './tasks-db.mjs';
 
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
@@ -3474,6 +3475,42 @@ const server = createServer((req, res) => {
       });
       return;
     }
+  }
+
+
+  if (path === '/api/tasks/stale' && req.method === 'GET') {
+    try {
+      getDb();
+      const softRaw = Number.parseInt(url.searchParams.get('soft_threshold') || '48', 10);
+      const hardRaw = Number.parseInt(url.searchParams.get('hard_threshold') || '120', 10);
+      const softThreshold = Number.isFinite(softRaw) && softRaw >= 1 ? softRaw : 48;
+      const hardThreshold = Number.isFinite(hardRaw) && hardRaw >= 1 ? hardRaw : 120;
+      const startedAt = Date.now();
+      const result = getStaleTasks(softThreshold, hardThreshold);
+      const duration = Date.now() - startedAt;
+      logAction({
+        category: 'staleness',
+        action: 'query',
+        target: 'tasks',
+        status: 'success',
+        detail: `Returned ${result.counts.total} stale tasks (soft=${result.counts.soft}, hard=${result.counts.hard}) thresholds=${softThreshold}/${hardThreshold}`,
+        duration_ms: duration,
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+    } catch (e) {
+      logAction({
+        category: 'staleness',
+        action: 'query',
+        target: 'tasks',
+        status: 'failed',
+        detail: truncateOutput(e.message),
+      });
+      console.error('[API] /api/tasks/stale error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Internal server error' }));
+    }
+    return;
   }
 
   if (path.startsWith('/api/tasks/') && path.split('/').length === 4) {
