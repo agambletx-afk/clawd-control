@@ -3176,11 +3176,11 @@ function renderCortexDecisions() {
     const tsRaw = d?.timestamp || d?.ts || d?.createdAt || d?.time || null;
     const tsMs = typeof tsRaw === 'number' ? (tsRaw > 1e12 ? tsRaw : tsRaw * 1000) : Date.parse(tsRaw || '') || 0;
     const score = Number(d?.score ?? d?.totalScore ?? 0);
-    const model = String(d?.selectedModel || d?.model || 'unknown/model');
+    const model = String(d?.modelSelected || d?.selectedModel || d?.model || 'unknown/model');
     const taskType = String(d?.taskType || d?.task || 'unknown');
-    const reason = String(d?.reason || d?.selectionReason || 'n/a');
+    const reason = String(d?.selectionReason || d?.reason || 'n/a');
     const agentId = String(d?.agentId || d?.agent || 'unknown');
-    const breakdown = d?.scores && typeof d.scores === 'object' ? d.scores : (d?.dimensions && typeof d.dimensions === 'object' ? d.dimensions : {});
+    const breakdown = d?.scoreBreakdown && typeof d.scoreBreakdown === 'object' ? d.scores : (d?.scores && typeof d.scores === 'object' ? d.dimensions : {});
     return `
       <div class="cortex-decision-row">
         <div style="display:flex; justify-content:space-between; gap:8px; align-items:center">

@@ -5104,7 +5104,7 @@ const server = createServer((req, res) => {
       const config = readCortexConfig() || {};
       const providers = {};
       for (const decision of decisions) {
-        const selectedModel = String(decision?.selectedModel || decision?.model || '');
+        const selectedModel = String(decision?.modelSelected || decision?.selectedModel || decision?.model || '');
         const provider = String(decision?.provider || selectedModel.split('/')[0] || 'unknown');
         if (!providers[provider]) {
           providers[provider] = { requests: 0, lastUsed: null, skips: 0 };
