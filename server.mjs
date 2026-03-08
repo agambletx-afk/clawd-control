@@ -56,6 +56,8 @@ const HEALTH_RESULTS_PATH = '/tmp/api-health-results.json';
 const CLI_USAGE_PATH = '/tmp/cli-usage.json';
 const COST_SENTINEL_STATUS_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', 'cost-sentinel-status.json');
 const BUDGET_CONFIG_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', 'budget.json');
+const SENTINEL_CONFIG_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', 'sentinel-config.json');
+const RATE_LIMITS_CONFIG_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', 'rate-limits.json');
 const CRON_JOBS_PATH = join(homedir(), '.openclaw', 'cron', 'jobs.json');
 const PRIMARY_ENV_PATH = join(DIR, '.env');
 const SECONDARY_ENV_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', '.env');
@@ -2640,6 +2642,390 @@ const server = createServer((req, res) => {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({}));
     }
+    return;
+  }
+
+
+  // ── Intelligence Config Endpoints ──
+
+  if (path === '/api/config/pricing' && req.method === 'GET') {
+    try {
+      if (!existsSync(MODEL_PRICING_PATH)) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({}));
+        return;
+      }
+      const payload = JSON.parse(readFileSync(MODEL_PRICING_PATH, 'utf8'));
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(payload));
+    } catch (e) {
+      console.warn('[API] /api/config/pricing warning:', e.message);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({}));
+    }
+    return;
+  }
+
+  if (path === '/api/config/pricing' && req.method === 'POST') {
+    readJsonBody(req).then((body) => {
+      try {
+        if (!body || typeof body !== 'object' || Array.isArray(body)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'validation_error', message: 'Body must be an object keyed by model name' }));
+          return;
+        }
+
+        for (const [model, value] of Object.entries(body)) {
+          if (!model || typeof model !== 'string') {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'validation_error', message: 'Each model key must be a non-empty string' }));
+            return;
+          }
+          if (!value || typeof value !== 'object' || Array.isArray(value)) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'validation_error', message: `Pricing for ${model} must be an object` }));
+            return;
+          }
+          for (const field of ['input', 'output', 'cacheRead', 'cacheWrite']) {
+            const num = value[field];
+            if (!Number.isFinite(num) || num <= 0) {
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'validation_error', message: `Pricing field ${field} for ${model} must be a positive finite number` }));
+              return;
+            }
+          }
+        }
+
+        writeFileSync(MODEL_PRICING_PATH, JSON.stringify(body, null, 2), 'utf8');
+        mergedModelPricing = null;
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(body));
+      } catch (e) {
+        console.error('[API] /api/config/pricing error:', e.message);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'internal_error' }));
+      }
+    }).catch((e) => {
+      if (e.message === 'Payload too large') {
+        res.writeHead(413, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Payload too large' }));
+        return;
+      }
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid JSON' }));
+    });
+    return;
+  }
+
+  if (path === '/api/config/budget' && req.method === 'GET') {
+    try {
+      if (!existsSync(BUDGET_CONFIG_PATH)) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({}));
+        return;
+      }
+      const payload = JSON.parse(readFileSync(BUDGET_CONFIG_PATH, 'utf8'));
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(payload));
+    } catch (e) {
+      console.warn('[API] /api/config/budget warning:', e.message);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({}));
+    }
+    return;
+  }
+
+  if (path === '/api/config/budget' && req.method === 'POST') {
+    readJsonBody(req).then((body) => {
+      try {
+        if (!body || typeof body !== 'object' || Array.isArray(body)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'validation_error', message: 'Body must be an object' }));
+          return;
+        }
+
+        const out = {};
+        if (body.daily !== undefined) {
+          if (!Number.isFinite(body.daily) || body.daily < 0) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'validation_error', message: 'daily must be a non-negative finite number' }));
+            return;
+          }
+          out.daily = body.daily;
+        }
+        if (body.weekly !== undefined) {
+          if (!Number.isFinite(body.weekly) || body.weekly < 0) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'validation_error', message: 'weekly must be a non-negative finite number' }));
+            return;
+          }
+          out.weekly = body.weekly;
+        }
+
+        writeFileSync(BUDGET_CONFIG_PATH, JSON.stringify(out, null, 2), 'utf8');
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(out));
+      } catch (e) {
+        console.error('[API] /api/config/budget error:', e.message);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'internal_error' }));
+      }
+    }).catch((e) => {
+      if (e.message === 'Payload too large') {
+        res.writeHead(413, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Payload too large' }));
+        return;
+      }
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid JSON' }));
+    });
+    return;
+  }
+
+  if (path === '/api/config/sentinel' && req.method === 'GET') {
+    try {
+      if (!existsSync(SENTINEL_CONFIG_PATH)) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({}));
+        return;
+      }
+      const payload = JSON.parse(readFileSync(SENTINEL_CONFIG_PATH, 'utf8'));
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(payload));
+    } catch (e) {
+      console.warn('[API] /api/config/sentinel warning:', e.message);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({}));
+    }
+    return;
+  }
+
+  if (path === '/api/config/sentinel' && req.method === 'POST') {
+    readJsonBody(req).then((body) => {
+      try {
+        if (!body || typeof body !== 'object' || Array.isArray(body)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'validation_error', message: 'Body must be an object' }));
+          return;
+        }
+
+        const defaults = {
+          agentConcentrationWarn: 70,
+          agentConcentrationCritical: 90,
+          dailyBudgetWarn: 1.0,
+          dailyBudgetCritical: 2.0,
+          sessionVolumeWarn: 30,
+          sessionVolumeCritical: 50,
+          weeklyTrendMultiplier: 2.0,
+          alertCooldownHours: 6,
+        };
+        const out = { ...defaults };
+
+        const finiteNonNegative = (value) => Number.isFinite(value) && value >= 0;
+        const intNonNegative = (value) => Number.isInteger(value) && value >= 0;
+
+        if (body.agentConcentrationWarn !== undefined) {
+          const value = body.agentConcentrationWarn;
+          if (!finiteNonNegative(value) || value > 100) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'validation_error', message: 'agentConcentrationWarn must be between 0 and 100' }));
+            return;
+          }
+          out.agentConcentrationWarn = value;
+        }
+
+        if (body.agentConcentrationCritical !== undefined) {
+          const value = body.agentConcentrationCritical;
+          if (!finiteNonNegative(value) || value > 100) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'validation_error', message: 'agentConcentrationCritical must be between 0 and 100' }));
+            return;
+          }
+          out.agentConcentrationCritical = value;
+        }
+
+        if (body.dailyBudgetWarn !== undefined) {
+          const value = body.dailyBudgetWarn;
+          if (!finiteNonNegative(value)) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'validation_error', message: 'dailyBudgetWarn must be a non-negative finite number' }));
+            return;
+          }
+          out.dailyBudgetWarn = value;
+        }
+
+        if (body.dailyBudgetCritical !== undefined) {
+          const value = body.dailyBudgetCritical;
+          if (!finiteNonNegative(value)) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'validation_error', message: 'dailyBudgetCritical must be a non-negative finite number' }));
+            return;
+          }
+          out.dailyBudgetCritical = value;
+        }
+
+        if (body.sessionVolumeWarn !== undefined) {
+          const value = body.sessionVolumeWarn;
+          if (!intNonNegative(value)) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'validation_error', message: 'sessionVolumeWarn must be an integer >= 0' }));
+            return;
+          }
+          out.sessionVolumeWarn = value;
+        }
+
+        if (body.sessionVolumeCritical !== undefined) {
+          const value = body.sessionVolumeCritical;
+          if (!intNonNegative(value)) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'validation_error', message: 'sessionVolumeCritical must be an integer >= 0' }));
+            return;
+          }
+          out.sessionVolumeCritical = value;
+        }
+
+        if (body.weeklyTrendMultiplier !== undefined) {
+          const value = body.weeklyTrendMultiplier;
+          if (!Number.isFinite(value) || value <= 0) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'validation_error', message: 'weeklyTrendMultiplier must be a finite number greater than 0' }));
+            return;
+          }
+          out.weeklyTrendMultiplier = value;
+        }
+
+        if (body.alertCooldownHours !== undefined) {
+          const value = body.alertCooldownHours;
+          if (!finiteNonNegative(value)) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'validation_error', message: 'alertCooldownHours must be a non-negative finite number' }));
+            return;
+          }
+          out.alertCooldownHours = value;
+        }
+
+        writeFileSync(SENTINEL_CONFIG_PATH, JSON.stringify(out, null, 2), 'utf8');
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(out));
+      } catch (e) {
+        console.error('[API] /api/config/sentinel error:', e.message);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'internal_error' }));
+      }
+    }).catch((e) => {
+      if (e.message === 'Payload too large') {
+        res.writeHead(413, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Payload too large' }));
+        return;
+      }
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid JSON' }));
+    });
+    return;
+  }
+
+  if (path === '/api/config/rate-limits' && req.method === 'GET') {
+    try {
+      if (!existsSync(RATE_LIMITS_CONFIG_PATH)) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify([]));
+        return;
+      }
+      const payload = JSON.parse(readFileSync(RATE_LIMITS_CONFIG_PATH, 'utf8'));
+      if (!Array.isArray(payload)) {
+        console.warn('[API] /api/config/rate-limits warning: expected array');
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify([]));
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(payload));
+    } catch (e) {
+      console.warn('[API] /api/config/rate-limits warning:', e.message);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify([]));
+    }
+    return;
+  }
+
+  if (path === '/api/config/rate-limits' && req.method === 'POST') {
+    readJsonBody(req).then((body) => {
+      try {
+        if (!Array.isArray(body)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'validation_error', message: 'Body must be an array of rate limit entries' }));
+          return;
+        }
+
+        const out = [];
+        for (let i = 0; i < body.length; i++) {
+          const entry = body[i];
+          if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'validation_error', message: `Entry at index ${i} must be an object` }));
+            return;
+          }
+
+          const provider = typeof entry.provider === 'string' ? entry.provider.trim() : '';
+          const model = typeof entry.model === 'string' ? entry.model.trim() : '';
+          const limitType = typeof entry.limitType === 'string' ? entry.limitType.trim() : '';
+          const label = typeof entry.label === 'string' ? entry.label.trim() : '';
+
+          if (!provider || !model || !limitType || !label) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'validation_error', message: `Entry at index ${i} requires non-empty provider, model, limitType, and label` }));
+            return;
+          }
+
+          if (!Number.isFinite(entry.limit) || entry.limit <= 0) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'validation_error', message: `Entry at index ${i} limit must be a positive finite number` }));
+            return;
+          }
+
+          if (entry.used !== undefined && !Number.isFinite(entry.used)) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'validation_error', message: `Entry at index ${i} used must be a finite number when provided` }));
+            return;
+          }
+
+          if (entry.source !== undefined && typeof entry.source !== 'string') {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'validation_error', message: `Entry at index ${i} source must be a string when provided` }));
+            return;
+          }
+
+          const clean = {
+            provider,
+            model,
+            limitType,
+            label,
+            limit: entry.limit,
+          };
+
+          if (entry.used !== undefined) clean.used = entry.used;
+          if (entry.source !== undefined) clean.source = entry.source;
+
+          out.push(clean);
+        }
+
+        writeFileSync(RATE_LIMITS_CONFIG_PATH, JSON.stringify(out, null, 2), 'utf8');
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(out));
+      } catch (e) {
+        console.error('[API] /api/config/rate-limits error:', e.message);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'internal_error' }));
+      }
+    }).catch((e) => {
+      if (e.message === 'Payload too large') {
+        res.writeHead(413, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Payload too large' }));
+        return;
+      }
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid JSON' }));
+    });
     return;
   }
 
