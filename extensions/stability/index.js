@@ -247,7 +247,7 @@ module.exports = {
                     // Fragmentation check — too many unresolved tensions
                     const activeTensions = state.identity._activeTensions.filter(t => t.status === 'active').length;
                     if (activeTensions > 5) {
-                        const fileVectors = state.vectorStore.loadVectors().length;
+                        const fileVectors = (await state.vectorStore.loadVectors()).length;
                         const ratio = activeTensions / Math.max(fileVectors, 1);
                         if (ratio > 3) {
                             lines.push(`⚠ Fragmentation: ${activeTensions} unresolved tensions (ratio ${ratio.toFixed(1)}:1)`);
@@ -255,7 +255,7 @@ module.exports = {
                     }
 
                     const userMessage = _extractLastUserMessage(event);
-                    const scoredResults = state.vectorStore.getRelevantVectors(
+                    const scoredResults = await state.vectorStore.getRelevantVectors(
                         userMessage, entropyState.lastScore, { returnScores: true }
                     );
                     const relevantVectors = scoredResults.map(sr => sr.vector);
@@ -343,7 +343,7 @@ module.exports = {
                     );
 
                     for (const injected of state.lastInjectedVectors) {
-                        state.vectorStore.recordFeedback(injected.id, {
+                        await state.vectorStore.recordFeedback(injected.id, {
                             preEntropy: state.preInjectionEntropy,
                             postEntropy: score,
                             entropyDelta,
@@ -461,7 +461,7 @@ module.exports = {
         api.registerGatewayMethod('stability.getState', async ({ params, respond }) => {
             const state = getAgentState(params?.agentId);
             const entropyState = state.entropy.getCurrentState();
-            const fileData = state.vectorStore.loadFile();
+            const fileData = await state.vectorStore.loadFile();
             respond(true, {
                 agentId: state.agentId,
                 entropy: entropyState.lastScore,
@@ -506,7 +506,7 @@ module.exports = {
 
         api.registerGatewayMethod('stability.getGrowthVectors', async ({ params, respond }) => {
             const state = getAgentState(params?.agentId);
-            const fileData = state.vectorStore.loadFile();
+            const fileData = await state.vectorStore.loadFile();
             respond(true, {
                 agentId: state.agentId,
                 total: fileData.vectors.length,
@@ -524,19 +524,19 @@ module.exports = {
                 return;
             }
             const state = getAgentState(params?.agentId);
-            const result = state.vectorStore.validateVector(params.id, params.note || '');
+            const result = await state.vectorStore.validateVector(params.id, params.note || '');
             respond(result.success, result);
         });
 
         api.registerGatewayMethod('stability.getVectorFeedback', async ({ params, respond }) => {
             const state = getAgentState(params?.agentId);
             if (params?.id) {
-                const feedback = state.vectorStore.getFeedback(params.id);
+                const feedback = await state.vectorStore.getFeedback(params.id);
                 respond(!!feedback, feedback || { error: 'No feedback data for this vector' });
             } else {
                 // Return summary for all vectors with feedback
                 try {
-                    const data = state.vectorStore._loadFeedbackFile();
+                    const data = await state.vectorStore._loadFeedbackFile();
                     const summary = Object.entries(data).map(([id, record]) => ({
                         id,
                         avgEntropyDelta: record.avgEntropyDelta,
@@ -569,7 +569,7 @@ module.exports = {
         // (other agents run lifecycle on first access)
         try {
             const mainState = getAgentState('main');
-            mainState.vectorStore.runLifecycle();
+            void mainState.vectorStore.runLifecycle().catch(() => {});
         } catch (_) { /* best-effort */ }
 
         api.logger.info('Stability plugin registered — multi-agent entropy monitoring, loop detection, heartbeat decisions, growth vectors active');

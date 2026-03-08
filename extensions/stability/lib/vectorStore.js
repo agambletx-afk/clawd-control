@@ -15,6 +15,7 @@
  */
 
 const fs = require('fs');
+const fsp = fs.promises;
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
@@ -68,7 +69,7 @@ class VectorStore {
      * Returns { vectors, candidates, queue, metadata } or empty defaults.
      * Uses SHA256 checksum caching to avoid redundant file reads.
      */
-    loadFile() {
+    async loadFile() {
         const now = Date.now();
 
         // Return cache if fresh
@@ -77,11 +78,13 @@ class VectorStore {
         }
 
         try {
-            if (!fs.existsSync(this.filePath)) {
+            try {
+                await fsp.access(this.filePath);
+            } catch {
                 return this._emptyFile();
             }
 
-            const raw = fs.readFileSync(this.filePath, 'utf8');
+            const raw = await fsp.readFile(this.filePath, 'utf8');
             const checksum = crypto.createHash('sha256').update(raw).digest('hex').slice(0, 16);
 
             // Skip parsing if unchanged
@@ -110,8 +113,8 @@ class VectorStore {
     /**
      * Load only validated vectors (the ones eligible for injection).
      */
-    loadVectors() {
-        const data = this.loadFile();
+    async loadVectors() {
+        const data = await this.loadFile();
         return data.vectors.filter(v =>
             v.validation_status === 'validated' || v.validation_status === 'integrated'
         );
@@ -142,13 +145,13 @@ class VectorStore {
      * @param {number} entropyScore - Current entropy from stability monitoring
      * @returns {Array} Top vectors above threshold, max `maxInjected`
      */
-    getRelevantVectors(userMessage = '', entropyScore = 0, options = {}) {
-        const vectors = this.loadVectors();
+    async getRelevantVectors(userMessage = '', entropyScore = 0, options = {}) {
+        const vectors = await this.loadVectors();
         if (vectors.length === 0) return [];
 
         // If no user message available, fall back to priority queue ordering
         if (!userMessage || userMessage.trim().length === 0) {
-            const byPriority = this._getByPriority(vectors);
+            const byPriority = await this._getByPriority(vectors);
             return options.returnScores
                 ? byPriority.map(v => ({ vector: v, score: 1.0 }))
                 : byPriority;
@@ -157,10 +160,10 @@ class VectorStore {
         const msgLower = userMessage.toLowerCase();
         const msgWords = this._extractWords(msgLower);
 
-        const scored = vectors.map(v => {
-            const score = this._calculateRelevance(v, msgLower, msgWords, entropyScore);
+        const scored = await Promise.all(vectors.map(async (v) => {
+            const score = await this._calculateRelevance(v, msgLower, msgWords, entropyScore);
             return { vector: v, score };
-        });
+        }));
 
         const filtered = scored
             .filter(({ score }) => score >= this.relevanceThreshold)
@@ -181,7 +184,7 @@ class VectorStore {
      *   10% recency (linear decay over 7 days)
      *   10% weight bonus (agent's assigned confidence)
      */
-    _calculateRelevance(vector, msgLower, msgWords, entropyScore) {
+    async _calculateRelevance(vector, msgLower, msgWords, entropyScore) {
         // --- 60% Keyword overlap ---
         const vectorText = [
             vector.integration_hypothesis || '',
@@ -233,7 +236,7 @@ class VectorStore {
         // Vectors that consistently reduce entropy get boosted;
         // vectors that consistently increase entropy get penalized.
         // Requires >= 3 feedback entries to avoid single-datapoint noise.
-        const feedback = this.getFeedback(vector.id);
+        const feedback = await this.getFeedback(vector.id);
         if (feedback && feedback.entries.length >= 3) {
             const cap = this.config.weightAdjustmentCap || 0.1;
             // Negate: negative delta (entropy went DOWN) → positive boost
@@ -283,8 +286,8 @@ class VectorStore {
     /**
      * Fallback when user message unavailable — return top vectors by priority queue.
      */
-    _getByPriority(vectors) {
-        const data = this.loadFile();
+    async _getByPriority(vectors) {
+        const data = await this.loadFile();
         const queue = data.queue || {};
         const ordered = [
             ...(queue.high || []),
@@ -344,9 +347,9 @@ class VectorStore {
      * Add an auto-detected candidate vector to the candidates array.
      * Does NOT touch the agent's vectors array — candidates are separate.
      */
-    addCandidate(candidate) {
+    async addCandidate(candidate) {
         try {
-            const data = this._readFileRaw();
+            const data = await this._readFileRaw();
             if (!data.candidates) data.candidates = [];
 
             // Check for duplicate (same type + similar description)
@@ -381,7 +384,7 @@ class VectorStore {
                 data.candidates.push(candidate);
             }
 
-            this._writeFile(data);
+            await this._writeFile(data);
             return true;
         } catch (err) {
             console.warn('[Stability/VectorStore] Failed to add candidate:', err.message);
@@ -392,9 +395,9 @@ class VectorStore {
     /**
      * Promote a candidate to validated (or validate an existing vector).
      */
-    validateVector(id, note = '') {
+    async validateVector(id, note = '') {
         try {
-            const data = this._readFileRaw();
+            const data = await this._readFileRaw();
 
             // Check candidates first
             const candidateIdx = (data.candidates || []).findIndex(c => c.id === id);
@@ -406,7 +409,7 @@ class VectorStore {
                 if (!data.vectors) data.vectors = [];
                 data.vectors.push(candidate);
                 data.candidates.splice(candidateIdx, 1);
-                this._writeFile(data);
+                await this._writeFile(data);
                 return { success: true, action: 'promoted', id };
             }
 
@@ -415,7 +418,7 @@ class VectorStore {
             if (vector) {
                 vector.validation_status = 'validated';
                 if (note) vector.validation_note = note;
-                this._writeFile(data);
+                await this._writeFile(data);
                 return { success: true, action: 'validated', id };
             }
 
@@ -433,9 +436,9 @@ class VectorStore {
      * Prune old candidates, archive old validated vectors.
      * Called periodically (e.g., from a service or on startup).
      */
-    runLifecycle() {
+    async runLifecycle() {
         try {
-            const data = this._readFileRaw();
+            const data = await this._readFileRaw();
             const now = Date.now();
             let changed = false;
 
@@ -462,7 +465,7 @@ class VectorStore {
                 console.log(`[Stability/VectorStore] Archived ${removed.length} vectors (over ${this.maxVectors} limit)`);
             }
 
-            if (changed) this._writeFile(data);
+            if (changed) await this._writeFile(data);
             return { pruned: beforeCandidates - (data.candidates || []).length };
         } catch (err) {
             console.warn('[Stability/VectorStore] Lifecycle error:', err.message);
@@ -477,12 +480,14 @@ class VectorStore {
     /**
      * Read the raw file (bypasses cache — used for writes).
      */
-    _readFileRaw() {
+    async _readFileRaw() {
         try {
-            if (!fs.existsSync(this.filePath)) {
+            try {
+                await fsp.access(this.filePath);
+            } catch {
                 return { vectors: [], candidates: [], queue: { high: [], medium: [], low: [] }, metadata: {} };
             }
-            return JSON.parse(fs.readFileSync(this.filePath, 'utf8'));
+            return JSON.parse(await fsp.readFile(this.filePath, 'utf8'));
         } catch {
             return { vectors: [], candidates: [], queue: { high: [], medium: [], low: [] }, metadata: {} };
         }
@@ -491,12 +496,10 @@ class VectorStore {
     /**
      * Write data back to the file. Invalidates cache.
      */
-    _writeFile(data) {
+    async _writeFile(data) {
         const dir = path.dirname(this.filePath);
-        if (!fs.existsSync(dir)) {
-            fs.mkdirSync(dir, { recursive: true });
-        }
-        fs.writeFileSync(this.filePath, JSON.stringify(data, null, 2), 'utf8');
+        await fsp.mkdir(dir, { recursive: true });
+        await fsp.writeFile(this.filePath, JSON.stringify(data, null, 2), 'utf8');
         this._cacheChecksum = null; // Invalidate cache
         this._cacheTimestamp = 0;
     }
@@ -514,13 +517,13 @@ class VectorStore {
      * @param {Object} feedback - { preEntropy, postEntropy, entropyDelta,
      *                              relevanceScore, tensionDetected, timestamp }
      */
-    recordFeedback(vectorId, feedback) {
+    async recordFeedback(vectorId, feedback) {
         if (!vectorId || !feedback) return;
 
         const windowSize = this.config.feedbackWindowSize || 10;
 
         try {
-            const data = this._loadFeedbackFile();
+            const data = await this._loadFeedbackFile();
 
             if (!data[vectorId]) {
                 data[vectorId] = {
@@ -556,7 +559,7 @@ class VectorStore {
             record.totalInjections = (record.totalInjections || 0) + 1;
             record.lastUsed = feedback.timestamp;
 
-            this._writeFeedbackFile(data);
+            await this._writeFeedbackFile(data);
         } catch (err) {
             console.warn('[Stability/VectorStore] Failed to record feedback:', err.message);
         }
@@ -567,9 +570,9 @@ class VectorStore {
      * @param {string} vectorId
      * @returns {{ avgEntropyDelta: number, totalInjections: number, entries: Array } | null}
      */
-    getFeedback(vectorId) {
+    async getFeedback(vectorId) {
         try {
-            const data = this._loadFeedbackFile();
+            const data = await this._loadFeedbackFile();
             return data[vectorId] || null;
         } catch {
             return null;
@@ -584,11 +587,15 @@ class VectorStore {
      * Load feedback data from separate file.
      * Structure: { "gv-001": { entries: [...], avgEntropyDelta, totalInjections, lastUsed }, ... }
      */
-    _loadFeedbackFile() {
+    async _loadFeedbackFile() {
         const feedbackPath = this._getFeedbackPath();
         try {
-            if (!fs.existsSync(feedbackPath)) return {};
-            return JSON.parse(fs.readFileSync(feedbackPath, 'utf8'));
+            try {
+                await fsp.access(feedbackPath);
+            } catch {
+                return {};
+            }
+            return JSON.parse(await fsp.readFile(feedbackPath, 'utf8'));
         } catch {
             return {};
         }
@@ -597,13 +604,11 @@ class VectorStore {
     /**
      * Write feedback data to file.
      */
-    _writeFeedbackFile(data) {
+    async _writeFeedbackFile(data) {
         const feedbackPath = this._getFeedbackPath();
         const dir = path.dirname(feedbackPath);
-        if (!fs.existsSync(dir)) {
-            fs.mkdirSync(dir, { recursive: true });
-        }
-        fs.writeFileSync(feedbackPath, JSON.stringify(data, null, 2), 'utf8');
+        await fsp.mkdir(dir, { recursive: true });
+        await fsp.writeFile(feedbackPath, JSON.stringify(data, null, 2), 'utf8');
     }
 
     /**

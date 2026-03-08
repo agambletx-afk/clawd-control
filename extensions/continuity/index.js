@@ -202,6 +202,7 @@ module.exports = {
         api.on('before_agent_start', async (event, ctx) => {
           try {
             const state = getAgentState(ctx.agentId);
+            const continuityDebug = config.debug === true || process.env.CONTINUITY_DEBUG === 'true';
             state.exchangeCount++;
 
             // Extract last user message from the event messages array
@@ -271,17 +272,23 @@ module.exports = {
             // distance < 1.0 = reasonably relevant match. RRF compositeScore is used
             // for ranking but distance remains the interpretable relevance signal.
             const DISTANCE_THRESHOLD = 1.0;
-            console.error(`[Continuity:${state.agentId}] Search: intent=${hasContinuityIntent}, len=${cleanUserText.length}, query="${cleanUserText.substring(0, 80)}"`);
+            if (continuityDebug) {
+                console.error(`[Continuity:${state.agentId}] Search: intent=${hasContinuityIntent}, len=${cleanUserText.length}, query="${cleanUserText.substring(0, 80)}"`);
+            }
 
             if (cleanUserText.length >= 10) {
                 try {
                     await state.ensureStorage();
                     if (state.searcher) {
                         const results = await state.searcher.search(cleanUserText, 30, state.agentId);
-                        console.error(`[Continuity:${state.agentId}] Search returned ${results?.exchanges?.length || 0} raw results`);
+                        if (continuityDebug) {
+                            console.error(`[Continuity:${state.agentId}] Search returned ${results?.exchanges?.length || 0} raw results`);
+                        }
                         if (results?.exchanges?.length > 0) {
                             results.exchanges = _filterUsefulExchanges(results.exchanges);
-                            console.error(`[Continuity:${state.agentId}] After filter: ${results.exchanges.length} useful results`);
+                            if (continuityDebug) {
+                                console.error(`[Continuity:${state.agentId}] After filter: ${results.exchanges.length} useful results`);
+                            }
                             if (results.exchanges.length > 0) {
                                 // Always cache for tool_result_persist enrichment
                                 state.lastRetrievalCache = results;
@@ -291,7 +298,9 @@ module.exports = {
                                 // 2. Top result is semantically relevant (distance below threshold)
                                 const topDistance = results.exchanges[0].distance ?? 1.0;
                                 const shouldInject = hasContinuityIntent || topDistance < DISTANCE_THRESHOLD;
-                                console.error(`[Continuity:${state.agentId}] topDistance=${topDistance.toFixed(3)}, threshold=${DISTANCE_THRESHOLD}, inject=${shouldInject}`);
+                                if (continuityDebug) {
+                                    console.error(`[Continuity:${state.agentId}] topDistance=${topDistance.toFixed(3)}, threshold=${DISTANCE_THRESHOLD}, inject=${shouldInject}`);
+                                }
 
                                 if (shouldInject) {
                                     // Proprioceptive framing (from Clint's architecture):
@@ -319,7 +328,9 @@ module.exports = {
                             }
                         }
                     } else {
-                        console.error(`[Continuity:${state.agentId}] Retrieval skipped: searcher not available after ensureStorage()`);
+                        if (continuityDebug) {
+                            console.error(`[Continuity:${state.agentId}] Retrieval skipped: searcher not available after ensureStorage()`);
+                        }
                     }
                 } catch (err) {
                     console.error(`[Continuity:${state.agentId}] Retrieval failed: ${err.message}`);

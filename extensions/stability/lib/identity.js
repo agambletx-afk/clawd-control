@@ -312,7 +312,7 @@ class Identity {
 
         // 5. Create candidate growth vector on elevated entropy
         if (vectorStore && entropyScore > 0.6) {
-            this._createCandidateVector(userMessage, responseText, entropyScore, tensions, vectorStore);
+            await this._createCandidateVector(userMessage, responseText, entropyScore, tensions, vectorStore);
         }
 
         // 6. Expire old tensions (> 7 days)
@@ -414,7 +414,7 @@ class Identity {
      * Create a candidate growth vector from elevated entropy turn.
      * Written to VectorStore's candidates array (not the agent's vectors).
      */
-    _createCandidateVector(userMessage, responseText, entropyScore, tensions, vectorStore) {
+    async _createCandidateVector(userMessage, responseText, entropyScore, tensions, vectorStore) {
         // Determine type from tensions or entropy
         let type = 'auto_detected';
         let entropySource = 'elevated_entropy';
@@ -450,7 +450,7 @@ class Identity {
             source: 'auto'
         };
 
-        vectorStore.addCandidate(candidate);
+        await vectorStore.addCandidate(candidate);
         console.log(`[Stability] Created candidate growth vector: ${candidate.id} (${type})`);
     }
 
