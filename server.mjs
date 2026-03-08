@@ -55,6 +55,7 @@ const APIS_CONFIG_PATH = join(DIR, 'apis-config.json');
 const HEALTH_RESULTS_PATH = '/tmp/api-health-results.json';
 const CLI_USAGE_PATH = '/tmp/cli-usage.json';
 const COST_SENTINEL_STATUS_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', 'cost-sentinel-status.json');
+const CRON_JOBS_PATH = join(homedir(), '.openclaw', 'cron', 'jobs.json');
 const PRIMARY_ENV_PATH = join(DIR, '.env');
 const SECONDARY_ENV_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', '.env');
 const LOCAL_HEALTH_SCRIPT_PATH = join(DIR, 'scripts', 'check-api-health.sh');
@@ -2582,6 +2583,55 @@ const server = createServer((req, res) => {
       console.error('[API] /api/costs/sentinel error:', e.message);
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'parse_error' }));
+    }
+    return;
+  }
+
+
+  if (path === '/api/cron/health' && req.method === 'GET') {
+    try {
+      if (!existsSync(CRON_JOBS_PATH)) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'unavailable', message: 'Cron jobs file not found' }));
+        return;
+      }
+
+      const scheduleToHuman = (expr) => {
+        const value = String(expr || '').trim();
+        if (value === '0 */4 * * *') return 'Every 4 hours';
+        if (value === '0 */6 * * *') return 'Every 6 hours';
+        if (value === '*/30 * * * *') return 'Every 30 minutes';
+        if (value === '0 0 * * *') return 'Daily at midnight';
+        return value;
+      };
+
+      const payload = JSON.parse(readFileSync(CRON_JOBS_PATH, 'utf8'));
+      const jobs = Array.isArray(payload?.jobs) ? payload.jobs : [];
+      const health = jobs.map((job) => {
+        const state = job?.state && typeof job.state === 'object' ? job.state : {};
+        const expr = String(job?.schedule?.expr || '');
+        return {
+          id: job?.id || '',
+          name: job?.name || 'unnamed-job',
+          enabled: Boolean(job?.enabled),
+          schedule: expr,
+          scheduleHuman: scheduleToHuman(expr),
+          lastStatus: state?.lastStatus || null,
+          consecutiveErrors: Number(state?.consecutiveErrors) || 0,
+          lastDurationMs: Number(state?.lastDurationMs) || 0,
+          lastRunAtMs: Number(state?.lastRunAtMs) || 0,
+          nextRunAtMs: Number(state?.nextRunAtMs) || 0,
+          modelOverride: job?.modelOverride || null,
+          sessionTarget: job?.sessionTarget || null,
+        };
+      });
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(health));
+    } catch (e) {
+      console.error('[API] /api/cron/health error:', e.message);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: 'unavailable', message: 'Cron jobs file not found' }));
     }
     return;
   }
