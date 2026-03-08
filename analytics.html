@@ -118,6 +118,12 @@
 .limit-head { display: flex; justify-content: space-between; gap: 10px; align-items: center; font-size: .75rem; }
 .limit-name { font-weight: 700; color: var(--text-primary); }
 .limit-meta { color: var(--text-tertiary); font-variant-numeric: tabular-nums; display:flex; align-items:center; gap:6px; }
+.budget-bars-section { margin-bottom: 12px; display: flex; flex-direction: column; gap: 10px; }
+.budget-bar-row { display: flex; flex-direction: column; gap: 5px; }
+.budget-bar-label { display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; }
+.budget-bar-name { font-weight: 600; color: var(--text-secondary); }
+.budget-bar-values { color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.budget-no-config { font-size: 0.72rem; color: var(--text-tertiary); text-align: center; padding: 8px; }
 .zone1-separator { border-top: 1px solid var(--border-subtle); margin-top: 14px; }
 .pricing-note { font-size: .65rem; color: var(--text-tertiary); margin-left: 6px; }
 
@@ -537,6 +543,23 @@
       </div>
     </div>
 
+    <div id="budgetBarsSection" class="budget-bars-section" style="display:none">
+      <div class="budget-bar-row">
+        <div class="budget-bar-label">
+          <span class="budget-bar-name">Daily Budget</span>
+          <span class="budget-bar-values" id="budgetDailyValues">—</span>
+        </div>
+        <div class="quota-track"><div class="quota-fill" id="budgetDailyFill" style="width:0%"></div></div>
+      </div>
+      <div class="budget-bar-row">
+        <div class="budget-bar-label">
+          <span class="budget-bar-name">Weekly Budget</span>
+          <span class="budget-bar-values" id="budgetWeeklyValues">—</span>
+        </div>
+        <div class="quota-track"><div class="quota-fill" id="budgetWeeklyFill" style="width:0%"></div></div>
+      </div>
+    </div>
+
     <div class="chart-card-full zone1-limits-card">
       <div class="chart-header">
         <div class="chart-title"><i data-lucide="gauge"></i>Rate Limits</div>
@@ -819,6 +842,7 @@ let analyticsData = null;
 let tokenData = null;
 let sentinelData = null;
 let limitsData = [];
+let budgetData = {};
 let cronHealthData = [];
 let costMode = 'daily';
 let zone2AgentFilter = 'all';
@@ -1022,21 +1046,24 @@ async function loadAnalytics() {
   const agent = $('#agentSelect').value;
 
   try {
-    const [aRes, tRes, sRes, lRes, cRes] = await Promise.all([
+    const [aRes, tRes, sRes, lRes, bRes, cRes] = await Promise.all([
       fetch(`/api/analytics?range=${range}&agent=${agent}`),
       fetch(`/api/tokens?range=${range}&agent=${agent}`),
       fetch('/api/costs/sentinel', FETCH_OPTS),
       fetch('/api/limits', FETCH_OPTS),
+      fetch('/api/costs/budget', FETCH_OPTS),
       fetch('/api/cron/health', FETCH_OPTS)
     ]);
     analyticsData = await aRes.json();
     tokenData = await tRes.json();
     sentinelData = await sRes.json();
     limitsData = lRes.ok ? await lRes.json() : [];
+    budgetData = bRes.ok ? await bRes.json() : {};
     const cronPayload = cRes.ok ? await cRes.json() : [];
     cronHealthData = Array.isArray(cronPayload) ? cronPayload : [];
     renderAll();
   } catch (e) {
+    budgetData = {};
     cronHealthData = [];
     console.error('Failed to load analytics:', e);
     if (typeof showToast === 'function') showToast('Failed to load analytics data', 'error');
@@ -1052,6 +1079,7 @@ function renderAll() {
 
   renderCostVelocity();
   renderRateLimits();
+  renderBudgetBars();
   renderZone2Tabs();
   renderConcentrationBanner();
   renderTokenUsageChart();
@@ -1149,6 +1177,84 @@ function renderRateLimits() {
       <div class="quota-track"><div class="quota-fill" style="width:${pct}%;background:${color}"></div></div>
     </div>`;
   }).join('');
+}
+
+
+function renderBudgetBars() {
+  const section = $('#budgetBarsSection');
+  if (!section || !analyticsData) return;
+
+  const pm = pricingMeta();
+
+  if (pm.isNone) {
+    section.style.display = '';
+    section.innerHTML = '<div class="budget-no-config">Budget tracking requires pricing data. Enable pricing to compare spend against daily/weekly budgets.</div>';
+    return;
+  }
+
+  section.innerHTML = `
+    <div class="budget-bar-row">
+      <div class="budget-bar-label">
+        <span class="budget-bar-name">Daily Budget</span>
+        <span class="budget-bar-values" id="budgetDailyValues">—</span>
+      </div>
+      <div class="quota-track"><div class="quota-fill" id="budgetDailyFill" style="width:0%"></div></div>
+    </div>
+    <div class="budget-bar-row">
+      <div class="budget-bar-label">
+        <span class="budget-bar-name">Weekly Budget</span>
+        <span class="budget-bar-values" id="budgetWeeklyValues">—</span>
+      </div>
+      <div class="quota-track"><div class="quota-fill" id="budgetWeeklyFill" style="width:0%"></div></div>
+    </div>
+  `;
+
+  const safeBudget = budgetData && typeof budgetData === 'object' ? budgetData : {};
+  const hasDaily = Number(safeBudget.daily) > 0;
+  const hasWeekly = Number(safeBudget.weekly) > 0;
+
+  if (!hasDaily && !hasWeekly) {
+    section.innerHTML = '<div class="budget-no-config">No budget set. Configure daily and weekly budgets in Settings to track spend progress.</div>';
+    section.style.display = '';
+    return;
+  }
+
+  const timeSeries = Array.isArray(analyticsData.overTime) ? analyticsData.overTime : [];
+  const todaySpend = Number(timeSeries[timeSeries.length - 1]?.cost) || 0;
+  const weeklySpend = getSelectedRange() === '7'
+    ? (Number(analyticsData.totalCost) || 0)
+    : timeSeries.slice(-7).reduce((sum, day) => sum + (Number(day?.cost) || 0), 0);
+
+  const dailyValuesEl = $('#budgetDailyValues');
+  const weeklyValuesEl = $('#budgetWeeklyValues');
+  const dailyFillEl = $('#budgetDailyFill');
+  const weeklyFillEl = $('#budgetWeeklyFill');
+
+  if (dailyValuesEl && dailyFillEl) {
+    if (hasDaily) {
+      const pct = (todaySpend / Number(safeBudget.daily)) * 100;
+      dailyValuesEl.textContent = `${formatCurrency(todaySpend)} / ${formatCurrency(Number(safeBudget.daily))} (${Math.round(pct)}%)`;
+      dailyFillEl.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+      dailyFillEl.style.backgroundColor = quotaColor(pct);
+    } else {
+      dailyValuesEl.textContent = 'Not set';
+      dailyFillEl.style.width = '0%';
+    }
+  }
+
+  if (weeklyValuesEl && weeklyFillEl) {
+    if (hasWeekly) {
+      const pct = (weeklySpend / Number(safeBudget.weekly)) * 100;
+      weeklyValuesEl.textContent = `${formatCurrency(weeklySpend)} / ${formatCurrency(Number(safeBudget.weekly))} (${Math.round(pct)}%)`;
+      weeklyFillEl.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+      weeklyFillEl.style.backgroundColor = quotaColor(pct);
+    } else {
+      weeklyValuesEl.textContent = 'Not set';
+      weeklyFillEl.style.width = '0%';
+    }
+  }
+
+  section.style.display = '';
 }
 
 function renderCostSentinel() {
