@@ -469,11 +469,13 @@ function parseCronLine(line, { source, defaultUser, fileName, expectsUserColumn,
   }
 
   const suffix = command.split('/').pop() || command.split(' ')[0] || 'job';
-  const name = fileName ? `${fileName.replace(/\.[^.]+$/, '')}:${suffix}` : `user:${suffix}`;
+  const rawName = fileName ? `${fileName.replace(/\.[^.]+$/, '')}:${suffix}` : `user:${suffix}`;
+  const name = purpose || rawName;
   return {
     name,
     schedule,
-    description: purpose || describeCron(schedule),
+    description: describeCron(schedule),
+    purpose: purpose || null,
     command,
     source,
     user,
