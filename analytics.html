@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Cost Analytics — Clawd Control</title>
+<title>Intelligence — Clawd Control</title>
 <style>
 /* ═══════════════════════════════════════════
    ANALYTICS — Page-specific styles
@@ -93,6 +93,33 @@
   height: 100%; border-radius: var(--radius-sm);
   transition: width 0.3s ease-out, background-color 0.3s ease-out;
 }
+
+
+/* ── Zone 1 (Signals) ─────────────────── */
+.zone1 { margin-bottom: 18px; }
+.zone1-grid { display: grid; grid-template-columns: 3fr 2fr; gap: 12px; margin-bottom: 12px; }
+.zone1-velocity-card, .zone1-sentinel-card { min-height: 220px; }
+.velocity-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; }
+.velocity-metric { background: var(--bg-primary); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 10px; }
+.velocity-metric.primary { grid-column: span 2; }
+.velocity-label { font-size: 0.66rem; text-transform: uppercase; letter-spacing: .05em; color: var(--text-tertiary); font-weight: 700; }
+.velocity-value { font-size: 1.3rem; font-weight: 800; color: var(--text-primary); margin-top: 6px; font-variant-numeric: tabular-nums; }
+.velocity-sub { font-size: 0.7rem; color: var(--text-tertiary); margin-top: 4px; }
+.delta-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 0.68rem; font-weight: 700; }
+.delta-good { background: color-mix(in oklab, var(--success) 20%, transparent); color: var(--success); }
+.delta-warn { background: color-mix(in oklab, #facc15 20%, transparent); color: #facc15; }
+.delta-critical { background: color-mix(in oklab, #f87171 20%, transparent); color: #f87171; }
+.partial-badge, .source-badge, .no-pricing-badge { display:inline-flex; align-items:center; padding:2px 6px; border-radius:999px; font-size:0.62rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
+.partial-badge { background: color-mix(in oklab, #facc15 20%, transparent); color: #facc15; }
+.no-pricing-badge { background: color-mix(in oklab, var(--text-tertiary) 20%, transparent); color: var(--text-tertiary); }
+.source-badge { background: color-mix(in oklab, var(--accent) 20%, transparent); color: var(--accent); }
+.limits-list { display: flex; flex-direction: column; gap: 8px; }
+.limit-row { display: flex; flex-direction: column; gap: 5px; }
+.limit-head { display: flex; justify-content: space-between; gap: 10px; align-items: center; font-size: .75rem; }
+.limit-name { font-weight: 700; color: var(--text-primary); }
+.limit-meta { color: var(--text-tertiary); font-variant-numeric: tabular-nums; display:flex; align-items:center; gap:6px; }
+.zone1-separator { border-top: 1px solid var(--border-subtle); margin-top: 14px; }
+.pricing-note { font-size: .65rem; color: var(--text-tertiary); margin-left: 6px; }
 
 /* ── Chart Containers ──────────────────── */
 .chart-row {
@@ -364,6 +391,9 @@
   .chart-row { grid-template-columns: 1fr; }
   .projection-grid { grid-template-columns: 1fr; }
   .quota-grid { grid-template-columns: 1fr; }
+  .zone1-grid { grid-template-columns: 1fr; }
+  .velocity-grid { grid-template-columns: 1fr; }
+  .velocity-metric.primary { grid-column: span 1; }
 }
 
 @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
@@ -374,8 +404,8 @@
 
 <main class="main">
   <div class="page-header fade-up">
-    <h1>📊 Cost Analytics</h1>
-    <p>Token usage and cost breakdown across all agents</p>
+    <h1>🧠 Intelligence</h1>
+    <p>Token, rate limit, capacity, and cost intelligence across all agents</p>
   </div>
 
   <div class="controls fade-up" style="animation-delay:.05s">
@@ -397,44 +427,39 @@
     </div>
   </div>
 
-  <div class="chart-card-full fade-up" style="animation-delay:.08s">
-    <div class="chart-header">
-      <div class="chart-title">
-        <i data-lucide="gauge"></i>
-        Gemini Flash Quota
-      </div>
-      <div class="chart-subtitle">Free tier usage — resets daily (RPD) / per minute (RPM)</div>
-    </div>
-    <div class="quota-grid">
-      <div class="quota-item">
-        <div class="quota-label">
-          <span>Requests Today (RPD)</span>
-          <span id="quotaRpdLabel">0 / 0 (0%)</span>
+  <section class="zone1 fade-up" style="animation-delay:.08s">
+    <div class="zone1-grid">
+      <div class="chart-card zone1-velocity-card">
+        <div class="chart-header">
+          <div class="chart-title"><i data-lucide="zap"></i>Cost Velocity</div>
+          <div class="chart-subtitle" id="velocityCoverage">Loading...</div>
         </div>
-        <div class="quota-track"><div class="quota-fill" id="quotaRpdFill" style="width:0%;background:#4ade80"></div></div>
-      </div>
-      <div class="quota-item">
-        <div class="quota-label">
-          <span>Requests This Minute (RPM)</span>
-          <span id="quotaRpmLabel">0 / 0 (0%)</span>
+        <div id="costVelocityCard" class="velocity-grid">
+          <div class="loading-state"><div class="icon">⏳</div><p>Loading...</p></div>
         </div>
-        <div class="quota-track"><div class="quota-fill" id="quotaRpmFill" style="width:0%;background:#4ade80"></div></div>
+      </div>
+      <div class="chart-card zone1-sentinel-card">
+        <div class="chart-header">
+          <div class="chart-title"><i data-lucide="shield-alert"></i>Cost Sentinel Status</div>
+          <div class="chart-subtitle">Daily budget guardrails and anomaly checks</div>
+        </div>
+        <div id="costSentinelCard">
+          <div class="loading-state"><div class="icon">⏳</div><p>Loading...</p></div>
+        </div>
       </div>
     </div>
-  </div>
 
-  <div class="chart-card-full fade-up" style="animation-delay:.09s">
-    <div class="chart-header">
-      <div class="chart-title">
-        <i data-lucide="shield-alert"></i>
-        Cost Sentinel
+    <div class="chart-card-full zone1-limits-card">
+      <div class="chart-header">
+        <div class="chart-title"><i data-lucide="gauge"></i>Rate Limits</div>
+        <div class="chart-subtitle">Provider-agnostic request utilization</div>
       </div>
-      <div class="chart-subtitle">Daily budget guardrails and anomaly checks</div>
+      <div id="rateLimitsList" class="limits-list">
+        <div class="loading-state"><div class="icon">⏳</div><p>Loading...</p></div>
+      </div>
     </div>
-    <div id="costSentinelCard">
-      <div class="loading-state"><div class="icon">⏳</div><p>Loading...</p></div>
-    </div>
-  </div>
+    <div class="zone1-separator"></div>
+  </section>
 
   <div class="stats-grid fade-up" style="animation-delay:.1s">
     <div class="stat-card">
@@ -634,6 +659,7 @@ const FETCH_OPTS = { credentials: 'same-origin' };
 let analyticsData = null;
 let tokenData = null;
 let sentinelData = null;
+let limitsData = [];
 let costMode = 'daily';
 let quotaInterval = null;
 let lastAnalyticsLoad = 0;
@@ -697,8 +723,8 @@ function setCostMode(mode, btn) {
 
 function startQuotaPolling() {
   stopQuotaPolling();
-  loadQuota();
-  quotaInterval = setInterval(loadQuota, 30000);
+  loadLimits();
+  quotaInterval = setInterval(loadLimits, 30000);
 }
 
 function stopQuotaPolling() {
@@ -726,25 +752,30 @@ function quotaColor(pct) {
 }
 
 function updateQuotaBar(labelId, fillId, used = 0, limit = 0) {
+  const labelEl = $(labelId);
+  const fillEl = $(fillId);
+  if (!labelEl || !fillEl) return;
   const safeUsed = Number.isFinite(used) ? used : 0;
   const safeLimit = Number.isFinite(limit) ? limit : 0;
   const pct = safeLimit > 0 ? (safeUsed / safeLimit) * 100 : 0;
   const boundedPct = Math.min(pct, 100);
 
-  $(labelId).textContent = `${safeUsed} / ${safeLimit} (${Math.round(pct)}%)`;
-  $(fillId).style.width = `${boundedPct}%`;
-  $(fillId).style.backgroundColor = quotaColor(pct);
+  labelEl.textContent = `${safeUsed} / ${safeLimit} (${Math.round(pct)}%)`;
+  fillEl.style.width = `${boundedPct}%`;
+  fillEl.style.backgroundColor = quotaColor(pct);
 }
 
-async function loadQuota() {
+async function loadLimits() {
   try {
-    const res = await fetch('/api/costs/quota', FETCH_OPTS);
+    const res = await fetch('/api/limits', FETCH_OPTS);
+    if (!res.ok) throw new Error('limits_not_ok');
     const data = await res.json();
-    updateQuotaBar('#quotaRpdLabel', '#quotaRpdFill', data?.rpd?.used, data?.rpd?.limit);
-    updateQuotaBar('#quotaRpmLabel', '#quotaRpmFill', data?.rpm?.used, data?.rpm?.limit);
+    limitsData = Array.isArray(data) ? data : [];
   } catch (e) {
-    console.error('Quota fetch failed:', e);
+    console.error('Limits fetch failed:', e);
+    limitsData = [];
   }
+  renderRateLimits();
 }
 
 // ═══════════════════════════════════════════
@@ -761,14 +792,16 @@ async function loadAnalytics() {
   const agent = $('#agentSelect').value;
 
   try {
-    const [aRes, tRes, sRes] = await Promise.all([
+    const [aRes, tRes, sRes, lRes] = await Promise.all([
       fetch(`/api/analytics?range=${range}&agent=${agent}`),
       fetch(`/api/tokens?range=${range}&agent=${agent}`),
-      fetch('/api/costs/sentinel', FETCH_OPTS)
+      fetch('/api/costs/sentinel', FETCH_OPTS),
+      fetch('/api/limits', FETCH_OPTS)
     ]);
     analyticsData = await aRes.json();
     tokenData = await tRes.json();
     sentinelData = await sRes.json();
+    limitsData = lRes.ok ? await lRes.json() : [];
     renderAll();
   } catch (e) {
     console.error('Failed to load analytics:', e);
@@ -783,6 +816,8 @@ async function loadAnalytics() {
 function renderAll() {
   if (!analyticsData) return;
 
+  renderCostVelocity();
+  renderRateLimits();
   renderStats();
   renderCostBreakdown();
   renderBySource();
@@ -800,6 +835,83 @@ function renderAll() {
   refreshIcons();
 }
 
+function pricingMeta() {
+  const coverage = analyticsData?.pricingCoverage || 'full';
+  return {
+    coverage,
+    isNone: coverage === 'none',
+    isPartial: coverage === 'partial',
+    suffix: coverage === 'partial' ? ' (partial)' : ''
+  };
+}
+
+function renderCostVelocity() {
+  const container = $('#costVelocityCard');
+  if (!container || !analyticsData) return;
+  const timeline = analyticsData.overTime || [];
+  const today = timeline[timeline.length - 1] || { tokens: 0, cost: 0 };
+  const elapsedHours = Math.max((Date.now() - new Date(new Date().toISOString().split('T')[0]).getTime()) / 36e5, 1);
+  const tokenProjection = (today.tokens || 0) / elapsedHours * 24;
+  const costProjection = (today.cost || 0) / elapsedHours * 24;
+  const last7 = timeline.slice(-7);
+  const avgTokens = last7.length ? last7.reduce((s, d) => s + (d.tokens || 0), 0) / last7.length : 0;
+  const avgCost = last7.length ? last7.reduce((s, d) => s + (d.cost || 0), 0) / last7.length : 0;
+  const tokenDelta = avgTokens > 0 ? ((tokenProjection - avgTokens) / avgTokens) * 100 : 0;
+  const deltaClass = tokenProjection > avgTokens * 2 ? 'delta-critical' : tokenProjection > avgTokens * 1.5 ? 'delta-warn' : 'delta-good';
+  const pm = pricingMeta();
+
+  $('#velocityCoverage').innerHTML = pm.isNone ? 'No pricing data' : (pm.isPartial ? '<span class="partial-badge">partial pricing</span>' : 'Pricing coverage: full');
+  container.innerHTML = `
+    <div class="velocity-metric primary">
+      <div class="velocity-label">Tokens today</div>
+      <div class="velocity-value">${formatNumber(today.tokens || 0)} tokens</div>
+      <div class="velocity-sub">24h projection ${formatNumber(tokenProjection)} · 7d avg ${formatNumber(avgTokens)}
+        <span class="delta-badge ${deltaClass}">${tokenDelta >= 0 ? '+' : ''}${tokenDelta.toFixed(0)}%</span>
+      </div>
+    </div>
+    <div class="velocity-metric">
+      <div class="velocity-label">Cost today ${pm.isPartial ? '<span class="partial-badge">partial</span>' : ''}</div>
+      <div class="velocity-value">${pm.isNone ? 'No pricing data' : `$${(today.cost || 0).toFixed(2)}`}</div>
+      <div class="velocity-sub">7d avg ${pm.isNone ? '—' : `$${avgCost.toFixed(2)}`}</div>
+    </div>
+    <div class="velocity-metric">
+      <div class="velocity-label">24h projection</div>
+      <div class="velocity-value">${pm.isNone ? formatNumber(tokenProjection) + ' tok' : `$${costProjection.toFixed(2)}`}</div>
+      <div class="velocity-sub">${pm.isNone ? 'Token pace extrapolated' : 'Cost pace extrapolated'}</div>
+    </div>
+  `;
+}
+
+function renderRateLimits() {
+  const container = $('#rateLimitsList');
+  if (!container) return;
+  if (!Array.isArray(limitsData) || limitsData.length === 0) {
+    container.innerHTML = '<div class="empty-state" style="padding:18px 20px"><p>No rate limit data</p></div>';
+    return;
+  }
+  const sourceLabel = { verified: 'Live', header: 'Tracked', 'self-tracked': 'Est.' };
+  const rows = [...limitsData].map(item => {
+    const used = Number(item.used) || 0;
+    const limit = Number(item.limit) || 0;
+    const pct = limit > 0 ? (used / limit) * 100 : 0;
+    return { ...item, used, limit, pct };
+  }).sort((a, b) => b.pct - a.pct);
+
+  container.innerHTML = rows.map(row => {
+    const color = quotaColor(row.pct);
+    const pct = Math.max(0, Math.min(100, row.pct));
+    const model = row.model ? String(row.model) : 'unknown';
+    const limitType = (row.limitType || '').toUpperCase();
+    return `<div class="limit-row">
+      <div class="limit-head">
+        <div class="limit-name">${escapeHtml(model)} — ${escapeHtml(limitType)}</div>
+        <div class="limit-meta">${row.used} / ${row.limit} (${Math.round(row.pct)}%) <span class="source-badge">${escapeHtml(sourceLabel[row.source] || 'Tracked')}</span></div>
+      </div>
+      <div class="quota-track"><div class="quota-fill" style="width:${pct}%;background:${color}"></div></div>
+    </div>`;
+  }).join('');
+}
+
 function renderCostSentinel() {
   const container = $('#costSentinelCard');
   if (!container) return;
@@ -809,7 +921,7 @@ function renderCostSentinel() {
     container.innerHTML = `
       <div class="empty-state" style="padding:22px 20px">
         <div class="icon">🕒</div>
-        <p>Cost sentinel has not run yet. Runs daily at 06:00 UTC.</p>
+        <p>Sentinel: No data</p>
       </div>
     `;
     return;
@@ -871,9 +983,10 @@ function renderCostSentinel() {
 
 function renderStats() {
   const d = analyticsData;
+  const pm = pricingMeta();
 
-  $('#statTotalCost').textContent = d.totalCost > 0 ? `$${d.totalCost.toFixed(2)}` : '$0.00';
-  $('#statCostSub').textContent = d.range === 'all' ? 'All time' : `Last ${d.range} days`;
+  $('#statTotalCost').textContent = pm.isNone ? 'No pricing data' : (d.totalCost > 0 ? `$${d.totalCost.toFixed(2)}` : '$0.00');
+  $('#statCostSub').textContent = d.range === 'all' ? `All time${pm.suffix}` : `Last ${d.range} days${pm.suffix}`;
 
   $('#statTotalTokens').textContent = formatNumber(d.totalTokens);
   $('#statTokensSub').textContent = `${formatNumber(d.inputTokens + d.outputTokens)} in/out`;
@@ -881,19 +994,18 @@ function renderStats() {
   $('#statApiCalls').textContent = formatNumber(d.apiCalls);
   $('#statCallsSub').textContent = 'Messages sent';
 
-  // Monthly projection
   const days = d.overTime?.length || 1;
   const dailyAvg = d.totalCost / days;
   const monthly = dailyAvg * 30;
-  $('#statProjected').textContent = monthly > 0 ? `$${monthly.toFixed(2)}` : '$0.00';
-  $('#statProjectedSub').textContent = `$${dailyAvg.toFixed(3)}/day avg`;
+  $('#statProjected').textContent = pm.isNone ? 'No pricing data' : (monthly > 0 ? `$${monthly.toFixed(2)}` : '$0.00');
+  $('#statProjectedSub').textContent = pm.isNone ? 'Token-only tracking' : `$${dailyAvg.toFixed(3)}/day avg${pm.suffix}`;
 
   const avgSession = d.totalSessions > 0 ? (d.totalCost / d.totalSessions) : 0;
-  $('#statAvgSession').textContent = `$${avgSession.toFixed(3)}`;
+  $('#statAvgSession').textContent = pm.isNone ? formatNumber((d.totalTokens || 0) / Math.max(d.totalSessions || 1, 1)) + ' tok' : `$${avgSession.toFixed(3)}`;
   $('#statAvgSessionSub').textContent = `${d.totalSessions || 0} sessions`;
 
   const avgMsg = d.totalMessages > 0 ? (d.totalCost / d.totalMessages) : 0;
-  $('#statAvgMsg').textContent = `$${avgMsg.toFixed(4)}`;
+  $('#statAvgMsg').textContent = pm.isNone ? formatNumber((d.totalTokens || 0) / Math.max(d.totalMessages || 1, 1)) + ' tok' : `$${avgMsg.toFixed(4)}`;
   $('#statAvgMsgSub').textContent = `${d.totalMessages || 0} messages`;
 }
 
@@ -923,7 +1035,7 @@ function renderCostBreakdown() {
           <div class="cost-component-desc">${item.desc}</div>
         </div>
         <div class="cost-component-right">
-          <div class="cost-component-amount">$${item.value.toFixed(2)}</div>
+          <div class="cost-component-amount">${formatCurrency(item.value, 2, "No pricing")}</div>
           <div class="cost-component-pct">(${pct.toFixed(0)}%)</div>
         </div>
       </div>
@@ -951,7 +1063,7 @@ function renderBySource() {
         <div class="source-color" style="background:${color}"></div>
         <div class="source-name">${escapeHtml(src.source)}</div>
         <div class="source-stats">
-          <div class="source-cost">$${src.cost.toFixed(2)} (${pct.toFixed(0)}%)</div>
+          <div class="source-cost">${formatCurrency(src.cost, 2, "No pricing")} (${pct.toFixed(0)}%)</div>
           <div class="source-meta">${src.sessions}s</div>
         </div>
       </div>
@@ -982,7 +1094,7 @@ function renderInsight() {
   } else if (cacheReadPct > 40) {
     tip = `<span class="insight-icon">✅</span> Strong cache efficiency — ${cacheReadPct.toFixed(0)}% of costs are discounted cache reads. Your session strategy is working.`;
   } else if (d.totalSessions > 0 && d.totalCost / d.totalSessions > 0.50) {
-    tip = `<span class="insight-icon">⚠️</span> Average session cost is $${(d.totalCost / d.totalSessions).toFixed(2)}. Consider breaking expensive sessions into smaller runs.`;
+    tip = `<span class="insight-icon">⚠️</span> Average session cost is ${formatCurrency((d.totalCost / d.totalSessions), 2, "No pricing")}. Consider breaking expensive sessions into smaller runs.`;
   }
 
   if (!tip) { card.style.display = 'none'; return; }
@@ -1011,7 +1123,7 @@ function renderCostByAgent() {
       <div class="bar-item">
         <div class="bar-label" title="${name}">${emoji} ${truncate(name, 10)}</div>
         <div class="bar-track">
-          <div class="bar-fill" style="width:${pct}%">$${a.cost.toFixed(2)}</div>
+          <div class="bar-fill" style="width:${pct}%">${formatCurrency(a.cost, 2, "No pricing")}</div>
         </div>
         <div class="bar-value">${formatNumber(a.tokens)} tok</div>
       </div>
@@ -1164,8 +1276,8 @@ function renderCostOverTime() {
       tooltip.classList.remove('hidden');
       tooltip.innerHTML = `
         <div class="tooltip-date">${closest.date}</div>
-        <div class="tooltip-row"><span class="tooltip-label">Daily Cost</span><span class="tooltip-val" style="color:var(--accent)">$${closest.cost.toFixed(4)}</span></div>
-        <div class="tooltip-row"><span class="tooltip-label">Running Total</span><span class="tooltip-val">$${closest.cumulative.toFixed(4)}</span></div>
+        <div class="tooltip-row"><span class="tooltip-label">Daily Cost</span><span class="tooltip-val" style="color:var(--accent)">${formatCurrency(closest.cost, 4, "No pricing")}</span></div>
+        <div class="tooltip-row"><span class="tooltip-label">Running Total</span><span class="tooltip-val">${formatCurrency(closest.cumulative, 4, "No pricing")}</span></div>
         <div class="tooltip-row"><span class="tooltip-label">Tokens</span><span class="tooltip-val">${formatNumber(closest.tokens)}</span></div>
       `;
       const tx = Math.min(e.clientX - rect.left + 12, rect.width - 180);
@@ -1212,7 +1324,7 @@ function renderTopSessions() {
         <div class="session-meta">
           ${s.messages ? `<span>${s.messages} msgs</span>` : ''}
           <span class="session-tokens">${formatNumber(s.tokens)} tok</span>
-          <span class="session-cost">$${s.cost.toFixed(3)}</span>
+          ${s.cost == null ? `<span class="session-badge no-pricing-badge">no pricing</span>` : `<span class="session-cost">${formatCurrency(s.cost, 3, "No pricing data")}</span>`}
         </div>
       </div>
     `;
@@ -1244,7 +1356,7 @@ function renderTopCrons() {
           <span class="session-badge source-cron">Cron</span>
           ${s.model ? `<span class="session-badge model-badge">${truncate(s.model, 16)}</span>` : ''}
           <span class="session-tokens">${formatNumber(s.tokens)} tok</span>
-          <span class="session-cost">$${s.cost.toFixed(3)}</span>
+          ${s.cost == null ? `<span class="session-badge no-pricing-badge">no pricing</span>` : `<span class="session-cost">${formatCurrency(s.cost, 3, "No pricing data")}</span>`}
         </div>
       </div>
     `;
@@ -1263,22 +1375,22 @@ function renderCostByModel() {
   const maxCost = Math.max(...models.map(m => m.cost || 0), 0.001);
   const colors = ['#3b82f6', '#22c55e', '#c9a44a', '#ef4444', '#8b5cf6', '#f59e0b', '#06b6d4', '#ec4899'];
 
-  container.innerHTML = models.filter(m => m.cost > 0).slice(0, 8).map((m, i) => {
+  container.innerHTML = models.slice(0, 8).map((m, i) => {
     const pct = ((m.cost || 0) / maxCost * 100);
     const color = colors[i % colors.length];
-    const tokens = (m.inputTokens || 0) + (m.outputTokens || 0) + (m.cacheReadTokens || 0);
-    const costPer1k = tokens > 0 ? ((m.cost || 0) / tokens * 1000) : 0;
-    const cleanModel = (m.model || '').replace('anthropic/', '').replace('openai/', '');
+    const tokens = (m.tokens || m.inputTokens || 0) + (m.outputTokens || 0) + (m.cacheReadTokens || 0);
+    const costPer1k = (m.cost != null && tokens > 0) ? ((m.cost || 0) / tokens * 1000) : null;
+    const cleanModel = (m.model || '').replace('anthropic/', '').replace('openai/', '').replace('google/', '');
 
     return `
       <div class="cost-model-item">
         <div class="cost-model-color" style="background:${color}"></div>
         <div style="flex:1;min-width:0">
           <div class="cost-model-name">${escapeHtml(truncate(cleanModel, 24))}</div>
-          <div class="cost-model-rate">${formatNumber(tokens)} tok · $${costPer1k.toFixed(4)}/1K</div>
+          <div class="cost-model-rate">${formatNumber(tokens)} tok ${m.pricingAvailable === false ? '· <span class="no-pricing-badge">no pricing</span>' : `· $${(costPer1k || 0).toFixed(4)}/1K`}</div>
         </div>
         <div style="text-align:right">
-          <div class="cost-model-amount">$${(m.cost || 0).toFixed(3)}</div>
+          <div class="cost-model-amount">${m.pricingAvailable === false ? '<span class="no-pricing-badge">no pricing</span>' : formatCurrency(m.cost || 0, 3, 'No pricing data')}</div>
         </div>
         <div class="cost-model-bar">
           <div class="cost-model-fill" style="width:${pct}%;background:${color}"></div>
@@ -1291,6 +1403,7 @@ function renderCostByModel() {
 function renderProjections() {
   const container = $('#projectionsPanel');
   const d = analyticsData;
+  const pm = pricingMeta();
   const timeline = d.overTime || [];
 
   if (timeline.length === 0) {
@@ -1319,19 +1432,19 @@ function renderProjections() {
 
   container.innerHTML = `
     <div class="projection-item">
-      <div class="projection-value">$${monthly.toFixed(2)}</div>
+      <div class="projection-value">${pm.isNone ? "No pricing" : formatCurrency(monthly, 2, "No pricing")}</div>
       <div class="projection-label">Monthly Estimate</div>
-      <div class="projection-sub">$${yearly.toFixed(2)}/year · $${weekly.toFixed(2)}/week</div>
+      <div class="projection-sub">${pm.isNone ? `${formatNumber(d.totalTokens)} tokens in range` : `${formatCurrency(yearly,2)}/year · ${formatCurrency(weekly,2)}/week`}</div>
     </div>
     <div class="projection-item">
       <div class="projection-value" style="color:${trendColor}">${trendDir} ${Math.abs(trendPct).toFixed(0)}%</div>
       <div class="projection-label">Week-over-Week</div>
-      <div class="projection-sub">$${last7.toFixed(3)} vs $${prev7.toFixed(3)}</div>
+      <div class="projection-sub">${pm.isNone ? "Token trend only" : `${formatCurrency(last7,3)} vs ${formatCurrency(prev7,3)}`}</div>
     </div>
     <div class="projection-item">
-      <div class="projection-value" style="font-size:1.4rem">$${costPerCall.toFixed(4)}</div>
+      <div class="projection-value" style="font-size:1.4rem">${pm.isNone ? "Token-only" : formatCurrency(costPerCall,4,"No pricing")}</div>
       <div class="projection-label">Cost per API Call</div>
-      <div class="projection-sub">Peak: $${peakDay.cost.toFixed(3)} on ${formatDate(peakDay.date)}</div>
+      <div class="projection-sub">${pm.isNone ? `Peak tokens day: ${formatDate(peakDay.date)}` : `Peak: ${formatCurrency(peakDay.cost,3)} on ${formatDate(peakDay.date)}`}</div>
     </div>
   `;
 }
@@ -1490,6 +1603,12 @@ function escapeHtml(str) {
 // ═══════════════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════════════
+
+function formatCurrency(value, digits = 2, fallback = 'No pricing data') {
+  const pm = pricingMeta();
+  if (pm.isNone || value == null || !Number.isFinite(value)) return fallback;
+  return `$${value.toFixed(digits)}${pm.isPartial ? ' (partial)' : ''}`;
+}
 
 function formatNumber(n) {
   if (n > 1e6) return (n / 1e6).toFixed(1) + 'M';

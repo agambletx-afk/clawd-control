@@ -985,6 +985,48 @@ const COSTS_CACHE_TTL = 30000; // 30 seconds for costs
 let cachedCostsData = null;
 let lastCostsComputeTime = 0;
 const sessionFilesMtimes = new Map(); // path -> mtimeMs
+const MODEL_PRICING = {
+  // [inputPer1M, outputPer1M, cacheReadPer1M, cacheWritePer1M]
+  'gemini-2.5-flash': [0.15, 0.60, 0.0375, 0.15],
+  'gemini-2.0-flash': [0.10, 0.40, 0.025, 0.10],
+  'claude-opus-4-5': [15.00, 75.00, 1.50, 15.00],
+  'claude-sonnet-4-5': [3.00, 15.00, 0.30, 3.00],
+  'claude-haiku-4-5': [0.80, 4.00, 0.08, 0.80],
+  'gpt-4o': [2.50, 10.00, 1.25, 2.50],
+  'gpt-4o-mini': [0.15, 0.60, 0.075, 0.15],
+};
+const DEFAULT_PRICING = [1.00, 3.00, 0.10, 1.00];
+const MODEL_PRICING_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', 'model-pricing.json');
+let mergedModelPricing = null;
+
+function normalizeModelName(model) {
+  return String(model || '').replace('anthropic/', '').replace('openai/', '').replace('google/', '');
+}
+
+function getMergedModelPricing() {
+  if (mergedModelPricing) return mergedModelPricing;
+  const merged = { ...MODEL_PRICING };
+  try {
+    if (existsSync(MODEL_PRICING_PATH)) {
+      const raw = JSON.parse(readFileSync(MODEL_PRICING_PATH, 'utf8'));
+      for (const [model, rates] of Object.entries(raw || {})) {
+        if (!rates || typeof rates !== 'object') continue;
+        const input = Number(rates.input);
+        const output = Number(rates.output);
+        const cacheRead = Number(rates.cacheRead);
+        const cacheWrite = Number(rates.cacheWrite);
+        if ([input, output, cacheRead, cacheWrite].every(Number.isFinite)) {
+          merged[normalizeModelName(model)] = [input, output, cacheRead, cacheWrite];
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[analytics] failed to read model-pricing.json:', e.message);
+  }
+  mergedModelPricing = merged;
+  return mergedModelPricing;
+}
+
 
 function getCachedOrCompute(cacheKey, computeFn) {
   const cached = analyticsCache.get(cacheKey);
@@ -1320,23 +1362,17 @@ function computeAgentMetrics() {
 
 function getAnalytics(rangeStr, agentFilter) {
   const AGENTS_DIR = join(homedir(), '.openclaw', 'agents');
-  const MODEL_PRICING = {
-    // [inputPer1M, outputPer1M, cacheReadPer1M, cacheWritePer1M]
-    'gemini-2.5-flash': [0.15, 0.60, 0.0375, 0.15],
-    'gemini-2.0-flash': [0.10, 0.40, 0.025, 0.10],
-    'claude-opus-4-5': [15.00, 75.00, 1.50, 15.00],
-    'claude-sonnet-4-5': [3.00, 15.00, 0.30, 3.00],
-    'claude-haiku-4-5': [0.80, 4.00, 0.08, 0.80],
-    'gpt-4o': [2.50, 10.00, 1.25, 2.50],
-    'gpt-4o-mini': [0.15, 0.60, 0.075, 0.15],
-  };
-  const DEFAULT_PRICING = [1.00, 3.00, 0.10, 1.00];
+  const pricingTable = getMergedModelPricing();
+  const pricedModelsUsed = new Set();
+  const missingModelsUsed = new Set();
   const computeComponentCosts = (model, input, output, cacheRead, cacheWrite) => {
-    const cleanModel = (model || '')
-      .replace('anthropic/', '')
-      .replace('openai/', '')
-      .replace('google/', '');
-    const rates = MODEL_PRICING[cleanModel] || DEFAULT_PRICING;
+    const cleanModel = normalizeModelName(model);
+    const rates = pricingTable[cleanModel];
+    if (!rates) {
+      if (cleanModel) missingModelsUsed.add(cleanModel);
+      return null;
+    }
+    pricedModelsUsed.add(cleanModel);
     return {
       input: (input / 1e6) * rates[0],
       output: (output / 1e6) * rates[1],
@@ -1440,11 +1476,19 @@ function getAnalytics(rangeStr, agentFilter) {
                 if (ts && ts < cutoffDate) continue;
 
                 // Track costs
-                const cost = usage.cost?.total || 0;
                 const input = usage.input || 0;
                 const output = usage.output || 0;
                 const cache = usage.cacheRead || 0;
                 const cacheWrite = usage.cacheWrite || 0;
+                const modelForMsg = normalizeModelName(sessionModel || msg.model);
+                const hasPricing = Boolean(pricingTable[modelForMsg]);
+                if (hasPricing) {
+                  pricedModelsUsed.add(modelForMsg);
+                } else if (modelForMsg) {
+                  missingModelsUsed.add(modelForMsg);
+                }
+
+                let cost = null;
 
                 if (!isHeartbeatSession && msg.role === 'user') {
                   if (line.includes('"conversation_label"') && line.toLowerCase().includes('heartbeat')) {
@@ -1452,7 +1496,7 @@ function getAnalytics(rangeStr, agentFilter) {
                   }
                 }
 
-                if (cost > 0) sessionMessages++;
+                if ((input + output + cache + cacheWrite) > 0) sessionMessages++;
 
                 const hasCostComponents = usage.cost && typeof usage.cost === 'object' && (
                   usage.cost.input !== undefined ||
@@ -1460,20 +1504,28 @@ function getAnalytics(rangeStr, agentFilter) {
                   usage.cost.cacheRead !== undefined ||
                   usage.cost.cacheWrite !== undefined
                 );
-                if (hasCostComponents) {
-                  costInput += usage.cost?.input || 0;
-                  costOutput += usage.cost?.output || 0;
-                  costCacheRead += usage.cost?.cacheRead || 0;
-                  costCacheWrite += usage.cost?.cacheWrite || 0;
-                } else {
-                  const parts = computeComponentCosts(sessionModel || msg.model, input, output, cache, cacheWrite);
-                  costInput += parts.input;
-                  costOutput += parts.output;
-                  costCacheRead += parts.cacheRead;
-                  costCacheWrite += parts.cacheWrite;
+                if (hasPricing) {
+                  if (hasCostComponents) {
+                    costInput += usage.cost?.input || 0;
+                    costOutput += usage.cost?.output || 0;
+                    costCacheRead += usage.cost?.cacheRead || 0;
+                    costCacheWrite += usage.cost?.cacheWrite || 0;
+                    cost = (usage.cost?.input || 0) + (usage.cost?.output || 0) + (usage.cost?.cacheRead || 0) + (usage.cost?.cacheWrite || 0);
+                  } else {
+                    const parts = computeComponentCosts(modelForMsg, input, output, cache, cacheWrite);
+                    if (parts) {
+                      costInput += parts.input;
+                      costOutput += parts.output;
+                      costCacheRead += parts.cacheRead;
+                      costCacheWrite += parts.cacheWrite;
+                      cost = parts.input + parts.output + parts.cacheRead + parts.cacheWrite;
+                    }
+                  }
                 }
 
-                sessionCost += cost;
+                if (cost != null) {
+                  sessionCost += cost;
+                }
                 sessionTokens += input + output + cache;
                 sessionInput += input;
                 sessionOutput += output;
@@ -1491,17 +1543,17 @@ function getAnalytics(rangeStr, agentFilter) {
                     byDate.set(date, { cost: 0, tokens: 0 });
                   }
                   const d = byDate.get(date);
-                  d.cost += cost;
+                  if (cost != null) d.cost += cost;
                   d.tokens += input + output + cache;
                 }
 
                 // Track by model
                 if (sessionModel) {
                   if (!byModel.has(sessionModel)) {
-                    byModel.set(sessionModel, { cost: 0, tokens: 0 });
+                    byModel.set(sessionModel, { cost: 0, tokens: 0, pricingAvailable: Boolean(pricingTable[normalizeModelName(sessionModel)]) });
                   }
                   const m = byModel.get(sessionModel);
-                  m.cost += cost;
+                  if (cost != null) m.cost += cost;
                   m.tokens += input + output + cache;
                 }
               }
@@ -1514,7 +1566,11 @@ function getAnalytics(rangeStr, agentFilter) {
         }
 
         // Aggregate totals
-        totalCost += sessionCost;
+        const cleanSessionModel = normalizeModelName(sessionModel || 'unknown');
+        const sessionPricingAvailable = Boolean(pricingTable[cleanSessionModel]);
+        if (sessionPricingAvailable) {
+          totalCost += sessionCost;
+        }
         totalTokens += sessionTokens;
         inputTokens += sessionInput;
         outputTokens += sessionOutput;
@@ -1528,7 +1584,7 @@ function getAnalytics(rangeStr, agentFilter) {
           bySource.set(source, { cost: 0, tokens: 0, sessions: 0 });
         }
         const sourceData = bySource.get(source);
-        sourceData.cost += sessionCost;
+        if (sessionPricingAvailable) sourceData.cost += sessionCost;
         sourceData.tokens += sessionTokens;
         sourceData.sessions++;
 
@@ -1537,7 +1593,7 @@ function getAnalytics(rangeStr, agentFilter) {
           byAgent.set(agentId, { cost: 0, tokens: 0 });
         }
         const a = byAgent.get(agentId);
-        a.cost += sessionCost;
+        if (sessionPricingAvailable) a.cost += sessionCost;
         a.tokens += sessionTokens;
 
         // Track session for top list
@@ -1545,9 +1601,10 @@ function getAnalytics(rangeStr, agentFilter) {
           sessions.push({
             agentId,
             sessionId,
-            cost: sessionCost,
+            cost: sessionPricingAvailable ? sessionCost : null,
+            pricingAvailable: sessionPricingAvailable,
             tokens: sessionTokens,
-            model: (sessionModel || 'unknown').replace('anthropic/', '').replace('openai/', '').replace('google/', ''),
+            model: normalizeModelName(sessionModel || 'unknown'),
             source,
             messages: sessionMessages,
           });
@@ -1572,8 +1629,14 @@ function getAnalytics(rangeStr, agentFilter) {
     .sort((a, b) => b.tokens - a.tokens);
 
   const topSessions = sessions
-    .sort((a, b) => b.cost - a.cost)
+    .sort((a, b) => (b.cost ?? -1) - (a.cost ?? -1))
     .slice(0, 20);
+
+  const pricingCoverage = pricedModelsUsed.size === 0
+    ? 'none'
+    : missingModelsUsed.size > 0
+      ? 'partial'
+      : 'full';
 
   return {
     range: rangeStr,
@@ -1600,6 +1663,7 @@ function getAnalytics(rangeStr, agentFilter) {
     overTime: byDateArray,
     byModel: byModelArray,
     topSessions,
+    pricingCoverage,
   };
 }
 
@@ -2516,6 +2580,50 @@ const server = createServer((req, res) => {
       console.error('[API] /api/costs/sentinel error:', e.message);
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'parse_error' }));
+    }
+    return;
+  }
+
+  if (path === '/api/limits' && req.method === 'GET') {
+    try {
+      const costsData = computeCostsData();
+      const now = new Date();
+      const nextMidnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0));
+      const limits = [
+        {
+          provider: 'gemini',
+          model: 'gemini-2.5-flash',
+          limitType: 'rpd',
+          label: 'Requests Per Day',
+          used: costsData?.quota?.rpd?.used || 0,
+          limit: costsData?.quota?.rpd?.limit || 0,
+          resetAt: nextMidnight.toISOString(),
+          source: 'verified',
+          pollingInterval: 30,
+        },
+        {
+          provider: 'gemini',
+          model: 'gemini-2.5-flash',
+          limitType: 'rpm',
+          label: 'Requests Per Minute',
+          used: costsData?.quota?.rpm?.used || 0,
+          limit: costsData?.quota?.rpm?.limit || 0,
+          resetAt: null,
+          source: 'verified',
+          pollingInterval: 30,
+        },
+      ];
+      const extraLimitsPath = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', 'rate-limits.json');
+      if (existsSync(extraLimitsPath)) {
+        const extra = JSON.parse(readFileSync(extraLimitsPath, 'utf8'));
+        if (Array.isArray(extra)) limits.push(...extra);
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(limits));
+    } catch (e) {
+      console.error('[API] /api/limits error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify([]));
     }
     return;
   }

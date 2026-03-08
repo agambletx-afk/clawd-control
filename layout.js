@@ -620,7 +620,7 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
       </a>
       <a href="/analytics.html" class="nav-item${isActive('analytics')}">
         <i data-lucide="bar-chart-3" class="nav-icon"></i>
-        <span class="nav-label">Cost Analytics</span>
+        <span class="nav-label">Intelligence</span>
       </a>
       <a href="/tokens.html" class="nav-item${isActive('tokens')}">
         <i data-lucide="target" class="nav-icon"></i>
