@@ -432,6 +432,46 @@
 .empty-state .icon { font-size: 2rem; margin-bottom: 12px; opacity: 0.4; }
 .empty-state p { font-size: 0.85rem; }
 
+
+
+/* ── Cron Cost Health ─────────────────── */
+.cron-health-list { display: flex; flex-direction: column; gap: 8px; }
+.cron-job-row {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+  padding: 10px 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+  background: color-mix(in oklab, var(--bg-secondary) 80%, transparent);
+}
+.cron-job-main { min-width: 0; }
+.cron-job-name { font-size: 0.82rem; font-weight: 700; color: var(--text-primary); }
+.cron-job-schedule { margin-top: 2px; font-size: 0.7rem; color: var(--text-tertiary); }
+.cron-job-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; font-size: 0.7rem; color: var(--text-secondary); }
+.cron-job-status { display: inline-flex; align-items: center; gap: 5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.cron-status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.cron-status-ok { background: #4ade80; }
+.cron-status-error { background: #f87171; }
+.cron-status-never { background: #9ca3af; }
+.cron-errors { font-weight: 700; }
+.cron-errors.error { color: #f87171; }
+.cron-model-badge {
+  display: inline-flex; align-items: center; padding: 2px 6px; border-radius: 999px;
+  background: color-mix(in oklab, #8b5cf6 18%, transparent); color: #8b5cf6;
+  font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+}
+.cron-error-banner, .cron-cost-banner {
+  border-radius: var(--radius-sm); padding: 9px 12px; font-size: 0.78rem; font-weight: 600;
+  border-left: 4px solid;
+}
+.cron-error-banner {
+  border-left-color: #f87171;
+  background: color-mix(in oklab, #f87171 15%, transparent);
+  color: var(--text-primary);
+}
+.cron-cost-banner {
+  border-left-color: #facc15;
+  background: color-mix(in oklab, #facc15 15%, transparent);
+  color: var(--text-primary);
+}
+
 /* ── Responsive ────────────────────────── */
 @media (max-width: 900px) {
   .stats-grid { grid-template-columns: repeat(3, 1fr); }
@@ -532,6 +572,16 @@
           <canvas id="apiCostChart" class="line-chart"></canvas>
           <div class="chart-tooltip hidden" id="apiCostTooltip"></div>
         </div>
+      </div>
+
+    </div>
+    <div class="chart-card-full zone2-cron-health" id="cronHealthPanel" style="margin-top:12px">
+      <div class="chart-header">
+        <div class="chart-title"><i data-lucide="clock"></i> Cron Cost Health</div>
+        <div class="chart-subtitle">Scheduled job status and cost signals</div>
+      </div>
+      <div id="cronHealthList" class="cron-health-list">
+        <div class="loading-state"><div class="icon">⏳</div><p>Loading...</p></div>
       </div>
     </div>
   </section>
@@ -769,6 +819,7 @@ let analyticsData = null;
 let tokenData = null;
 let sentinelData = null;
 let limitsData = [];
+let cronHealthData = [];
 let costMode = 'daily';
 let zone2AgentFilter = 'all';
 let quotaInterval = null;
@@ -971,18 +1022,22 @@ async function loadAnalytics() {
   const agent = $('#agentSelect').value;
 
   try {
-    const [aRes, tRes, sRes, lRes] = await Promise.all([
+    const [aRes, tRes, sRes, lRes, cRes] = await Promise.all([
       fetch(`/api/analytics?range=${range}&agent=${agent}`),
       fetch(`/api/tokens?range=${range}&agent=${agent}`),
       fetch('/api/costs/sentinel', FETCH_OPTS),
-      fetch('/api/limits', FETCH_OPTS)
+      fetch('/api/limits', FETCH_OPTS),
+      fetch('/api/cron/health', FETCH_OPTS)
     ]);
     analyticsData = await aRes.json();
     tokenData = await tRes.json();
     sentinelData = await sRes.json();
     limitsData = lRes.ok ? await lRes.json() : [];
+    const cronPayload = cRes.ok ? await cRes.json() : [];
+    cronHealthData = Array.isArray(cronPayload) ? cronPayload : [];
     renderAll();
   } catch (e) {
+    cronHealthData = [];
     console.error('Failed to load analytics:', e);
     if (typeof showToast === 'function') showToast('Failed to load analytics data', 'error');
   }
@@ -1001,6 +1056,7 @@ function renderAll() {
   renderConcentrationBanner();
   renderTokenUsageChart();
   renderApiCostChart();
+  renderCronHealth();
   renderStats();
   renderCostBreakdown();
   renderBySource();
@@ -1162,6 +1218,113 @@ function renderCostSentinel() {
       <span>Last alert: ${escapeHtml(formatTs(sentinelData.alerts_sent ? sentinelData.timestamp : null))}</span>
     </div>
   `;
+}
+
+
+function formatRelativeTime(ms) {
+  const ts = Number(ms) || 0;
+  if (ts <= 0) return 'never';
+  const diff = Math.max(Date.now() - ts, 0);
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
+
+function formatDurationMs(ms) {
+  const value = Number(ms) || 0;
+  if (value <= 0) return '—';
+  const totalSec = Math.round(value / 1000);
+  if (totalSec < 60) return `${totalSec}s`;
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return s === 0 ? `${m}m` : `${m}m ${s}s`;
+}
+
+function estimateCronCostPerRun(job) {
+  if (!analyticsData || !Array.isArray(analyticsData.byAgent)) return null;
+  if (job?.sessionTarget !== 'isolated') return null;
+  const name = String(job?.name || '').toLowerCase();
+  if (!name) return null;
+
+  for (const agent of analyticsData.byAgent) {
+    const id = String(agent?.agentId || '').toLowerCase();
+    if (!id || !id.includes(name)) continue;
+    const totalCost = Number(agent?.cost) || 0;
+    const runs = Number(agent?.sessions) || 0;
+    if (totalCost > 0 && runs > 0) return totalCost / runs;
+  }
+  return null;
+}
+
+function renderCronHealth() {
+  const panel = $('#cronHealthPanel');
+  const container = $('#cronHealthList');
+  if (!panel || !container) return;
+
+  if (!Array.isArray(cronHealthData) || cronHealthData.length === 0) {
+    panel.style.display = '';
+    container.innerHTML = '<div class="empty-state" style="padding:18px 20px"><p>No cron data available</p></div>';
+    return;
+  }
+
+  const enabledJobs = cronHealthData
+    .filter(job => job && job.enabled)
+    .sort((a, b) => {
+      const aErr = (Number(a?.consecutiveErrors) || 0) > 0 ? 1 : 0;
+      const bErr = (Number(b?.consecutiveErrors) || 0) > 0 ? 1 : 0;
+      if (aErr !== bErr) return bErr - aErr;
+      return String(a?.name || '').localeCompare(String(b?.name || ''));
+    });
+
+  if (enabledJobs.length === 0) {
+    panel.style.display = '';
+    container.innerHTML = '<div class="empty-state" style="padding:18px 20px"><p>No enabled cron jobs</p></div>';
+    return;
+  }
+
+  const firstError = enabledJobs.find(job => (Number(job?.consecutiveErrors) || 0) > 0);
+  const expensive = enabledJobs
+    .map(job => ({ job, est: estimateCronCostPerRun(job) }))
+    .find(item => Number(item.est) > 0.1);
+
+  const banners = [];
+  if (firstError) {
+    banners.push(`<div class="cron-error-banner">⚠ ${escapeHtml(firstError.name || 'cron job')}: ${Number(firstError.consecutiveErrors) || 0} consecutive errors — still enabled</div>`);
+  }
+  if (expensive) {
+    banners.push(`<div class="cron-cost-banner">💸 ${escapeHtml(expensive.job.name || 'cron job')}: estimated ${formatCurrency(expensive.est, 3, '$0.000')} per run</div>`);
+  }
+
+  const rows = enabledJobs.map(job => {
+    const errors = Number(job?.consecutiveErrors) || 0;
+    const lastRunMs = Number(job?.lastRunAtMs) || 0;
+    const lastStatus = String(job?.lastStatus || '').toLowerCase();
+    const neverRun = lastRunMs <= 0;
+    const statusKey = neverRun ? 'never' : (lastStatus === 'ok' ? 'ok' : 'error');
+    const statusLabel = statusKey === 'ok' ? 'ok' : statusKey === 'never' ? 'never run' : 'error';
+    const scheduleLabel = String(job?.scheduleHuman || job?.schedule || '—');
+
+    return `<div class="cron-job-row">
+      <div class="cron-job-main">
+        <div class="cron-job-name">${escapeHtml(job?.name || 'unnamed-job')}</div>
+        <div class="cron-job-schedule">${escapeHtml(scheduleLabel)}</div>
+      </div>
+      <div class="cron-job-meta">
+        <span class="cron-job-status"><span class="cron-status-dot cron-status-${statusKey}"></span>${escapeHtml(statusLabel)}</span>
+        <span class="cron-errors${errors > 0 ? ' error' : ''}">${errors} errors</span>
+        <span>${escapeHtml(formatDurationMs(job?.lastDurationMs))}</span>
+        <span>${escapeHtml(formatRelativeTime(lastRunMs))}</span>
+        ${job?.modelOverride ? `<span class="cron-model-badge">${escapeHtml(job.modelOverride)}</span>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+
+  panel.style.display = '';
+  container.innerHTML = `${banners.join('')}${rows}`;
 }
 
 function renderStats() {
