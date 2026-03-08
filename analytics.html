@@ -1289,7 +1289,9 @@ function renderConcentrationBanner() {
 
 function renderTokenUsageChart() {
   const canvas = $('#tokenUsageChart');
-  if (!canvas) return;
+  const tooltip = $('#tokenUsageTooltip');
+  if (!canvas || !tooltip) return;
+
   const ctx = canvas.getContext('2d');
   const parent = canvas.parentElement;
   canvas.width = parent.clientWidth * 2;
@@ -1298,10 +1300,187 @@ function renderTokenUsageChart() {
   canvas.style.height = parent.clientHeight + 'px';
   ctx.scale(2, 2);
   ctx.clearRect(0, 0, parent.clientWidth, parent.clientHeight);
-  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-tertiary').trim();
-  ctx.font = '12px Inter, sans-serif';
+
+  const w = parent.clientWidth;
+  const h = parent.clientHeight;
+  const padding = { top: 20, right: 20, bottom: 34, left: 55 };
+  const chartW = w - padding.left - padding.right;
+  const chartH = h - padding.top - padding.bottom;
+  const styles = getComputedStyle(document.documentElement);
+  const textColor = styles.getPropertyValue('--text-secondary').trim();
+  const subtleText = styles.getPropertyValue('--text-tertiary').trim();
+  const borderColor = styles.getPropertyValue('--border-subtle').trim();
+
+  const seriesByAgent = tokenData?.agentTimeSeries || {};
+  const isAllAgents = zone2AgentFilter === 'all';
+  const isSingleAgent = !isAllAgents && seriesByAgent[zone2AgentFilter];
+
+  let dates = [];
+  let stacks = [];
+
+  if (isAllAgents) {
+    const allDates = new Set();
+    for (const rows of Object.values(seriesByAgent)) {
+      for (const row of rows || []) {
+        if (row?.date) allDates.add(row.date);
+      }
+    }
+    dates = Array.from(allDates).sort((a, b) => new Date(a) - new Date(b));
+
+    const agentIds = Object.keys(seriesByAgent);
+    const lookup = {};
+    for (const id of agentIds) {
+      lookup[id] = {};
+      for (const row of seriesByAgent[id] || []) {
+        lookup[id][row.date] = Number(row.tokens) || 0;
+      }
+    }
+
+    stacks = dates.map((date) => {
+      const segments = agentIds.map((agentId) => ({
+        key: agentId,
+        label: agentId,
+        color: agentIdToHslColor(agentId),
+        value: lookup[agentId]?.[date] || 0
+      }));
+      return { date, segments };
+    });
+  } else if (isSingleAgent) {
+    const rows = [...(seriesByAgent[zone2AgentFilter] || [])].sort((a, b) => new Date(a.date) - new Date(b.date));
+    dates = rows.map(r => r.date);
+    stacks = rows.map((row) => {
+      const input = Number(row.inputTokens) || 0;
+      const output = Number(row.outputTokens) || 0;
+      return {
+        date: row.date,
+        segments: [
+          { key: 'inputTokens', label: 'Input Tokens', color: '#3b82f6', value: input },
+          { key: 'outputTokens', label: 'Output Tokens', color: '#22c55e', value: output }
+        ]
+      };
+    });
+  }
+
+  if (dates.length === 0 || stacks.length === 0) {
+    ctx.fillStyle = subtleText;
+    ctx.font = '12px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('No token usage data available', w / 2, h / 2);
+    tooltip.classList.add('hidden');
+    canvas.onmousemove = null;
+    canvas.onmouseleave = null;
+    return;
+  }
+
+  const totals = stacks.map(day => day.segments.reduce((sum, seg) => sum + (Number(seg.value) || 0), 0));
+  const maxTotal = Math.max(...totals, 0);
+  if (maxTotal <= 0) {
+    ctx.fillStyle = subtleText;
+    ctx.font = '12px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('No token usage data available', w / 2, h / 2);
+    tooltip.classList.add('hidden');
+    canvas.onmousemove = null;
+    canvas.onmouseleave = null;
+    return;
+  }
+
+  ctx.strokeStyle = borderColor;
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = padding.top + (chartH / 4) * i;
+    ctx.beginPath();
+    ctx.moveTo(padding.left, y);
+    ctx.lineTo(padding.left + chartW, y);
+    ctx.stroke();
+
+    const value = Math.round(maxTotal * (1 - i / 4));
+    ctx.fillStyle = textColor;
+    ctx.font = '10px Inter, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(formatNumber(value), padding.left - 8, y + 3);
+  }
+
+  const slotW = chartW / stacks.length;
+  const barW = Math.max(8, Math.min(36, slotW * 0.7));
+  const baseY = padding.top + chartH;
+  const bars = [];
+
+  stacks.forEach((day, i) => {
+    const xCenter = padding.left + slotW * i + slotW / 2;
+    const x = xCenter - barW / 2;
+    let yCursor = baseY;
+    const drawnSegments = [];
+
+    day.segments.forEach((segment) => {
+      const value = Number(segment.value) || 0;
+      if (value <= 0) return;
+      const height = (value / maxTotal) * chartH;
+      yCursor -= height;
+      ctx.fillStyle = segment.color;
+      ctx.fillRect(x, yCursor, barW, height);
+      drawnSegments.push({ ...segment, y: yCursor, height });
+    });
+
+    bars.push({ xCenter, x, width: barW, date: day.date, segments: day.segments, drawnSegments, total: totals[i] });
+  });
+
+  ctx.fillStyle = textColor;
+  ctx.font = '10px Inter, sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('Token Usage chart loading...', parent.clientWidth / 2, parent.clientHeight / 2);
+  const step = Math.max(1, Math.floor(stacks.length / 7));
+  stacks.forEach((d, i) => {
+    if (i % step === 0 || i === stacks.length - 1) {
+      ctx.fillText(formatDate(d.date), bars[i].xCenter, baseY + 18);
+    }
+  });
+
+  canvas.onmousemove = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+
+    let closest = null;
+    let minDist = Infinity;
+    for (const bar of bars) {
+      const dist = Math.abs(bar.xCenter - mx);
+      if (dist < minDist) {
+        minDist = dist;
+        closest = bar;
+      }
+    }
+
+    if (!closest || minDist > Math.max(20, slotW / 1.5)) {
+      tooltip.classList.add('hidden');
+      return;
+    }
+
+    const dateLabel = closest.date;
+    let rows = `<div class="tooltip-date">${escapeHtml(dateLabel)}</div>`;
+
+    if (isAllAgents) {
+      closest.segments.forEach((segment) => {
+        const value = Number(segment.value) || 0;
+        if (value <= 0) return;
+        const info = agentState[segment.key] || {};
+        const agentName = `${info.emoji ? info.emoji + ' ' : ''}${info.name || segment.label}`.trim();
+        rows += `<div class="tooltip-row"><span><span class="tooltip-dot" style="background:${segment.color}"></span><span class="tooltip-label">${escapeHtml(truncate(agentName, 28))}</span></span><span class="tooltip-val">${formatNumber(value)}</span></div>`;
+      });
+    } else {
+      closest.segments.forEach((segment) => {
+        rows += `<div class="tooltip-row"><span><span class="tooltip-dot" style="background:${segment.color}"></span><span class="tooltip-label">${escapeHtml(segment.label)}</span></span><span class="tooltip-val">${formatNumber(Number(segment.value) || 0)}</span></div>`;
+      });
+    }
+
+    rows += `<div class="tooltip-row" style="border-top:1px solid var(--border-subtle);padding-top:4px;margin-top:4px"><span class="tooltip-label">Total</span><span class="tooltip-val">${formatNumber(closest.total)}</span></div>`;
+
+    tooltip.classList.remove('hidden');
+    tooltip.innerHTML = rows;
+    const tx = Math.min(e.clientX - rect.left + 12, rect.width - 210);
+    tooltip.style.left = tx + 'px';
+    tooltip.style.top = Math.max(e.clientY - rect.top - 70, 0) + 'px';
+  };
+
+  canvas.onmouseleave = () => tooltip.classList.add('hidden');
 }
 
 function renderApiCostChart() {
@@ -1907,6 +2086,16 @@ function formatDate(dateStr) {
   const month = (d.getMonth() + 1).toString().padStart(2, '0');
   const day = d.getDate().toString().padStart(2, '0');
   return `${month}/${day}`;
+}
+
+function agentIdToHslColor(agentId) {
+  const id = String(agentId || 'agent');
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = ((hash << 5) - hash + id.charCodeAt(i)) | 0;
+  }
+  const hue = Math.abs(hash) % 360;
+  return `hsl(${hue}, 65%, 55%)`;
 }
 
 function truncate(str, max) {
