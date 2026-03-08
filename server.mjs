@@ -1846,7 +1846,7 @@ function getTokenAnalytics(rangeStr, agentFilter) {
   const agentTimeSeries = {};
   for (const [, val] of byAgentDate) {
     if (!agentTimeSeries[val.agentId]) agentTimeSeries[val.agentId] = [];
-    agentTimeSeries[val.agentId].push({ date: val.date, tokens: val.tokens, cost: val.cost });
+    agentTimeSeries[val.agentId].push({ date: val.date, tokens: val.tokens, inputTokens: val.inputTokens, outputTokens: val.outputTokens, cost: val.cost });
   }
   for (const id of Object.keys(agentTimeSeries)) {
     agentTimeSeries[id].sort((a, b) => a.date.localeCompare(b.date));

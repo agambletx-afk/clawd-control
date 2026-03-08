@@ -69,14 +69,14 @@
 .control-select:focus { border-color: var(--accent); outline: none; }
 
 .time-pills { display: flex; gap: 2px; background: var(--bg-primary); border-radius: var(--radius-sm); padding: 2px; }
-.time-pill {
+.time-pill, .zone2-tab {
   padding: 5px 12px; border: none; border-radius: var(--radius-sm);
   background: transparent; color: var(--text-tertiary); cursor: pointer;
   font-size: 0.75rem; font-weight: 700; font-family: var(--font-sans);
   transition: all 0.2s; text-transform: uppercase; letter-spacing: 0.03em;
 }
-.time-pill:hover { color: var(--text-secondary); }
-.time-pill.active { background: var(--surface); color: var(--text-primary); box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+.time-pill:hover, .zone2-tab:hover { color: var(--text-secondary); }
+.time-pill.active, .zone2-tab.active { background: var(--surface); color: var(--text-primary); box-shadow: 0 1px 3px rgba(0,0,0,.2); }
 
 /* ── Gemini Quota ──────────────────────── */
 .quota-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -120,6 +120,25 @@
 .limit-meta { color: var(--text-tertiary); font-variant-numeric: tabular-nums; display:flex; align-items:center; gap:6px; }
 .zone1-separator { border-top: 1px solid var(--border-subtle); margin-top: 14px; }
 .pricing-note { font-size: .65rem; color: var(--text-tertiary); margin-left: 6px; }
+
+/* ── Zone 2 (Consumption Mix) ─────────── */
+.zone2 { margin-bottom: 16px; }
+.zone2-tabs {
+  display: flex; gap: 2px; overflow-x: auto;
+  background: var(--bg-primary); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm); padding: 2px; margin-bottom: 10px;
+}
+.zone2-tab { white-space: nowrap; }
+.zone2-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.concentration-banner {
+  border-radius: var(--radius-md); padding: 10px 16px; margin-bottom: 10px;
+  font-size: 0.82rem; font-weight: 600; border-left: 4px solid #facc15;
+  background: color-mix(in oklab, #facc15 15%, transparent); color: var(--text-primary);
+}
+.concentration-banner.critical {
+  border-left-color: #f87171;
+  background: color-mix(in oklab, #f87171 15%, transparent);
+}
 
 /* ── Chart Containers ──────────────────── */
 .chart-row {
@@ -394,6 +413,7 @@
   .zone1-grid { grid-template-columns: 1fr; }
   .velocity-grid { grid-template-columns: 1fr; }
   .velocity-metric.primary { grid-column: span 1; }
+  .zone2-charts { grid-template-columns: 1fr; }
 }
 
 @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
@@ -459,6 +479,33 @@
       </div>
     </div>
     <div class="zone1-separator"></div>
+  </section>
+
+  <section class="zone2 fade-up" style="animation-delay:.12s">
+    <div id="concentrationBanner" class="concentration-banner" style="display:none"></div>
+    <div class="zone2-tabs" id="zone2AgentTabs"></div>
+    <div class="zone2-charts">
+      <div class="chart-card zone2-chart-left">
+        <div class="chart-header">
+          <div class="chart-title"><i data-lucide="bar-chart-2"></i> Token Usage</div>
+          <div class="chart-subtitle">Input + output tokens per day</div>
+        </div>
+        <div class="line-chart-container">
+          <canvas id="tokenUsageChart" class="line-chart"></canvas>
+          <div class="chart-tooltip hidden" id="tokenUsageTooltip"></div>
+        </div>
+      </div>
+      <div class="chart-card zone2-chart-right">
+        <div class="chart-header">
+          <div class="chart-title"><i data-lucide="trending-up"></i> API Cost</div>
+          <div class="chart-subtitle" id="apiCostSubtitle">Daily cost</div>
+        </div>
+        <div class="line-chart-container">
+          <canvas id="apiCostChart" class="line-chart"></canvas>
+          <div class="chart-tooltip hidden" id="apiCostTooltip"></div>
+        </div>
+      </div>
+    </div>
   </section>
 
   <div class="stats-grid fade-up" style="animation-delay:.1s">
@@ -661,6 +708,7 @@ let tokenData = null;
 let sentinelData = null;
 let limitsData = [];
 let costMode = 'daily';
+let zone2AgentFilter = 'all';
 let quotaInterval = null;
 let lastAnalyticsLoad = 0;
 const ANALYTICS_THROTTLE_MS = 10000;
@@ -701,7 +749,13 @@ setTimeout(() => {
 let resizeTimer;
 window.addEventListener('resize', () => {
   clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => { if (analyticsData) renderAll(); }, 200);
+  resizeTimer = setTimeout(() => {
+    if (analyticsData) {
+      renderAll();
+      renderTokenUsageChart();
+      renderApiCostChart();
+    }
+  }, 200);
 });
 
 function populateAgentSelect() {
@@ -818,6 +872,10 @@ function renderAll() {
 
   renderCostVelocity();
   renderRateLimits();
+  renderZone2Tabs();
+  renderConcentrationBanner();
+  renderTokenUsageChart();
+  renderApiCostChart();
   renderStats();
   renderCostBreakdown();
   renderBySource();
@@ -1161,6 +1219,234 @@ function renderTokenBreakdown() {
       </div>
     `;
   }).join('');
+}
+
+function renderZone2Tabs() {
+  const container = $('#zone2AgentTabs');
+  if (!container || !analyticsData) return;
+  const agents = Array.isArray(analyticsData.byAgent) ? analyticsData.byAgent : [];
+  const tabs = ['<button class="zone2-tab' + (zone2AgentFilter === 'all' ? ' active' : '') + '" data-agent="all">All Agents</button>'];
+
+  agents.forEach(agent => {
+    const agentInfo = agentState[agent.agentId] || {};
+    const label = `${agentInfo.emoji || '🤖'} ${agentInfo.name || agent.agentId}`;
+    tabs.push(`<button class="zone2-tab${zone2AgentFilter === agent.agentId ? ' active' : ''}" data-agent="${agent.agentId}">${escapeHtml(label)}</button>`);
+  });
+
+  container.innerHTML = tabs.join('');
+
+  if (!container.dataset.bound) {
+    container.addEventListener('click', (e) => {
+      const btn = e.target.closest('.zone2-tab');
+      if (!btn) return;
+      const nextFilter = btn.dataset.agent || 'all';
+      if (nextFilter === zone2AgentFilter) return;
+      zone2AgentFilter = nextFilter;
+      renderZone2Tabs();
+      renderConcentrationBanner();
+      renderTokenUsageChart();
+      renderApiCostChart();
+    });
+    container.dataset.bound = '1';
+  }
+}
+
+function renderConcentrationBanner() {
+  const banner = $('#concentrationBanner');
+  if (!banner || !analyticsData) return;
+  if (zone2AgentFilter !== 'all') {
+    banner.style.display = 'none';
+    return;
+  }
+
+  const agents = Array.isArray(analyticsData.byAgent) ? analyticsData.byAgent : [];
+  const totalTokens = Number(analyticsData.totalTokens) || 0;
+  if (totalTokens <= 0 || agents.length === 0) {
+    banner.style.display = 'none';
+    return;
+  }
+
+  let highest = null;
+  for (const agent of agents) {
+    const share = (Number(agent.tokens) || 0) / totalTokens;
+    if (!highest || share > highest.share) {
+      highest = { agent, share };
+    }
+  }
+
+  if (!highest || highest.share < 0.7) {
+    banner.style.display = 'none';
+    return;
+  }
+
+  const info = agentState[highest.agent.agentId] || {};
+  const name = info.name || highest.agent.agentId;
+  const pct = (highest.share * 100).toFixed(1);
+  banner.classList.toggle('critical', highest.share > 0.9);
+  banner.innerHTML = `⚠ ${escapeHtml(name)}: ${pct}% of tokens (${formatNumber(highest.agent.tokens || 0)} of ${formatNumber(totalTokens)})`;
+  banner.style.display = '';
+}
+
+function renderTokenUsageChart() {
+  const canvas = $('#tokenUsageChart');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const parent = canvas.parentElement;
+  canvas.width = parent.clientWidth * 2;
+  canvas.height = parent.clientHeight * 2;
+  canvas.style.width = parent.clientWidth + 'px';
+  canvas.style.height = parent.clientHeight + 'px';
+  ctx.scale(2, 2);
+  ctx.clearRect(0, 0, parent.clientWidth, parent.clientHeight);
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-tertiary').trim();
+  ctx.font = '12px Inter, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Token Usage chart loading...', parent.clientWidth / 2, parent.clientHeight / 2);
+}
+
+function renderApiCostChart() {
+  const canvas = $('#apiCostChart');
+  const tooltip = $('#apiCostTooltip');
+  const subtitle = $('#apiCostSubtitle');
+  if (!canvas || !tooltip || !subtitle) return;
+  const ctx = canvas.getContext('2d');
+  const parent = canvas.parentElement;
+  canvas.width = parent.clientWidth * 2;
+  canvas.height = parent.clientHeight * 2;
+  canvas.style.width = parent.clientWidth + 'px';
+  canvas.style.height = parent.clientHeight + 'px';
+  ctx.scale(2, 2);
+  ctx.clearRect(0, 0, parent.clientWidth, parent.clientHeight);
+
+  const pm = pricingMeta();
+  subtitle.textContent = pm.isPartial ? 'Daily cost (partial pricing)' : 'Daily cost';
+
+  if (pm.isNone) {
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-tertiary').trim();
+    ctx.font = '12px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('No pricing data available', parent.clientWidth / 2, parent.clientHeight / 2);
+    tooltip.classList.add('hidden');
+    canvas.onmousemove = null;
+    canvas.onmouseleave = null;
+    return;
+  }
+
+  const timeline = zone2AgentFilter === 'all'
+    ? (analyticsData?.overTime || [])
+    : (tokenData?.agentTimeSeries?.[zone2AgentFilter] || []);
+
+  if (timeline.length === 0) {
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-tertiary').trim();
+    ctx.font = '12px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('No data available', parent.clientWidth / 2, parent.clientHeight / 2);
+    tooltip.classList.add('hidden');
+    canvas.onmousemove = null;
+    canvas.onmouseleave = null;
+    return;
+  }
+
+  const w = parent.clientWidth;
+  const h = parent.clientHeight;
+  const padding = { top: 20, right: 20, bottom: 30, left: 55 };
+  const chartW = w - padding.left - padding.right;
+  const chartH = h - padding.top - padding.bottom;
+
+  const styles = getComputedStyle(document.documentElement);
+  const accentColor = styles.getPropertyValue('--accent').trim();
+  const textColor = styles.getPropertyValue('--text-secondary').trim();
+  const borderColor = styles.getPropertyValue('--border-subtle').trim();
+
+  const maxCost = Math.max(...timeline.map(d => Number(d.cost) || 0), 0.01);
+
+  ctx.strokeStyle = borderColor;
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = padding.top + (chartH / 4) * i;
+    ctx.beginPath();
+    ctx.moveTo(padding.left, y);
+    ctx.lineTo(padding.left + chartW, y);
+    ctx.stroke();
+    const value = maxCost * (1 - i / 4);
+    ctx.fillStyle = textColor;
+    ctx.font = '10px Inter, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(`$${value < 1 ? value.toFixed(3) : value.toFixed(2)}`, padding.left - 8, y + 3);
+  }
+
+  const baseY = padding.top + chartH;
+  const points = timeline.map((d, i) => {
+    const x = padding.left + (chartW / (timeline.length - 1 || 1)) * i;
+    const cost = Number(d.cost) || 0;
+    const y = padding.top + chartH - (cost / maxCost * chartH);
+    return { x, y, cost, date: d.date, tokens: Number(d.tokens) || 0 };
+  });
+
+  const gradient = ctx.createLinearGradient(0, padding.top, 0, baseY);
+  gradient.addColorStop(0, accentColor + '30');
+  gradient.addColorStop(1, accentColor + '00');
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, baseY);
+  points.forEach(p => ctx.lineTo(p.x, p.y));
+  ctx.lineTo(points[points.length - 1].x, baseY);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = accentColor;
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  points.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+  ctx.stroke();
+
+  points.forEach(p => {
+    ctx.fillStyle = accentColor;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  ctx.fillStyle = textColor;
+  ctx.font = '10px Inter, sans-serif';
+  ctx.textAlign = 'center';
+  const step = Math.max(1, Math.floor(timeline.length / 7));
+  timeline.forEach((d, i) => {
+    if (i % step === 0 || i === timeline.length - 1) {
+      ctx.fillText(formatDate(d.date), points[i].x, baseY + 18);
+    }
+  });
+
+  canvas.onmousemove = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    let closest = null;
+    let minDist = Infinity;
+    for (const p of points) {
+      const dist = Math.abs(p.x - mx);
+      if (dist < minDist) {
+        minDist = dist;
+        closest = p;
+      }
+    }
+
+    if (closest && minDist < 30) {
+      tooltip.classList.remove('hidden');
+      tooltip.innerHTML = `
+        <div class="tooltip-date">${closest.date}</div>
+        <div class="tooltip-row"><span class="tooltip-label">Daily Cost</span><span class="tooltip-val" style="color:var(--accent)">${formatCurrency(closest.cost, 4, 'No pricing')}</span></div>
+        <div class="tooltip-row"><span class="tooltip-label">Tokens</span><span class="tooltip-val">${formatNumber(closest.tokens)}</span></div>
+      `;
+      const tx = Math.min(e.clientX - rect.left + 12, rect.width - 180);
+      tooltip.style.left = tx + 'px';
+      tooltip.style.top = Math.max(e.clientY - rect.top - 58, 0) + 'px';
+    } else {
+      tooltip.classList.add('hidden');
+    }
+  };
+  canvas.onmouseleave = () => tooltip.classList.add('hidden');
 }
 
 function renderCostOverTime() {
