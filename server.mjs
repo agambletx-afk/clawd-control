@@ -1809,10 +1809,12 @@ function getTokenAnalytics(rangeStr, agentFilter) {
                   const date = new Date(ts).toISOString().split('T')[0];
                   const adKey = `${agentId}:${date}`;
                   if (!byAgentDate.has(adKey)) {
-                    byAgentDate.set(adKey, { agentId, date, tokens: 0, cost: 0 });
+                    byAgentDate.set(adKey, { agentId, date, tokens: 0, inputTokens: 0, outputTokens: 0, cost: 0 });
                   }
                   const ad = byAgentDate.get(adKey);
                   ad.tokens += input + output + cacheRead;
+                  ad.inputTokens += input;
+                  ad.outputTokens += output;
                   ad.cost += cost;
                 }
               }
