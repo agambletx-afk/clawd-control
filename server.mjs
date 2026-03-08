@@ -8,7 +8,7 @@
 
 import http from 'http';
 const { createServer } = http;
-import { readFileSync, existsSync, writeFileSync, copyFileSync, readdirSync, statSync, unlinkSync } from 'fs';
+import { readFileSync, existsSync, writeFileSync, copyFileSync, readdirSync, statSync, unlinkSync, renameSync } from 'fs';
 import { join, extname, resolve, sep } from 'path';
 import { gzipSync } from 'zlib';
 import { exec, execFileSync, execSync, spawn, spawnSync } from 'child_process';
@@ -58,6 +58,10 @@ const COST_SENTINEL_STATUS_PATH = join(process.env.HOME || '/home/openclaw', '.o
 const BUDGET_CONFIG_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', 'budget.json');
 const SENTINEL_CONFIG_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', 'sentinel-config.json');
 const RATE_LIMITS_CONFIG_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', 'rate-limits.json');
+const OPENCLAW_DIR = join(homedir(), '.openclaw');
+const OPENCLAW_WORKSPACE = join(OPENCLAW_DIR, 'workspace');
+const CORTEX_CONFIG_PATH = join(OPENCLAW_WORKSPACE, 'cortex/cortex.json');
+const CORTEX_LOG_PATH = join(OPENCLAW_DIR, 'logs/cortex.log');
 const CRON_JOBS_PATH = join(homedir(), '.openclaw', 'cron', 'jobs.json');
 const PRIMARY_ENV_PATH = join(DIR, '.env');
 const SECONDARY_ENV_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', '.env');
@@ -2459,6 +2463,59 @@ function getSessionsEvents({ range = '24h', source = 'all', page = 1, limit = EV
 }
 
 // ── HTTP Server ─────────────────────────────────────
+
+
+function readCortexConfig() {
+  if (!existsSync(CORTEX_CONFIG_PATH)) return null;
+  return JSON.parse(readFileSync(CORTEX_CONFIG_PATH, 'utf8'));
+}
+
+function writeCortexConfig(config) {
+  const tmpPath = `${CORTEX_CONFIG_PATH}.tmp`;
+  writeFileSync(tmpPath, JSON.stringify(config, null, 2), 'utf8');
+  renameSync(tmpPath, CORTEX_CONFIG_PATH);
+}
+
+function deepMerge(target, source) {
+  const output = target && typeof target === 'object' && !Array.isArray(target) ? { ...target } : {};
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return output;
+  Object.keys(source).forEach((key) => {
+    const value = source[key];
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      output[key] = deepMerge(output[key], value);
+    } else {
+      output[key] = value;
+    }
+  });
+  return output;
+}
+
+function tailJsonLines(filePath, limit = 20) {
+  if (!existsSync(filePath)) return { lines: [], total: 0 };
+  const raw = readFileSync(filePath, 'utf8');
+  if (!raw.trim()) return { lines: [], total: 0 };
+  const allLines = raw.split('\n').filter((line) => line.trim());
+  const lastLines = allLines.slice(-limit);
+  const parsed = [];
+  for (const line of lastLines) {
+    try {
+      parsed.push(JSON.parse(line));
+    } catch {
+      // Skip malformed line
+    }
+  }
+  return { lines: parsed, total: allLines.length };
+}
+
+function getDecisionTimestampMs(decision) {
+  const ts = decision?.timestamp || decision?.ts || decision?.createdAt || decision?.time;
+  if (typeof ts === 'number') return ts > 1e12 ? ts : ts * 1000;
+  if (typeof ts === 'string') {
+    const parsed = Date.parse(ts);
+    return Number.isNaN(parsed) ? 0 : parsed;
+  }
+  return 0;
+}
 
 const server = createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
@@ -4994,6 +5051,196 @@ const server = createServer((req, res) => {
         console.error('[API] agent action error:', e.message);
         res.end(JSON.stringify({ ok: false, error: 'Action failed' }));
       }
+    });
+    return;
+  }
+
+
+  if (path === '/api/cortex/status' && req.method === 'GET') {
+    try {
+      const config = readCortexConfig();
+      if (!config) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'cortex not configured', status: 404 }));
+        return;
+      }
+      const payload = {
+        version: config.version,
+        ladder: Array.isArray(config.ladder) ? config.ladder : [],
+        agentPins: config.agentPins && typeof config.agentPins === 'object' ? config.agentPins : {},
+        scoring: { weights: config?.scoring?.weights && typeof config.scoring.weights === 'object' ? config.scoring.weights : {} },
+        schedule: config.schedule && typeof config.schedule === 'object' ? config.schedule : {},
+        quotaThresholds: config.quotaThresholds && typeof config.quotaThresholds === 'object' ? config.quotaThresholds : {},
+        alerts: config.alerts && typeof config.alerts === 'object' ? config.alerts : {},
+      };
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(payload));
+    } catch (e) {
+      console.error('[API] /api/cortex/status error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to load cortex status' }));
+    }
+    return;
+  }
+
+  if (path === '/api/cortex/decisions' && req.method === 'GET') {
+    try {
+      const requestedLimit = parseInt(url.searchParams.get('limit') || '20', 10);
+      const limit = Math.max(1, Math.min(Number.isFinite(requestedLimit) ? requestedLimit : 20, 200));
+      const { lines, total } = tailJsonLines(CORTEX_LOG_PATH, limit);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ decisions: lines, total }));
+    } catch (e) {
+      console.error('[API] /api/cortex/decisions error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to load cortex decisions' }));
+    }
+    return;
+  }
+
+  if (path === '/api/cortex/health' && req.method === 'GET') {
+    try {
+      const { lines: decisions } = tailJsonLines(CORTEX_LOG_PATH, 50);
+      const config = readCortexConfig() || {};
+      const providers = {};
+      for (const decision of decisions) {
+        const selectedModel = String(decision?.selectedModel || decision?.model || '');
+        const provider = String(decision?.provider || selectedModel.split('/')[0] || 'unknown');
+        if (!providers[provider]) {
+          providers[provider] = { requests: 0, lastUsed: null, skips: 0 };
+        }
+        providers[provider].requests += 1;
+        const tsMs = getDecisionTimestampMs(decision);
+        if (tsMs > 0) {
+          const iso = new Date(tsMs).toISOString();
+          if (!providers[provider].lastUsed || iso > providers[provider].lastUsed) {
+            providers[provider].lastUsed = iso;
+          }
+        }
+        const skipped = Array.isArray(decision?.modelsSkipped) ? decision.modelsSkipped.length : 0;
+        providers[provider].skips += skipped;
+      }
+
+      const ladder = Array.isArray(config?.ladder) ? config.ladder : [];
+      const activeModels = ladder.filter((m) => m?.enabled !== false).map((m) => m.model).filter(Boolean);
+      const disabledModels = ladder.filter((m) => m?.enabled === false).map((m) => m.model).filter(Boolean);
+      const schedulePolicy = config?.schedule?.policy || config?.schedule?.mode || null;
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ providers, schedulePolicy, activeModels, disabledModels }));
+    } catch (e) {
+      console.error('[API] /api/cortex/health error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to load cortex health' }));
+    }
+    return;
+  }
+
+  if (path === '/api/cortex/config' && req.method === 'PUT') {
+    readJsonBody(req).then((body) => {
+      try {
+        const current = readCortexConfig();
+        if (!current) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'cortex not configured' }));
+          return;
+        }
+        const allowed = ['ladder', 'agentPins', 'scoring', 'quotaThresholds', 'schedule', 'alerts'];
+        const patch = {};
+        for (const key of allowed) {
+          if (Object.prototype.hasOwnProperty.call(body || {}, key)) patch[key] = body[key];
+        }
+        const updated = deepMerge(current, patch);
+        writeCortexConfig(updated);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, version: updated.version }));
+      } catch (e) {
+        console.error('[API] /api/cortex/config error:', e.message);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Failed to update cortex config' }));
+      }
+    }).catch((e) => {
+      const code = e.message === 'Payload too large' ? 413 : 400;
+      res.writeHead(code, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message === 'Payload too large' ? 'Payload too large' : 'Invalid JSON body' }));
+    });
+    return;
+  }
+
+  if (path.startsWith('/api/cortex/ladder/') && path.endsWith('/toggle') && req.method === 'PUT') {
+    try {
+      const prefix = '/api/cortex/ladder/';
+      const modelSegment = path.slice(prefix.length, path.length - '/toggle'.length).replace(/^\/+|\/+$/g, '');
+      const model = decodeURIComponent(modelSegment);
+      if (!model) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid model id' }));
+        return;
+      }
+      const current = readCortexConfig();
+      if (!current) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'cortex not configured' }));
+        return;
+      }
+      const ladder = Array.isArray(current.ladder) ? current.ladder : [];
+      const idx = ladder.findIndex((entry) => String(entry?.model || '') === model);
+      if (idx === -1) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Model not found in ladder' }));
+        return;
+      }
+      ladder[idx] = { ...ladder[idx], enabled: ladder[idx].enabled === false ? true : false };
+      current.ladder = ladder;
+      writeCortexConfig(current);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, model, enabled: Boolean(ladder[idx].enabled) }));
+    } catch (e) {
+      console.error('[API] /api/cortex/ladder/:model/toggle error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to toggle model' }));
+    }
+    return;
+  }
+
+  if (path === '/api/cortex/pins' && req.method === 'PUT') {
+    readJsonBody(req).then((body) => {
+      try {
+        const agentId = typeof body?.agentId === 'string' ? body.agentId.trim() : '';
+        const model = body?.model === null ? null : (typeof body?.model === 'string' ? body.model.trim() : undefined);
+        if (!agentId || model === undefined) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'agentId and model are required' }));
+          return;
+        }
+
+        const current = readCortexConfig();
+        if (!current) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'cortex not configured' }));
+          return;
+        }
+
+        const pins = current.agentPins && typeof current.agentPins === 'object' ? { ...current.agentPins } : {};
+        if (model === null || model === '') {
+          delete pins[agentId];
+        } else {
+          pins[agentId] = model;
+        }
+        current.agentPins = pins;
+        writeCortexConfig(current);
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, agentPins: pins }));
+      } catch (e) {
+        console.error('[API] /api/cortex/pins error:', e.message);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Failed to update cortex pins' }));
+      }
+    }).catch((e) => {
+      const code = e.message === 'Payload too large' ? 413 : 400;
+      res.writeHead(code, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message === 'Payload too large' ? 'Payload too large' : 'Invalid JSON body' }));
     });
     return;
   }
