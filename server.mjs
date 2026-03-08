@@ -55,6 +55,7 @@ const APIS_CONFIG_PATH = join(DIR, 'apis-config.json');
 const HEALTH_RESULTS_PATH = '/tmp/api-health-results.json';
 const CLI_USAGE_PATH = '/tmp/cli-usage.json';
 const COST_SENTINEL_STATUS_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', 'cost-sentinel-status.json');
+const BUDGET_CONFIG_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', 'budget.json');
 const CRON_JOBS_PATH = join(homedir(), '.openclaw', 'cron', 'jobs.json');
 const PRIMARY_ENV_PATH = join(DIR, '.env');
 const SECONDARY_ENV_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', '.env');
@@ -2583,6 +2584,25 @@ const server = createServer((req, res) => {
       console.error('[API] /api/costs/sentinel error:', e.message);
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'parse_error' }));
+    }
+    return;
+  }
+
+
+  if (path === '/api/costs/budget' && req.method === 'GET') {
+    try {
+      if (!existsSync(BUDGET_CONFIG_PATH)) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({}));
+        return;
+      }
+      const payload = JSON.parse(readFileSync(BUDGET_CONFIG_PATH, 'utf8'));
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(payload));
+    } catch (e) {
+      console.warn('[API] /api/costs/budget warning:', e.message);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({}));
     }
     return;
   }
