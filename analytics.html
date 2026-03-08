@@ -284,6 +284,16 @@
 .source-telegram { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
 .source-direct { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
 .model-badge { background: rgba(139, 92, 246, 0.15); color: #8b5cf6; }
+.waste-badge {
+  display: inline-flex; align-items: center; padding: 2px 6px;
+  border-radius: 999px; font-size: 0.58rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .04em;
+}
+.waste-badge.loop { background: color-mix(in oklab, var(--warning) 20%, transparent); color: var(--warning); }
+.waste-badge.bloat { background: color-mix(in oklab, var(--accent) 20%, transparent); color: var(--accent); }
+.waste-badge.abandoned { background: color-mix(in oklab, var(--text-tertiary) 20%, transparent); color: var(--text-tertiary); }
+.waste-badge.cache-miss { background: color-mix(in oklab, var(--info) 20%, transparent); color: var(--info); }
+.waste-badge.error { background: color-mix(in oklab, var(--text-primary) 20%, transparent); color: var(--text-primary); }
 
 .insight-box {
   display: flex; align-items: flex-start; gap: 10px;
@@ -2173,6 +2183,18 @@ function renderTopSessions() {
       s.model ? `<span class="session-badge model-badge">${escapeHtml(truncate(s.model, 16))}</span>` : ''
     ].filter(Boolean).join('');
 
+    const wasteBadges = (s.flags || []).map(flag => {
+      const labels = {
+        'LOOP': 'loop', 'BLOAT': 'bloat', 'ABANDONED': 'abandoned',
+        'CACHE_MISS': 'cache miss', 'ERROR': 'error'
+      };
+      const classes = {
+        'LOOP': 'loop', 'BLOAT': 'bloat', 'ABANDONED': 'abandoned',
+        'CACHE_MISS': 'cache-miss', 'ERROR': 'error'
+      };
+      return `<span class="waste-badge ${classes[flag] || ''}">${labels[flag] || flag}</span>`;
+    }).join('');
+
     return `
       <div class="session-list-item">
         <div class="session-agent">
@@ -2181,6 +2203,7 @@ function renderTopSessions() {
           ${badges}
         </div>
         <div class="session-meta">
+          ${wasteBadges}
           ${s.messages ? `<span>${s.messages} msgs</span>` : ''}
           <span class="session-tokens">${formatNumber(s.tokens)} tok</span>
           ${s.cost == null ? `<span class="session-badge no-pricing-badge">no pricing</span>` : `<span class="session-cost">${formatCurrency(s.cost, 3, "No pricing data")}</span>`}
@@ -2205,6 +2228,18 @@ function renderTopCrons() {
     const agentInfo = agentState[s.agentId] || {};
     const emoji = agentInfo.emoji || '🤖';
     const name = agentInfo.name || s.agentId;
+    const wasteBadges = (s.flags || []).map(flag => {
+      const labels = {
+        'LOOP': 'loop', 'BLOAT': 'bloat', 'ABANDONED': 'abandoned',
+        'CACHE_MISS': 'cache miss', 'ERROR': 'error'
+      };
+      const classes = {
+        'LOOP': 'loop', 'BLOAT': 'bloat', 'ABANDONED': 'abandoned',
+        'CACHE_MISS': 'cache-miss', 'ERROR': 'error'
+      };
+      return `<span class="waste-badge ${classes[flag] || ''}">${labels[flag] || flag}</span>`;
+    }).join('');
+
     return `
       <div class="session-list-item">
         <div class="session-agent">
@@ -2214,6 +2249,7 @@ function renderTopCrons() {
         <div class="session-meta">
           <span class="session-badge source-cron">Cron</span>
           ${s.model ? `<span class="session-badge model-badge">${truncate(s.model, 16)}</span>` : ''}
+          ${wasteBadges}
           <span class="session-tokens">${formatNumber(s.tokens)} tok</span>
           ${s.cost == null ? `<span class="session-badge no-pricing-badge">no pricing</span>` : `<span class="session-cost">${formatCurrency(s.cost, 3, "No pricing data")}</span>`}
         </div>

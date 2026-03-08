@@ -1454,6 +1454,14 @@ function getAnalytics(rangeStr, agentFilter) {
         let sessionMessages = 0;
         let sessionModel = null;
         let isHeartbeatSession = false;
+        let maxMsgInput = 0;
+        let maxMsgOutput = 0;
+        const toolNames = new Map();
+
+        const trackToolUse = (name) => {
+          if (!name || typeof name !== 'string') return;
+          toolNames.set(name, (toolNames.get(name) || 0) + 1);
+        };
 
         try {
           const content = readFileSync(sessionPath, 'utf8');
@@ -1466,6 +1474,18 @@ function getAnalytics(rangeStr, agentFilter) {
               // Model tracking
               if (data.type === 'model_change' && data.modelId) {
                 sessionModel = data.modelId;
+              }
+
+              if (data.type === 'tool_use') {
+                trackToolUse(data.name || data.tool_name || data.toolName || data.tool?.name);
+              }
+
+              if (Array.isArray(data.message?.content)) {
+                for (const block of data.message.content) {
+                  if (block?.type === 'tool_use') {
+                    trackToolUse(block.name || block.tool_name || block.toolName || block.tool?.name);
+                  }
+                }
               }
 
               // Message cost extraction
@@ -1482,6 +1502,8 @@ function getAnalytics(rangeStr, agentFilter) {
                 const output = usage.output || 0;
                 const cache = usage.cacheRead || 0;
                 const cacheWrite = usage.cacheWrite || 0;
+                if (input > maxMsgInput) maxMsgInput = input;
+                if (output > maxMsgOutput) maxMsgOutput = output;
                 const modelForMsg = normalizeModelName(sessionModel || msg.model);
                 const hasPricing = Boolean(pricingTable[modelForMsg]);
                 if (hasPricing) {
@@ -1590,6 +1612,19 @@ function getAnalytics(rangeStr, agentFilter) {
         sourceData.tokens += sessionTokens;
         sourceData.sessions++;
 
+        const flags = [];
+        for (const [, count] of toolNames) {
+          if (count >= 5) {
+            flags.push('LOOP');
+            break;
+          }
+        }
+        if (maxMsgInput > 5000 || maxMsgOutput > 5000) flags.push('BLOAT');
+        if (sessionInput > 10 * sessionOutput && sessionMessages < 3 && sessionInput > 0) flags.push('ABANDONED');
+        const readableTokens = sessionInput + sessionCache;
+        if (readableTokens > 0 && sessionCache < 0.2 * readableTokens && sessionMessages >= 2) flags.push('CACHE_MISS');
+        if (isHeartbeatSession && sessionOutput === 0 && sessionInput > 0) flags.push('ERROR');
+
         // Track by agent
         if (!byAgent.has(agentId)) {
           byAgent.set(agentId, { cost: 0, tokens: 0 });
@@ -1609,6 +1644,7 @@ function getAnalytics(rangeStr, agentFilter) {
             model: normalizeModelName(sessionModel || 'unknown'),
             source,
             messages: sessionMessages,
+            flags,
           });
         }
       }
