@@ -53,6 +53,32 @@
 .stat-value.warning { color: var(--warning); }
 .stat-value.accent { color: var(--accent); }
 .stat-sub { font-size: 0.7rem; color: var(--text-tertiary); margin-top: 4px; }
+.cost-delta-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 999px;
+  font-size: 0.65rem; font-weight: 700; margin-top: 6px;
+}
+.cost-delta-badge.delta-good {
+  color: var(--success);
+  background: color-mix(in oklab, var(--success) 15%, transparent);
+}
+.cost-delta-badge.delta-neutral {
+  color: var(--text-tertiary);
+  background: var(--bg-primary);
+}
+.cost-delta-badge.delta-warn {
+  color: var(--warning);
+  background: color-mix(in oklab, var(--warning) 15%, transparent);
+}
+.cost-delta-badge.delta-critical {
+  color: var(--error);
+  background: color-mix(in oklab, var(--error) 15%, transparent);
+}
+.cost-concentration {
+  font-size: 0.68rem; font-weight: 600; margin-top: 4px;
+  color: var(--warning);
+}
+.cost-concentration.critical { color: var(--error); }
 .stat-dot {
   position: absolute; top: 14px; right: 14px;
   width: 6px; height: 6px; border-radius: 50%;
@@ -273,7 +299,9 @@
     <div class="stat-card fade-up" style="animation-delay:.15s">
       <div class="stat-label">7d API Cost (est.)</div>
       <div class="stat-value accent" id="statCost">—</div>
-      <div class="stat-sub">All gateways, token-based</div>
+      <div class="stat-sub" id="statCostSub">All gateways, token-based</div>
+      <div class="cost-delta-badge" id="costDeltaBadge" style="display:none"></div>
+      <div class="cost-concentration" id="costConcentration" style="display:none"></div>
       <div class="stat-dot" style="background:var(--accent)"></div>
     </div>
     <div class="stat-card fade-up" style="animation-delay:.2s">
@@ -331,6 +359,8 @@ const $ = s => document.querySelector(s);
 // VIEW MODE (compact / expanded)
 // ═══════════════════════════════════════════
 let viewMode = localStorage.getItem('cc-view') || 'compact';
+let overviewAnalytics = null;
+let costInsightsRequested = false;
 
 function setView(mode) {
   viewMode = mode;
@@ -344,18 +374,103 @@ function setView(mode) {
 // Apply saved view on load
 document.addEventListener('DOMContentLoaded', () => {
   setView(viewMode);
+  loadCostInsights();
 });
 
 // ═══════════════════════════════════════════
 // SSE EVENT LISTENERS (from layout.js)
 // ═══════════════════════════════════════════
 
-document.addEventListener('layout:snapshot', () => renderAll());
+document.addEventListener('layout:snapshot', () => { renderAll(); renderCostInsights(); });
 document.addEventListener('layout:agent-update', (e) => {
   renderAgent(e.detail.id);
   renderStats();
+  renderCostInsights();
 });
 document.addEventListener('layout:host-update', () => renderHost());
+
+async function loadCostInsights() {
+  if (costInsightsRequested) return;
+  costInsightsRequested = true;
+  try {
+    const response = await fetch('/api/analytics?range=7');
+    if (!response.ok) throw new Error('analytics fetch failed');
+    const data = await response.json();
+    overviewAnalytics = data && typeof data === 'object' ? data : null;
+    renderCostInsights();
+  } catch {
+    overviewAnalytics = null;
+    const badge = $('#costDeltaBadge');
+    const concentration = $('#costConcentration');
+    if (badge) badge.style.display = 'none';
+    if (concentration) concentration.style.display = 'none';
+  }
+}
+
+function renderCostInsights() {
+  const badge = $('#costDeltaBadge');
+  const concentration = $('#costConcentration');
+  if (!badge || !concentration || !overviewAnalytics) {
+    if (badge) badge.style.display = 'none';
+    if (concentration) concentration.style.display = 'none';
+    return;
+  }
+
+  const overTime = Array.isArray(overviewAnalytics.overTime) ? overviewAnalytics.overTime : [];
+  if (overTime.length >= 2) {
+    const todayCost = Number(overTime[overTime.length - 1]?.cost);
+    const yesterdayCost = Number(overTime[overTime.length - 2]?.cost);
+    if (Number.isFinite(todayCost) && Number.isFinite(yesterdayCost) && yesterdayCost > 0) {
+      const delta = ((todayCost - yesterdayCost) / yesterdayCost) * 100;
+      const deltaRounded = Math.round(delta);
+      let deltaClass = 'delta-neutral';
+      if (delta <= -5) deltaClass = 'delta-good';
+      else if (delta > 50) deltaClass = 'delta-critical';
+      else if (delta > 5) deltaClass = 'delta-warn';
+      badge.className = `cost-delta-badge ${deltaClass}`.trim();
+      const prefix = deltaRounded > 0 ? '+' : '';
+      badge.innerHTML = `${prefix}${deltaRounded}% vs yesterday`;
+      badge.style.display = '';
+    } else {
+      badge.style.display = 'none';
+    }
+  } else {
+    badge.style.display = 'none';
+  }
+
+  const totalCost = Number(overviewAnalytics.totalCost);
+  if (Number.isFinite(totalCost) && totalCost >= 0) {
+    const costSub = $('#statCostSub');
+    if (costSub) costSub.textContent = `7d total: $${totalCost.toFixed(2)}`;
+  }
+
+  const byAgent = Array.isArray(overviewAnalytics.byAgent) ? overviewAnalytics.byAgent : [];
+  const totalTokens = Number(overviewAnalytics.totalTokens) || 0;
+  if (totalTokens <= 0 || byAgent.length === 0) {
+    concentration.style.display = 'none';
+    return;
+  }
+
+  let highest = null;
+  for (const item of byAgent) {
+    const share = (Number(item?.tokens) || 0) / totalTokens;
+    if (!highest || share > highest.share) highest = { item, share };
+  }
+
+  if (!highest || highest.share < 0.7) {
+    concentration.style.display = 'none';
+    return;
+  }
+
+  const topId = highest.item?.agentId;
+  const info = topId ? agentState[topId] : null;
+  const name = info?.name || topId || 'Unknown';
+  const emoji = info?.emoji || '';
+  const pct = (highest.share * 100).toFixed(1);
+  concentration.className = `cost-concentration${highest.share > 0.9 ? ' critical' : ''}`;
+  concentration.innerHTML = `⚠ ${emoji ? `${emoji} ` : ''}${name}: ${pct}% of tokens`;
+  concentration.style.display = '';
+}
 
 // ═══════════════════════════════════════════
 // RENDER
