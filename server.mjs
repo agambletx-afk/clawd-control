@@ -440,7 +440,7 @@ function describeCron(schedule) {
   return schedule;
 }
 
-function parseCronLine(line, { source, defaultUser, fileName, expectsUserColumn }) {
+function parseCronLine(line, { source, defaultUser, fileName, expectsUserColumn, purpose }) {
   const parts = line.split(/\s+/);
   let schedule = '';
   let user = defaultUser;
@@ -473,7 +473,7 @@ function parseCronLine(line, { source, defaultUser, fileName, expectsUserColumn 
   return {
     name,
     schedule,
-    description: describeCron(schedule),
+    description: purpose || describeCron(schedule),
     command,
     source,
     user,
@@ -500,51 +500,75 @@ function parseCronEntries() {
     for (const file of files) {
       const fullPath = join(cronDir, file.name);
       const lines = readFileSync(fullPath, 'utf8').split('\n');
+      let pendingPurpose = null;
       for (const raw of lines) {
         const line = raw.trim();
-        if (!line || line.startsWith('#') || line.includes('=')) continue;
-        const job = parseCronLine(line, { source: 'system', fileName: file.name, expectsUserColumn: true });
+        if (!line || /^[A-Za-z_][A-Za-z0-9_]*=/.test(line)) continue;
+        if (line.startsWith('#')) {
+          const descMatch = line.match(/^#\s*Description:\s*(.+)/i);
+          if (descMatch) pendingPurpose = descMatch[1].trim();
+          continue;
+        }
+        const job = parseCronLine(line, { source: 'system', fileName: file.name, expectsUserColumn: true, purpose: pendingPurpose });
         if (job) jobs.push(job);
+        pendingPurpose = null;
       }
     }
   } catch {}
-
   try {
     const lines = readFileSync('/etc/crontab', 'utf8').split('\n');
+    let pendingPurpose = null;
     for (const raw of lines) {
       const line = raw.trim();
-      if (!line || line.startsWith('#') || line.includes('=')) continue;
-      const job = parseCronLine(line, { source: 'system', fileName: 'crontab', expectsUserColumn: true });
+      if (!line || /^[A-Za-z_][A-Za-z0-9_]*=/.test(line)) continue;
+      if (line.startsWith('#')) {
+        const descMatch = line.match(/^#\s*Description:\s*(.+)/i);
+        if (descMatch) pendingPurpose = descMatch[1].trim();
+        continue;
+      }
+      const job = parseCronLine(line, { source: 'system', fileName: 'crontab', expectsUserColumn: true, purpose: pendingPurpose });
       if (job) jobs.push(job);
+      pendingPurpose = null;
     }
   } catch {}
-
   try {
     const result = spawnSync('crontab', ['-u', 'openclaw', '-l'], { encoding: 'utf8', timeout: 10000 });
     if (result.status === 0) {
       const lines = result.stdout.split('\n');
+      let pendingPurpose = null;
       for (const raw of lines) {
         const line = raw.trim();
-        if (!line || line.startsWith('#')) continue;
-        const job = parseCronLine(line, { source: 'user', defaultUser: 'openclaw', expectsUserColumn: false });
+        if (!line) continue;
+        if (line.startsWith('#')) {
+          const descMatch = line.match(/^#\s*Description:\s*(.+)/i);
+          if (descMatch) pendingPurpose = descMatch[1].trim();
+          continue;
+        }
+        const job = parseCronLine(line, { source: 'user', defaultUser: 'openclaw', expectsUserColumn: false, purpose: pendingPurpose });
         if (job) jobs.push(job);
+        pendingPurpose = null;
       }
     }
   } catch {}
-
   try {
     const result = spawnSync('crontab', ['-u', 'root', '-l'], { encoding: 'utf8', timeout: 10000 });
     if (result.status === 0) {
       const lines = result.stdout.split('\n');
+      let pendingPurpose = null;
       for (const raw of lines) {
         const line = raw.trim();
-        if (!line || line.startsWith('#')) continue;
-        const job = parseCronLine(line, { source: 'system', defaultUser: 'root', expectsUserColumn: false });
+        if (!line) continue;
+        if (line.startsWith('#')) {
+          const descMatch = line.match(/^#\s*Description:\s*(.+)/i);
+          if (descMatch) pendingPurpose = descMatch[1].trim();
+          continue;
+        }
+        const job = parseCronLine(line, { source: 'system', defaultUser: 'root', expectsUserColumn: false, purpose: pendingPurpose });
         if (job) jobs.push(job);
+        pendingPurpose = null;
       }
     }
   } catch {}
-
   return jobs;
 }
 
