@@ -79,6 +79,7 @@ const MAX_BODY_SIZE = 1024 * 1024; // 1MB max POST body
 const RATE_LIMIT_WINDOW = 60000;   // 1 minute window
 const RATE_LIMIT_MAX = 5;          // 5 attempts per window
 const loginAttempts = new Map();   // ip → [timestamps]
+const PUBLIC_API_PATHS = new Set(['/api/health', '/api/ops/services/status']);
 
 // ── Auth ─────────────────────────────────────────────
 // Password stored in auth.json. On first run, generates a random one.
@@ -141,8 +142,9 @@ function requireAuth(req, res) {
 
   const url = new URL(req.url, `http://${req.headers.host}`);
 
-  // Allow login page and login API without auth
+  // Keep non-privileged pages/APIs public
   if (url.pathname === '/login' || url.pathname === '/api/login') return true;
+  if (PUBLIC_API_PATHS.has(url.pathname)) return true;
 
   // For API calls, return 401
   if (url.pathname.startsWith('/api/')) {
@@ -478,6 +480,17 @@ function parseCronLine(line, { source, defaultUser, fileName, expectsUserColumn 
     last_run: null,
   };
 }
+
+const CRON_TRIGGER_ALLOWLIST = new Map([
+  [
+    '/usr/local/bin/check-api-health.sh > /dev/null 2>&1',
+    { command: '/usr/local/bin/check-api-health.sh', args: [] },
+  ],
+  [
+    '. /home/openclaw/.profile && python3 /home/openclaw/.openclaw/scripts/graph-ingest-daily.py --days 1 >> /home/openclaw/.openclaw/memory/ingest.log 2>&1',
+    { command: 'python3', args: ['/home/openclaw/.openclaw/scripts/graph-ingest-daily.py', '--days', '1'] },
+  ],
+]);
 
 function parseCronEntries() {
   const jobs = [];
@@ -2696,8 +2709,22 @@ const server = createServer((req, res) => {
       res.end(JSON.stringify({ error: 'Invalid cron job name' }));
       return;
     }
+
+    const commandSpec = CRON_TRIGGER_ALLOWLIST.get(job.command);
+    if (!commandSpec) {
+      const detail = `Blocked non-allowlisted cron command for ${job.name}: ${job.command}`;
+      logAction({ category: 'cron', action: 'trigger', target: job.name, status: 'blocked', detail, duration_ms: 0 });
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Cron job is not triggerable via API' }));
+      return;
+    }
+
     const started = Date.now();
-    const result = spawnSync('bash', ['-lc', job.command], { encoding: 'utf8', timeout: 60000 });
+    const result = spawnSync(commandSpec.command, commandSpec.args, {
+      encoding: 'utf8',
+      timeout: 60000,
+      shell: false,
+    });
     const duration = Date.now() - started;
     const output = truncateOutput((result.stdout || '') + (result.stderr || ''));
     const status = result.status === 0 ? 'success' : 'failed';
