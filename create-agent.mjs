@@ -298,7 +298,7 @@ node_modules/`);
         emoji,
         host: '127.0.0.1',
         port: config.gateway?.port || 18789,
-        token: config.gateway?.auth?.token || '',
+        token: 'ENV',
         workspace,
         machine: execFileSync('hostname', [], { encoding: 'utf8', stdio: 'pipe' }).trim(),
       });

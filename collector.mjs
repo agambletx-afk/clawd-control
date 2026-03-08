@@ -35,11 +35,17 @@ export class AgentCollector extends EventEmitter {
 
   loadConfig() {
     this.config = JSON.parse(readFileSync(this.configPath, 'utf8'));
-    // Support env var override for gateway token (avoids plaintext in agents.json)
+    // Resolve gateway token from environment first when sentinel/empty is used.
     const envToken = process.env.CC_GATEWAY_TOKEN;
-    if (envToken) {
-      for (const agent of this.config.agents) {
-        if (!agent.token || agent.token === 'ENV') agent.token = envToken;
+    for (const agent of this.config.agents) {
+      const persistedToken = typeof agent.token === 'string' ? agent.token.trim() : '';
+      if (!persistedToken || persistedToken === 'ENV') {
+        if (!envToken) {
+          throw new Error(`Missing CC_GATEWAY_TOKEN for agent "${agent.id}" (agents.json token is ENV/empty)`);
+        }
+        agent.token = envToken;
+      } else {
+        agent.token = persistedToken;
       }
     }
     const currentIds = new Set(this.config.agents.map(a => a.id));
