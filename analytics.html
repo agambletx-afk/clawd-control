@@ -374,6 +374,34 @@
   font-size: 0.68rem; color: var(--text-secondary); margin-top: 4px;
 }
 
+/* ── Zone 3 (Deep Cuts) ───────────────── */
+.zone3 { margin-top: 8px; }
+.zone3-panel {
+  background: var(--surface); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md); margin-bottom: 10px; overflow: hidden;
+}
+.zone3-panel-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 16px; cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+.zone3-panel-header:hover {
+  background: color-mix(in oklab, var(--bg-secondary) 70%, transparent);
+}
+.zone3-panel-title {
+  font-size: 0.85rem; font-weight: 700; color: var(--text-primary);
+  display: flex; align-items: center; gap: 8px;
+}
+.zone3-panel-toggle {
+  display: flex; align-items: center; color: var(--text-tertiary);
+  transition: transform 0.2s ease;
+}
+.zone3-panel.open .zone3-panel-toggle { transform: rotate(180deg); }
+.zone3-panel-body {
+  display: none;
+  padding: 0 16px 16px;
+}
+
 /* ── Loading State ─────────────────────── */
 .loading-state {
   text-align: center; padding: 40px 20px; color: var(--text-tertiary);
@@ -541,159 +569,193 @@
     </div>
   </div>
 
-  <div class="chart-row fade-up" style="animation-delay:.13s">
-    <div class="chart-card">
-      <div class="chart-header">
-        <div class="chart-title">
-          <i data-lucide="receipt"></i>
-          Cost Breakdown
-        </div>
-        <div class="chart-subtitle">LLM cost components</div>
+  <section class="zone3">
+    <div class="zone3-panel" data-panel="cost-breakdown">
+      <div class="zone3-panel-header" onclick="togglePanel('cost-breakdown')">
+        <div class="zone3-panel-title"><i data-lucide="receipt"></i>Cost Breakdown</div>
+        <div class="zone3-panel-toggle"><i data-lucide="chevron-down"></i></div>
       </div>
-      <div id="costBreakdownChart" class="cost-breakdown">
-        <div class="loading-state"><div class="icon">⏳</div><p>Loading...</p></div>
-      </div>
-    </div>
+      <div class="zone3-panel-body" style="display:none">
+        <div class="chart-row fade-up" style="animation-delay:.13s">
+          <div class="chart-card">
+            <div class="chart-header">
+              <div class="chart-title">
+                <i data-lucide="receipt"></i>
+                Cost Breakdown
+              </div>
+              <div class="chart-subtitle">LLM cost components</div>
+            </div>
+            <div id="costBreakdownChart" class="cost-breakdown">
+              <div class="loading-state"><div class="icon">⏳</div><p>Loading...</p></div>
+            </div>
+          </div>
 
-    <div class="chart-card">
-      <div class="chart-header">
-        <div class="chart-title">
-          <i data-lucide="git-branch"></i>
-          By Source
+          <div class="chart-card">
+            <div class="chart-header">
+              <div class="chart-title">
+                <i data-lucide="git-branch"></i>
+                By Source
+              </div>
+              <div class="chart-subtitle">Where spend originates</div>
+            </div>
+            <div id="bySourceChart" class="by-source">
+              <div class="loading-state"><div class="icon">⏳</div><p>Loading...</p></div>
+            </div>
+          </div>
         </div>
-        <div class="chart-subtitle">Where spend originates</div>
-      </div>
-      <div id="bySourceChart" class="by-source">
-        <div class="loading-state"><div class="icon">⏳</div><p>Loading...</p></div>
-      </div>
-    </div>
-  </div>
 
-  <div class="chart-card-full fade-up" id="insightCard" style="animation-delay:.14s;display:none">
-    <div id="insightContent" class="insight-box"></div>
-  </div>
-
-  <div class="chart-row fade-up" style="animation-delay:.15s">
-    <div class="chart-card">
-      <div class="chart-header">
-        <div class="chart-title">
-          <i data-lucide="bar-chart-3"></i>
-          Cost by Agent
-        </div>
-      </div>
-      <div id="costByAgentChart" class="bar-chart">
-        <div class="loading-state">
-          <div class="icon">⏳</div>
-          <p>Loading data...</p>
+        <div class="chart-card-full fade-up" id="insightCard" style="animation-delay:.14s;display:none">
+          <div id="insightContent" class="insight-box"></div>
         </div>
       </div>
     </div>
 
-    <div class="chart-card">
-      <div class="chart-header">
-        <div class="chart-title">
-          <i data-lucide="pie-chart"></i>
-          Token Breakdown
-        </div>
+    <div class="zone3-panel" data-panel="sessions">
+      <div class="zone3-panel-header" onclick="togglePanel('sessions')">
+        <div class="zone3-panel-title"><i data-lucide="list"></i>Sessions</div>
+        <div class="zone3-panel-toggle"><i data-lucide="chevron-down"></i></div>
       </div>
-      <div id="tokenBreakdownChart" class="token-breakdown">
-        <div class="loading-state">
-          <div class="icon">⏳</div>
-          <p>Loading data...</p>
-        </div>
-      </div>
-    </div>
-  </div>
+      <div class="zone3-panel-body" style="display:none">
+        <div class="chart-row fade-up" style="animation-delay:.25s">
+          <div class="chart-card">
+            <div class="chart-header">
+              <div class="chart-title">
+                <i data-lucide="flame"></i>
+                Top Expensive Sessions
+              </div>
+            </div>
+            <div id="topSessionsList" class="session-list">
+              <div class="loading-state">
+                <div class="icon">⏳</div>
+                <p>Loading sessions...</p>
+              </div>
+            </div>
+          </div>
 
-  <div class="chart-card-full fade-up" style="animation-delay:.2s">
-    <div class="chart-header">
-      <div class="chart-title">
-        <i data-lucide="trending-up"></i>
-        Cost Over Time
-      </div>
-      <div style="display:flex;align-items:center;gap:10px">
-        <div class="chart-subtitle" id="costTimeSubtitle">Daily breakdown</div>
-        <div class="view-toggle">
-          <button class="active" onclick="setCostMode('daily', this)">Daily</button>
-          <button onclick="setCostMode('cumulative', this)">Cumulative</button>
+          <div class="chart-card">
+            <div class="chart-header">
+              <div class="chart-title">
+                <i data-lucide="cpu"></i>
+                Cost by Model
+              </div>
+            </div>
+            <div id="costByModelChart" class="cost-model-list">
+              <div class="loading-state">
+                <div class="icon">⏳</div>
+                <p>Loading models...</p>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
-    <div class="line-chart-container">
-      <canvas id="costOverTimeChart" class="line-chart"></canvas>
-      <div class="chart-tooltip hidden" id="costTooltip"></div>
-    </div>
-  </div>
 
-  <div class="chart-row fade-up" style="animation-delay:.25s">
-    <div class="chart-card">
-      <div class="chart-header">
-        <div class="chart-title">
-          <i data-lucide="flame"></i>
-          Top Expensive Sessions
-        </div>
-      </div>
-      <div id="topSessionsList" class="session-list">
-        <div class="loading-state">
-          <div class="icon">⏳</div>
-          <p>Loading sessions...</p>
+        <div class="chart-card-full fade-up" id="topCronSection" style="animation-delay:.38s;display:none">
+          <div class="chart-header">
+            <div class="chart-title">
+              <i data-lucide="clock"></i>
+              Top Cron Jobs
+            </div>
+            <div class="chart-subtitle">Highest-cost scheduled tasks</div>
+          </div>
+          <div id="topCronList" class="session-list"></div>
         </div>
       </div>
     </div>
 
-    <div class="chart-card">
-      <div class="chart-header">
-        <div class="chart-title">
-          <i data-lucide="cpu"></i>
-          Cost by Model
+    <div class="zone3-panel" data-panel="trends">
+      <div class="zone3-panel-header" onclick="togglePanel('trends')">
+        <div class="zone3-panel-title"><i data-lucide="trending-up"></i>Trends</div>
+        <div class="zone3-panel-toggle"><i data-lucide="chevron-down"></i></div>
+      </div>
+      <div class="zone3-panel-body" style="display:none">
+        <div class="chart-row fade-up" style="animation-delay:.15s">
+          <div class="chart-card">
+            <div class="chart-header">
+              <div class="chart-title">
+                <i data-lucide="bar-chart-3"></i>
+                Cost by Agent
+              </div>
+            </div>
+            <div id="costByAgentChart" class="bar-chart">
+              <div class="loading-state">
+                <div class="icon">⏳</div>
+                <p>Loading data...</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="chart-card">
+            <div class="chart-header">
+              <div class="chart-title">
+                <i data-lucide="pie-chart"></i>
+                Token Breakdown
+              </div>
+            </div>
+            <div id="tokenBreakdownChart" class="token-breakdown">
+              <div class="loading-state">
+                <div class="icon">⏳</div>
+                <p>Loading data...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="chart-card-full fade-up" style="animation-delay:.2s">
+          <div class="chart-header">
+            <div class="chart-title">
+              <i data-lucide="trending-up"></i>
+              Cost Over Time
+            </div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <div class="chart-subtitle" id="costTimeSubtitle">Daily breakdown</div>
+              <div class="view-toggle">
+                <button class="active" onclick="setCostMode('daily', this)">Daily</button>
+                <button onclick="setCostMode('cumulative', this)">Cumulative</button>
+              </div>
+            </div>
+          </div>
+          <div class="line-chart-container">
+            <canvas id="costOverTimeChart" class="line-chart"></canvas>
+            <div class="chart-tooltip hidden" id="costTooltip"></div>
+          </div>
+        </div>
+
+        <div class="chart-card-full fade-up" id="agentCostSection" style="animation-delay:.35s;display:none">
+          <div class="chart-header">
+            <div class="chart-title">
+              <i data-lucide="git-compare"></i>
+              Daily Cost by Agent
+            </div>
+            <div class="chart-subtitle">Stacked daily cost breakdown per agent</div>
+          </div>
+          <div class="line-chart-container">
+            <canvas id="agentCostChart" class="line-chart"></canvas>
+            <div class="chart-tooltip hidden" id="agentCostTooltip"></div>
+          </div>
         </div>
       </div>
-      <div id="costByModelChart" class="cost-model-list">
-        <div class="loading-state">
-          <div class="icon">⏳</div>
-          <p>Loading models...</p>
+    </div>
+
+    <div class="zone3-panel" data-panel="projections">
+      <div class="zone3-panel-header" onclick="togglePanel('projections')">
+        <div class="zone3-panel-title"><i data-lucide="calendar"></i>Projections</div>
+        <div class="zone3-panel-toggle"><i data-lucide="chevron-down"></i></div>
+      </div>
+      <div class="zone3-panel-body" style="display:none">
+        <div class="chart-card-full fade-up" style="animation-delay:.3s">
+          <div class="chart-header">
+            <div class="chart-title">
+              <i data-lucide="calculator"></i>
+              Cost Projections
+            </div>
+            <div class="chart-subtitle">Based on current usage patterns</div>
+          </div>
+          <div id="projectionsPanel" class="projection-grid">
+            <div class="loading-state"><div class="icon">⏳</div><p>Loading...</p></div>
+          </div>
         </div>
       </div>
     </div>
-  </div>
-
-  <div class="chart-card-full fade-up" style="animation-delay:.3s">
-    <div class="chart-header">
-      <div class="chart-title">
-        <i data-lucide="calculator"></i>
-        Cost Projections
-      </div>
-      <div class="chart-subtitle">Based on current usage patterns</div>
-    </div>
-    <div id="projectionsPanel" class="projection-grid">
-      <div class="loading-state"><div class="icon">⏳</div><p>Loading...</p></div>
-    </div>
-  </div>
-
-  <div class="chart-card-full fade-up" id="topCronSection" style="animation-delay:.38s;display:none">
-    <div class="chart-header">
-      <div class="chart-title">
-        <i data-lucide="clock"></i>
-        Top Cron Jobs
-      </div>
-      <div class="chart-subtitle">Highest-cost scheduled tasks</div>
-    </div>
-    <div id="topCronList" class="session-list"></div>
-  </div>
-
-  <div class="chart-card-full fade-up" id="agentCostSection" style="animation-delay:.35s;display:none">
-    <div class="chart-header">
-      <div class="chart-title">
-        <i data-lucide="git-compare"></i>
-        Daily Cost by Agent
-      </div>
-      <div class="chart-subtitle">Stacked daily cost breakdown per agent</div>
-    </div>
-    <div class="line-chart-container">
-      <canvas id="agentCostChart" class="line-chart"></canvas>
-      <div class="chart-tooltip hidden" id="agentCostTooltip"></div>
-    </div>
-  </div>
+  </section>
 
 </main>
 
@@ -712,12 +774,71 @@ let zone2AgentFilter = 'all';
 let quotaInterval = null;
 let lastAnalyticsLoad = 0;
 const ANALYTICS_THROTTLE_MS = 10000;
+const PANEL_STORAGE_KEY = 'intelligence-panels';
+
+function isTrendsPanelOpen() {
+  const panel = document.querySelector('.zone3-panel[data-panel="trends"]');
+  return !!panel && panel.classList.contains('open');
+}
+
+function persistPanelState() {
+  try {
+    const states = {};
+    document.querySelectorAll('.zone3-panel').forEach(panel => {
+      const panelId = panel.dataset.panel;
+      states[panelId] = panel.classList.contains('open');
+    });
+    localStorage.setItem(PANEL_STORAGE_KEY, JSON.stringify(states));
+  } catch (_) {
+    // ignore storage access errors
+  }
+}
+
+function togglePanel(panelId) {
+  const panel = document.querySelector(`.zone3-panel[data-panel="${panelId}"]`);
+  if (!panel) return;
+  const body = panel.querySelector('.zone3-panel-body');
+  if (!body) return;
+
+  const shouldOpen = !panel.classList.contains('open');
+  panel.classList.toggle('open', shouldOpen);
+  body.style.display = shouldOpen ? 'block' : 'none';
+  persistPanelState();
+
+  if (shouldOpen && panelId === 'trends') {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        renderCostOverTime();
+        renderAgentCostChart();
+      });
+    });
+  }
+}
+
+function initPanelStates() {
+  let savedStates = {};
+  try {
+    const raw = localStorage.getItem(PANEL_STORAGE_KEY);
+    savedStates = raw ? JSON.parse(raw) : {};
+  } catch (_) {
+    savedStates = {};
+  }
+
+  document.querySelectorAll('.zone3-panel').forEach(panel => {
+    const panelId = panel.dataset.panel;
+    const body = panel.querySelector('.zone3-panel-body');
+    const isOpen = savedStates[panelId] === true;
+    panel.classList.toggle('open', isOpen);
+    if (body) body.style.display = isOpen ? 'block' : 'none';
+  });
+}
 
 // ═══════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════
 
 document.addEventListener('layout:snapshot', () => {
+  initPanelStates();
   populateAgentSelect();
   throttledLoadAnalytics();
 });
@@ -754,6 +875,10 @@ window.addEventListener('resize', () => {
       renderAll();
       renderTokenUsageChart();
       renderApiCostChart();
+      if (isTrendsPanelOpen()) {
+        renderCostOverTime();
+        renderAgentCostChart();
+      }
     }
   }, 200);
 });
