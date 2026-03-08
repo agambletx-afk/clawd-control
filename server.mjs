@@ -54,6 +54,7 @@ const AUTH_DISABLED = String(process.env.AUTH_DISABLED || '').toLowerCase() === 
 const APIS_CONFIG_PATH = join(DIR, 'apis-config.json');
 const HEALTH_RESULTS_PATH = '/tmp/api-health-results.json';
 const CLI_USAGE_PATH = '/tmp/cli-usage.json';
+const COST_SENTINEL_STATUS_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', 'cost-sentinel-status.json');
 const PRIMARY_ENV_PATH = join(DIR, '.env');
 const SECONDARY_ENV_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', '.env');
 const LOCAL_HEALTH_SCRIPT_PATH = join(DIR, 'scripts', 'check-api-health.sh');
@@ -2497,6 +2498,24 @@ const server = createServer((req, res) => {
       console.error('[API] /api/cli-usage error:', e.message);
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Failed to load CLI usage data' }));
+    }
+    return;
+  }
+
+  if (path === '/api/costs/sentinel' && req.method === 'GET') {
+    try {
+      if (!existsSync(COST_SENTINEL_STATUS_PATH)) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'no_data', message: 'Cost sentinel has not run yet' }));
+        return;
+      }
+      const payload = JSON.parse(readFileSync(COST_SENTINEL_STATUS_PATH, 'utf8'));
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(payload));
+    } catch (e) {
+      console.error('[API] /api/costs/sentinel error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'parse_error' }));
     }
     return;
   }

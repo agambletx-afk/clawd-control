@@ -335,6 +335,22 @@
 .loading-state .icon { font-size: 2rem; margin-bottom: 12px; opacity: 0.4; }
 .loading-state p { font-size: 0.85rem; }
 
+/* ── Cost Sentinel ─────────────────────── */
+.sentinel-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.sentinel-overall { display: inline-flex; align-items: center; gap: 6px; font-size: 0.72rem; color: var(--text-secondary); font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+.sentinel-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.sentinel-status-ok { background: #4ade80; }
+.sentinel-status-warn { background: #facc15; }
+.sentinel-status-critical { background: #f87171; }
+.sentinel-status-skip { background: #9ca3af; }
+.sentinel-list { display: flex; flex-direction: column; gap: 8px; }
+.sentinel-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 8px 10px; border: 1px solid var(--border-subtle); border-radius: 8px; background: color-mix(in oklab, var(--bg-secondary) 80%, transparent); }
+.sentinel-label-wrap { min-width: 150px; }
+.sentinel-label { font-size: 0.8rem; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 6px; }
+.sentinel-threshold { font-size: 0.68rem; color: var(--text-tertiary); margin-top: 4px; }
+.sentinel-detail { flex: 1; font-size: 0.74rem; color: var(--text-secondary); line-height: 1.4; text-align: right; }
+.sentinel-footer { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border-subtle); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; color: var(--text-tertiary); font-size: 0.68rem; }
+
 /* ── Empty State ───────────────────────── */
 .empty-state {
   text-align: center; padding: 40px 20px; color: var(--text-secondary);
@@ -404,6 +420,19 @@
         </div>
         <div class="quota-track"><div class="quota-fill" id="quotaRpmFill" style="width:0%;background:#4ade80"></div></div>
       </div>
+    </div>
+  </div>
+
+  <div class="chart-card-full fade-up" style="animation-delay:.09s">
+    <div class="chart-header">
+      <div class="chart-title">
+        <i data-lucide="shield-alert"></i>
+        Cost Sentinel
+      </div>
+      <div class="chart-subtitle">Daily budget guardrails and anomaly checks</div>
+    </div>
+    <div id="costSentinelCard">
+      <div class="loading-state"><div class="icon">⏳</div><p>Loading...</p></div>
     </div>
   </div>
 
@@ -604,6 +633,7 @@ const $ = s => document.querySelector(s);
 const FETCH_OPTS = { credentials: 'same-origin' };
 let analyticsData = null;
 let tokenData = null;
+let sentinelData = null;
 let costMode = 'daily';
 let quotaInterval = null;
 let lastAnalyticsLoad = 0;
@@ -731,12 +761,14 @@ async function loadAnalytics() {
   const agent = $('#agentSelect').value;
 
   try {
-    const [aRes, tRes] = await Promise.all([
+    const [aRes, tRes, sRes] = await Promise.all([
       fetch(`/api/analytics?range=${range}&agent=${agent}`),
-      fetch(`/api/tokens?range=${range}&agent=${agent}`)
+      fetch(`/api/tokens?range=${range}&agent=${agent}`),
+      fetch('/api/costs/sentinel', FETCH_OPTS)
     ]);
     analyticsData = await aRes.json();
     tokenData = await tRes.json();
+    sentinelData = await sRes.json();
     renderAll();
   } catch (e) {
     console.error('Failed to load analytics:', e);
@@ -763,8 +795,78 @@ function renderAll() {
   renderProjections();
   renderAgentCostChart();
   renderTopCrons();
+  renderCostSentinel();
 
   refreshIcons();
+}
+
+function renderCostSentinel() {
+  const container = $('#costSentinelCard');
+  if (!container) return;
+
+  const checks = sentinelData?.checks && typeof sentinelData.checks === 'object' ? sentinelData.checks : null;
+  if (!sentinelData || sentinelData.error === 'no_data' || !checks) {
+    container.innerHTML = `
+      <div class="empty-state" style="padding:22px 20px">
+        <div class="icon">🕒</div>
+        <p>Cost sentinel has not run yet. Runs daily at 06:00 UTC.</p>
+      </div>
+    `;
+    return;
+  }
+
+  const statusPriority = { ok: 0, skip: 1, warn: 2, critical: 3 };
+  const checkOrder = [
+    ['agent_concentration', 'Agent Concentration'],
+    ['daily_budget', 'Daily Budget'],
+    ['cron_error_loop', 'Cron Error Loop'],
+    ['session_volume', 'Session Volume'],
+    ['weekly_trend', 'Weekly Trend']
+  ];
+
+  let overall = 'ok';
+  const rows = checkOrder.map(([key, label]) => {
+    const item = checks[key] || {};
+    const status = ['ok', 'warn', 'critical', 'skip'].includes(item.status) ? item.status : 'skip';
+    if ((statusPriority[status] || 0) > (statusPriority[overall] || 0)) {
+      overall = status;
+    }
+    return {
+      label,
+      status,
+      detail: item.detail || 'No detail provided',
+      threshold: item.threshold || '—'
+    };
+  });
+
+  const formatTs = (value) => value ? new Date(value).toLocaleString() : 'none';
+
+  container.innerHTML = `
+    <div class="sentinel-header">
+      <div class="sentinel-overall">
+        <span class="sentinel-dot sentinel-status-${overall}"></span>
+        Overall: ${overall}
+      </div>
+    </div>
+    <div class="sentinel-list">
+      ${rows.map(row => `
+        <div class="sentinel-row">
+          <div class="sentinel-label-wrap">
+            <div class="sentinel-label">
+              <span class="sentinel-dot sentinel-status-${row.status}"></span>
+              ${escapeHtml(row.label)}
+            </div>
+            <div class="sentinel-threshold">Threshold: ${escapeHtml(String(row.threshold))}</div>
+          </div>
+          <div class="sentinel-detail">${escapeHtml(row.detail)}</div>
+        </div>
+      `).join('')}
+    </div>
+    <div class="sentinel-footer">
+      <span>Last run: ${escapeHtml(formatTs(sentinelData.last_run || sentinelData.lastRun || null))}</span>
+      <span>Last alert: ${escapeHtml(formatTs(sentinelData.last_alert || sentinelData.lastAlert || null))}</span>
+    </div>
+  `;
 }
 
 function renderStats() {
