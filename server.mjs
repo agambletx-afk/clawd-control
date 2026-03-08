@@ -412,6 +412,8 @@ function describeCron(schedule) {
 
   const everyNMinutes = schedule.match(/^\*\/(\d+) \* \* \* \*$/);
   if (everyNMinutes) return `Every ${Number.parseInt(everyNMinutes[1], 10)} minutes`;
+  const everyNHours = schedule.match(/^(\d+) \*\/(\d+) \* \* \*$/);
+  if (everyNHours) return `Every ${Number.parseInt(everyNHours[2], 10)} hours at :${String(Number.parseInt(everyNHours[1], 10)).padStart(2, '0')}`;
   if (schedule === '* * * * *') return 'Every minute';
 
   const parts = schedule.trim().split(/\s+/);
@@ -571,7 +573,8 @@ function parseCronEntries() {
       }
     }
   } catch {}
-  return jobs;
+  const systemPackageFiles = new Set(["e2scrub_all", "sysstat", "crontab"]);
+  return jobs.filter(j => !systemPackageFiles.has((j.name || "").split(":")[0]));
 }
 
 const MIME = {
