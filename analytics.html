@@ -22,6 +22,72 @@
 .page-header p {
   font-size: 0.82rem; color: var(--text-tertiary); margin-top: 4px;
 }
+.settings-gear {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: none; cursor: pointer;
+  color: var(--text-tertiary); padding: 0; margin: 0;
+  vertical-align: middle;
+}
+.settings-gear:hover { color: var(--accent); }
+.settings-gear i { width: 16px; height: 16px; }
+
+.settings-overlay {
+  position: fixed; inset: 0; z-index: 1100;
+  background: rgba(0, 0, 0, 0.55);
+}
+.settings-panel {
+  position: absolute; top: 0; right: 0;
+  width: min(420px, 94vw); height: 100vh;
+  background: var(--surface); border-left: 1px solid var(--border-subtle);
+  display: flex; flex-direction: column;
+  animation: settingsSlideIn 0.2s ease-out;
+}
+.settings-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px; border-bottom: 1px solid var(--border-subtle);
+}
+.settings-header h2 { font-size: 1rem; font-weight: 700; }
+.settings-close {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: none; cursor: pointer;
+  color: var(--text-tertiary);
+}
+.settings-close:hover { color: var(--accent); }
+.settings-body { padding: 16px; overflow-y: auto; }
+.settings-section { margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid var(--border-subtle); }
+.settings-section-title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: .05em; color: var(--text-tertiary); font-weight: 700; margin-bottom: 10px; }
+.settings-field { margin-bottom: 10px; }
+.settings-label { display: block; margin-bottom: 5px; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-tertiary); font-weight: 600; }
+.settings-input {
+  width: 100%; padding: 6px 10px; border-radius: var(--radius-sm);
+  background: var(--bg-primary); border: 1px solid var(--border-subtle);
+  color: var(--text-primary); font-family: var(--font-sans); font-size: 0.8rem;
+}
+.settings-input:focus { border-color: var(--accent); outline: none; }
+.settings-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+.settings-table th, .settings-table td { padding: 6px 4px; border-bottom: 1px solid var(--border-subtle); vertical-align: middle; }
+.settings-table th { font-size: 0.65rem; text-transform: uppercase; letter-spacing: .05em; color: var(--text-tertiary); text-align: left; }
+.settings-table td { font-size: 0.75rem; color: var(--text-primary); }
+.settings-save-btn, .settings-add-btn {
+  border: 1px solid var(--accent); background: var(--accent);
+  color: var(--bg-primary); border-radius: var(--radius-sm); padding: 6px 10px;
+  font-size: 0.72rem; font-weight: 700; cursor: pointer;
+}
+.settings-add-btn {
+  background: transparent; color: var(--accent);
+}
+.settings-error { color: #f87171; font-size: 0.68rem; margin-top: 4px; display: none; }
+.settings-row-delete {
+  border: 1px solid var(--border-subtle); background: var(--bg-primary);
+  color: var(--text-tertiary); border-radius: var(--radius-sm); padding: 4px 8px;
+  font-size: 0.68rem; cursor: pointer;
+}
+.settings-row-delete:hover { color: #f87171; border-color: #f87171; }
+
+@keyframes settingsSlideIn {
+  from { transform: translateX(24px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
 
 /* ── Stats Grid ────────────────────────── */
 .stats-grid {
@@ -508,7 +574,7 @@
 
 <main class="main">
   <div class="page-header fade-up">
-    <h1>🧠 Intelligence</h1>
+    <h1>🧠 Intelligence <button class="settings-gear" onclick="toggleSettingsPanel()" title="Intelligence Settings"><i data-lucide="settings"></i></button></h1>
     <p>Token, rate limit, capacity, and cost intelligence across all agents</p>
   </div>
 
@@ -840,6 +906,21 @@
     </div>
   </section>
 
+  <div class="settings-overlay" id="settingsOverlay" style="display:none" onclick="if(event.target===this)toggleSettingsPanel()">
+    <div class="settings-panel">
+      <div class="settings-header">
+        <h2>Intelligence Settings</h2>
+        <button class="settings-close" onclick="toggleSettingsPanel()"><i data-lucide="x"></i></button>
+      </div>
+      <div class="settings-body">
+        <div class="settings-section" id="settingsPricing"></div>
+        <div class="settings-section" id="settingsBudget"></div>
+        <div class="settings-section" id="settingsSentinel"></div>
+        <div class="settings-section" id="settingsRateLimits"></div>
+      </div>
+    </div>
+  </div>
+
 </main>
 
 <script src="/layout.js"></script>
@@ -860,6 +941,416 @@ let quotaInterval = null;
 let lastAnalyticsLoad = 0;
 const ANALYTICS_THROTTLE_MS = 10000;
 const PANEL_STORAGE_KEY = 'intelligence-panels';
+
+const BUILTIN_PRICING_MODELS = new Set([
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
+  'claude-opus-4-5',
+  'claude-sonnet-4-5',
+  'claude-haiku-4-5',
+  'gpt-4o',
+  'gpt-4o-mini'
+]);
+const BUILTIN_PRICING_RATES = {
+  'gemini-2.5-flash': { input: 0.15, output: 0.60, cacheRead: 0.0375, cacheWrite: 0.15 },
+  'gemini-2.0-flash': { input: 0.10, output: 0.40, cacheRead: 0.025, cacheWrite: 0.10 },
+  'claude-opus-4-5': { input: 15.00, output: 75.00, cacheRead: 1.50, cacheWrite: 15.00 },
+  'claude-sonnet-4-5': { input: 3.00, output: 15.00, cacheRead: 0.30, cacheWrite: 3.00 },
+  'claude-haiku-4-5': { input: 0.80, output: 4.00, cacheRead: 0.08, cacheWrite: 0.80 },
+  'gpt-4o': { input: 2.50, output: 10.00, cacheRead: 1.25, cacheWrite: 2.50 },
+  'gpt-4o-mini': { input: 0.15, output: 0.60, cacheRead: 0.075, cacheWrite: 0.15 }
+};
+
+let settingsState = {
+  pricing: {},
+  budget: {},
+  sentinel: {},
+  rateLimits: []
+};
+
+function toggleSettingsPanel() {
+  const overlay = $('#settingsOverlay');
+  if (!overlay) return;
+  const isOpen = overlay.style.display !== 'none';
+  if (isOpen) {
+    overlay.style.display = 'none';
+    return;
+  }
+  overlay.style.display = 'block';
+  loadSettingsData();
+}
+
+async function loadSettingsData() {
+  const pricingSection = $('#settingsPricing');
+  const budgetSection = $('#settingsBudget');
+  const sentinelSection = $('#settingsSentinel');
+  const rateLimitsSection = $('#settingsRateLimits');
+  const loadingHtml = '<div class="loading-state"><div class="icon">⏳</div><p>Loading settings...</p></div>';
+  pricingSection.innerHTML = loadingHtml;
+  budgetSection.innerHTML = loadingHtml;
+  sentinelSection.innerHTML = loadingHtml;
+  rateLimitsSection.innerHTML = loadingHtml;
+
+  try {
+    const [pricingRes, budgetRes, sentinelRes, rateLimitsRes] = await Promise.all([
+      fetch('/api/config/pricing', FETCH_OPTS),
+      fetch('/api/config/budget', FETCH_OPTS),
+      fetch('/api/config/sentinel', FETCH_OPTS),
+      fetch('/api/config/rate-limits', FETCH_OPTS)
+    ]);
+
+    settingsState.pricing = pricingRes.ok ? await pricingRes.json() : {};
+    settingsState.budget = budgetRes.ok ? await budgetRes.json() : {};
+    settingsState.sentinel = sentinelRes.ok ? await sentinelRes.json() : {};
+    settingsState.rateLimits = rateLimitsRes.ok ? await rateLimitsRes.json() : [];
+
+    renderPricingSettings();
+    renderBudgetSettings();
+    renderSentinelSettings();
+    renderRateLimitsSettings();
+    refreshIcons();
+  } catch (e) {
+    console.error('Failed loading settings:', e);
+    if (typeof showToast === 'function') showToast('Failed to load settings', 'error');
+  }
+}
+
+function settingError(id, msg = '') {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = msg;
+  el.style.display = msg ? 'block' : 'none';
+}
+
+function clearSettingErrors(sectionId) {
+  document.querySelectorAll(`#${sectionId} .settings-error`).forEach(el => {
+    el.textContent = '';
+    el.style.display = 'none';
+  });
+}
+
+document.addEventListener('input', (e) => {
+  if (e.target.classList.contains('settings-input')) {
+    const errId = e.target.dataset.error;
+    if (errId) settingError(errId, '');
+  }
+});
+
+function renderPricingSettings() {
+  const root = $('#settingsPricing');
+  if (!root) return;
+  const customEntries = settingsState.pricing || {};
+  const knownModels = new Set(Object.keys(analyticsData?.byModel || {}));
+  const customModels = new Set(Object.keys(customEntries || {}));
+  const rows = [];
+
+  for (const model of knownModels) {
+    if (!BUILTIN_PRICING_MODELS.has(model) && !customModels.has(model)) {
+      rows.push({ model, source: 'no-pricing', rates: {} });
+    }
+  }
+  for (const model of BUILTIN_PRICING_MODELS) rows.push({ model, source: 'built-in', rates: BUILTIN_PRICING_RATES[model] || {} });
+  for (const [model, rates] of Object.entries(customEntries || {})) {
+    rows.push({ model, source: 'custom', rates: rates || {} });
+  }
+
+  root.innerHTML = `
+    <div class="settings-section-title">Model Pricing</div>
+    <table class="settings-table">
+      <thead>
+        <tr><th>Model</th><th>Input</th><th>Output</th><th>Cache Read</th><th>Cache Write</th><th>Source</th><th></th></tr>
+      </thead>
+      <tbody id="pricingRows">
+        ${rows.map((row, idx) => pricingRowHtml(row, idx)).join('')}
+      </tbody>
+    </table>
+    <div class="settings-error" id="pricingError"></div>
+    <button class="settings-add-btn" onclick="addPricingRow()">Add Model</button>
+    <button class="settings-save-btn" onclick="savePricingSettings()">Save Pricing</button>
+  `;
+}
+
+function pricingRowHtml(row, idx) {
+  const isCustom = row.source !== 'built-in';
+  const readOnly = isCustom ? '' : 'readonly';
+  const disabledDelete = isCustom ? '' : 'disabled';
+  const modelValue = row.model || '';
+  const inVal = row.rates.input ?? '';
+  const outVal = row.rates.output ?? '';
+  const crVal = row.rates.cacheRead ?? '';
+  const cwVal = row.rates.cacheWrite ?? '';
+  const badgeClass = row.source === 'no-pricing' ? 'no-pricing-badge' : 'source-badge';
+  return `
+    <tr class="pricing-row" data-source="${row.source}" data-index="${idx}">
+      <td><input class="settings-input" data-key="model" value="${escapeHtml(modelValue)}" ${row.source === 'built-in' ? 'readonly' : ''}></td>
+      <td><input class="settings-input" data-key="input" type="number" min="0" step="0.000001" value="${inVal}" ${readOnly}></td>
+      <td><input class="settings-input" data-key="output" type="number" min="0" step="0.000001" value="${outVal}" ${readOnly}></td>
+      <td><input class="settings-input" data-key="cacheRead" type="number" min="0" step="0.000001" value="${crVal}" ${readOnly}></td>
+      <td><input class="settings-input" data-key="cacheWrite" type="number" min="0" step="0.000001" value="${cwVal}" ${readOnly}></td>
+      <td><span class="${badgeClass}">${row.source}</span></td>
+      <td>${isCustom ? `<button class="settings-row-delete" onclick="removePricingRow(this)">Delete</button>` : `<button class="settings-row-delete" ${disabledDelete}>Delete</button>`}</td>
+    </tr>
+  `;
+}
+
+function addPricingRow() {
+  const tbody = $('#pricingRows');
+  if (!tbody) return;
+  const idx = tbody.querySelectorAll('tr').length;
+  tbody.insertAdjacentHTML('beforeend', pricingRowHtml({ model: '', source: 'custom', rates: {} }, idx));
+}
+
+function removePricingRow(btn) {
+  const row = btn?.closest('tr');
+  if (row) row.remove();
+}
+
+async function savePricingSettings() {
+  settingError('pricingError', '');
+  const rows = [...document.querySelectorAll('#pricingRows tr')];
+  const payload = {};
+
+  for (const row of rows) {
+    const source = row.dataset.source;
+    if (source === 'built-in') continue;
+    const model = row.querySelector('[data-key="model"]').value.trim();
+    if (!model) {
+      settingError('pricingError', 'Model name is required for custom pricing rows.');
+      return;
+    }
+    const rates = {};
+    for (const key of ['input', 'output', 'cacheRead', 'cacheWrite']) {
+      const raw = row.querySelector(`[data-key="${key}"]`).value.trim();
+      if (!raw) {
+        settingError('pricingError', 'All pricing fields must be provided for custom rows.');
+        return;
+      }
+      const num = Number(raw);
+      if (!Number.isFinite(num) || num <= 0) {
+        settingError('pricingError', 'Pricing values must be positive numbers.');
+        return;
+      }
+      rates[key] = num;
+    }
+    payload[model] = rates;
+  }
+
+  try {
+    const res = await fetch('/api/config/pricing', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error('pricing_save_failed');
+    if (typeof showToast === 'function') showToast('Pricing settings saved', 'success');
+    await loadAnalytics();
+    await loadSettingsData();
+  } catch (e) {
+    console.error(e);
+    if (typeof showToast === 'function') showToast('Failed to save pricing settings', 'error');
+  }
+}
+
+function renderBudgetSettings() {
+  const root = $('#settingsBudget');
+  if (!root) return;
+  root.innerHTML = `
+    <div class="settings-section-title">Budget Thresholds</div>
+    <div class="settings-field">
+      <label class="settings-label">Daily Budget ($)</label>
+      <input class="settings-input" id="budgetDailyInput" data-error="budgetError" type="number" min="0" step="0.01" value="${settingsState.budget?.daily ?? ''}">
+    </div>
+    <div class="settings-field">
+      <label class="settings-label">Weekly Budget ($)</label>
+      <input class="settings-input" id="budgetWeeklyInput" data-error="budgetError" type="number" min="0" step="0.01" value="${settingsState.budget?.weekly ?? ''}">
+    </div>
+    <div class="settings-error" id="budgetError"></div>
+    <button class="settings-save-btn" onclick="saveBudgetSettings()">Save Budget</button>
+  `;
+}
+
+async function saveBudgetSettings() {
+  settingError('budgetError', '');
+  const dailyRaw = $('#budgetDailyInput')?.value.trim() || '';
+  const weeklyRaw = $('#budgetWeeklyInput')?.value.trim() || '';
+  const payload = {};
+
+  if (dailyRaw) {
+    const daily = Number(dailyRaw);
+    if (!Number.isFinite(daily) || daily < 0) return settingError('budgetError', 'Daily budget must be a non-negative number.');
+    payload.daily = daily;
+  }
+  if (weeklyRaw) {
+    const weekly = Number(weeklyRaw);
+    if (!Number.isFinite(weekly) || weekly < 0) return settingError('budgetError', 'Weekly budget must be a non-negative number.');
+    payload.weekly = weekly;
+  }
+
+  try {
+    const res = await fetch('/api/config/budget', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error('budget_save_failed');
+    if (typeof showToast === 'function') showToast('Budget settings saved', 'success');
+  } catch (e) {
+    console.error(e);
+    if (typeof showToast === 'function') showToast('Failed to save budget settings', 'error');
+  }
+}
+
+function renderSentinelSettings() {
+  const root = $('#settingsSentinel');
+  if (!root) return;
+  const s = settingsState.sentinel || {};
+  const fields = [
+    ['agentConcentrationWarn', 'Agent Concentration Warn (%)'],
+    ['agentConcentrationCritical', 'Agent Concentration Critical (%)'],
+    ['dailyBudgetWarn', 'Daily Budget Warn ($)'],
+    ['dailyBudgetCritical', 'Daily Budget Critical ($)'],
+    ['sessionVolumeWarn', 'Session Volume Warn'],
+    ['sessionVolumeCritical', 'Session Volume Critical'],
+    ['weeklyTrendMultiplier', 'Weekly Trend Multiplier (x)'],
+    ['alertCooldownHours', 'Alert Cooldown (hours)']
+  ];
+
+  root.innerHTML = `
+    <div class="settings-section-title">Sentinel Thresholds</div>
+    ${fields.map(([key, label]) => `
+      <div class="settings-field">
+        <label class="settings-label">${label}</label>
+        <input class="settings-input" type="number" min="0" step="0.01" data-sentinel-key="${key}" data-error="sentinelError" value="${s[key] ?? ''}">
+      </div>
+    `).join('')}
+    <div class="settings-error" id="sentinelError"></div>
+    <button class="settings-save-btn" onclick="saveSentinelSettings()">Save Sentinel</button>
+  `;
+}
+
+async function saveSentinelSettings() {
+  settingError('sentinelError', '');
+  const payload = {};
+  const inputs = [...document.querySelectorAll('[data-sentinel-key]')];
+  for (const input of inputs) {
+    const key = input.dataset.sentinelKey;
+    const raw = input.value.trim();
+    if (!raw) continue;
+    const num = Number(raw);
+    if (!Number.isFinite(num) || num < 0) {
+      settingError('sentinelError', 'Sentinel values must be non-negative numbers.');
+      return;
+    }
+    if (key === 'weeklyTrendMultiplier' && num <= 0) {
+      settingError('sentinelError', 'Weekly trend multiplier must be greater than 0.');
+      return;
+    }
+    payload[key] = num;
+  }
+
+  try {
+    const res = await fetch('/api/config/sentinel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error('sentinel_save_failed');
+    if (typeof showToast === 'function') showToast('Sentinel settings saved', 'success');
+  } catch (e) {
+    console.error(e);
+    if (typeof showToast === 'function') showToast('Failed to save sentinel settings', 'error');
+  }
+}
+
+function renderRateLimitsSettings() {
+  const root = $('#settingsRateLimits');
+  if (!root) return;
+  const rows = Array.isArray(settingsState.rateLimits) ? settingsState.rateLimits : [];
+  root.innerHTML = `
+    <div class="settings-section-title">Rate Limits</div>
+    <table class="settings-table">
+      <thead>
+        <tr><th>Provider</th><th>Model</th><th>Type</th><th>Label</th><th>Limit</th><th>Source</th><th></th></tr>
+      </thead>
+      <tbody id="rateLimitRows">
+        ${rows.map((row, idx) => rateLimitRowHtml(row, idx)).join('')}
+      </tbody>
+    </table>
+    <div class="settings-error" id="rateLimitError"></div>
+    <button class="settings-add-btn" onclick="addRateLimitRow()">Add Rate Limit</button>
+    <button class="settings-save-btn" onclick="saveRateLimitsSettings()">Save Rate Limits</button>
+  `;
+}
+
+function rateLimitRowHtml(row = {}, idx = 0) {
+  return `
+    <tr data-index="${idx}">
+      <td><input class="settings-input" data-key="provider" value="${escapeHtml(String(row.provider || ''))}"></td>
+      <td><input class="settings-input" data-key="model" value="${escapeHtml(String(row.model || ''))}"></td>
+      <td><input class="settings-input" data-key="limitType" value="${escapeHtml(String(row.limitType || ''))}"></td>
+      <td><input class="settings-input" data-key="label" value="${escapeHtml(String(row.label || ''))}"></td>
+      <td><input class="settings-input" data-key="limit" type="number" min="0" step="1" value="${Number.isFinite(Number(row.limit)) ? Number(row.limit) : ''}"></td>
+      <td><input class="settings-input" data-key="source" value="${escapeHtml(String(row.source || 'manual'))}"></td>
+      <td><button class="settings-row-delete" onclick="removeRateLimitRow(this)">Delete</button></td>
+    </tr>
+  `;
+}
+
+function addRateLimitRow() {
+  const tbody = $('#rateLimitRows');
+  if (!tbody) return;
+  tbody.insertAdjacentHTML('beforeend', rateLimitRowHtml({}, tbody.querySelectorAll('tr').length));
+}
+
+function removeRateLimitRow(btn) {
+  const row = btn?.closest('tr');
+  if (row) row.remove();
+}
+
+async function saveRateLimitsSettings() {
+  settingError('rateLimitError', '');
+  const rows = [...document.querySelectorAll('#rateLimitRows tr')];
+  const payload = [];
+
+  for (const row of rows) {
+    const provider = row.querySelector('[data-key="provider"]').value.trim();
+    const model = row.querySelector('[data-key="model"]').value.trim();
+    const limitType = row.querySelector('[data-key="limitType"]').value.trim();
+    const label = row.querySelector('[data-key="label"]').value.trim();
+    const source = row.querySelector('[data-key="source"]').value.trim();
+    const limitRaw = row.querySelector('[data-key="limit"]').value.trim();
+
+    if (!provider || !model || !limitType || !label || !limitRaw) {
+      settingError('rateLimitError', 'Provider, model, limit type, label, and limit are required.');
+      return;
+    }
+
+    const limit = Number(limitRaw);
+    if (!Number.isFinite(limit) || limit <= 0) {
+      settingError('rateLimitError', 'Rate limit value must be a positive number.');
+      return;
+    }
+
+    payload.push({ provider, model, limitType, label, limit, source: source || 'manual' });
+  }
+
+  try {
+    const res = await fetch('/api/config/rate-limits', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error('rate_limits_save_failed');
+    if (typeof showToast === 'function') showToast('Rate limit settings saved', 'success');
+  } catch (e) {
+    console.error(e);
+    if (typeof showToast === 'function') showToast('Failed to save rate limit settings', 'error');
+  }
+}
 
 function isTrendsPanelOpen() {
   const panel = document.querySelector('.zone3-panel[data-panel="trends"]');
