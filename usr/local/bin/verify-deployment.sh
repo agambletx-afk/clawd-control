@@ -461,8 +461,6 @@ check_ws_ownership() {
 }
 
 # Memory checks
-VERIFY_TEST_ID="__verify_test_$(date +%s)_$$"
-STORE_OK=0
 check_mem_facts_db_exists() {
   if [ -s "$FACTS_DB" ]; then CHECK_MSG="facts.db exists and is non-empty"; return 0; fi
   CHECK_MSG="facts.db missing or empty"
@@ -482,6 +480,13 @@ check_mem_fts5_intact() {
   CHECK_MSG="fts5 query failed: $out"
   return 1
 }
+check_mem_fts5_readable() {
+  local out
+  out=$(sqlite3 "$FACTS_DB" "SELECT rowid FROM facts_fts LIMIT 1;" 2>&1)
+  if [ $? -eq 0 ]; then CHECK_MSG="facts_fts readable"; return 0; fi
+  CHECK_MSG="facts_fts read failed: $out"
+  return 1
+}
 check_mem_facts_count() {
   local count
   count=$(sqlite3 "$FACTS_DB" "SELECT COUNT(*) FROM facts;" 2>/dev/null)
@@ -490,27 +495,25 @@ check_mem_facts_count() {
   CHECK_MSG="facts table rows: $count"
   return 0
 }
-check_mem_crud_store() {
-  sqlite3 "$FACTS_DB" "INSERT INTO facts (entity,key,value,category,source,decay_class,confidence) VALUES ('__verify_test','$VERIFY_TEST_ID','true','ops','verify-script','session',1.0);" >/dev/null 2>&1
-  if [ $? -eq 0 ]; then STORE_OK=1; CHECK_MSG="crud store insert succeeded"; return 0; fi
-  STORE_OK=0
-  CHECK_MSG="crud store insert failed"
-  return 1
+check_mem_facts_db_size() {
+  local size_bytes max_bytes
+  size_bytes=$(stat -c '%s' "$FACTS_DB" 2>/dev/null)
+  if [ -z "$size_bytes" ]; then CHECK_MSG="unable to read facts.db size"; return 1; fi
+  max_bytes=$((1024 * 1024 * 1024))
+  if [ "$size_bytes" -gt "$max_bytes" ] 2>/dev/null; then
+    CHECK_MSG="facts.db size high (${size_bytes} bytes > ${max_bytes} bytes)"
+    return 2
+  fi
+  CHECK_MSG="facts.db size within bound (${size_bytes} bytes)"
+  return 0
 }
-check_mem_crud_recall() {
-  if [ "$STORE_OK" -ne 1 ]; then CHECK_MSG="skipped because store failed"; return 3; fi
-  local val
-  val=$(sqlite3 "$FACTS_DB" "SELECT value FROM facts WHERE entity='__verify_test' AND key='$VERIFY_TEST_ID' LIMIT 1;" 2>/dev/null)
-  if [ "$val" = "true" ]; then CHECK_MSG="crud recall matched stored value"; return 0; fi
-  CHECK_MSG="crud recall value mismatch (got: ${val:-empty})"
-  return 1
-}
-check_mem_crud_cleanup() {
-  sqlite3 "$FACTS_DB" "DELETE FROM facts WHERE entity='__verify_test';" >/dev/null 2>&1
-  local left
-  left=$(sqlite3 "$FACTS_DB" "SELECT COUNT(*) FROM facts WHERE entity='__verify_test';" 2>/dev/null)
-  if [ "$left" = "0" ]; then CHECK_MSG="crud cleanup removed all verify rows"; return 0; fi
-  CHECK_MSG="crud cleanup left $left verify rows"
+
+check_mem_read_only_guard() {
+  if [ -r "$FACTS_DB" ]; then
+    CHECK_MSG="read-only verification path enabled (no writes performed)"
+    return 0
+  fi
+  CHECK_MSG="facts.db is not readable"
   return 1
 }
 
@@ -589,10 +592,10 @@ if [ "$SELECTED_MEMORY" -eq 1 ]; then
   run_check memory mem_facts_db_exists "facts.db exists" check_mem_facts_db_exists
   run_check memory mem_facts_db_owner "facts.db ownership" check_mem_facts_db_owner
   run_check memory mem_fts5_intact "FTS5 index intact" check_mem_fts5_intact
+  run_check memory mem_fts5_readable "FTS5 table readable" check_mem_fts5_readable
   run_check memory mem_facts_count "facts table count" check_mem_facts_count
-  run_check memory mem_crud_store "Memory CRUD store" check_mem_crud_store
-  run_check memory mem_crud_recall "Memory CRUD recall" check_mem_crud_recall
-  run_check memory mem_crud_cleanup "Memory CRUD cleanup" check_mem_crud_cleanup
+  run_check memory mem_facts_db_size "facts.db size bound" check_mem_facts_db_size
+  run_check memory mem_read_only_guard "Memory verification is read-only" check_mem_read_only_guard
 fi
 
 if [ "$SELECTED_SERVICES" -eq 1 ]; then

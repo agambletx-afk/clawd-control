@@ -1,0 +1,6 @@
+# Consolidated OpenClaw watchdog schedule (single restart authority)
+*/2 * * * * root /usr/local/bin/openclaw-watchdog.sh
+
+# Report-only monitors
+*/5 * * * * root /usr/local/bin/openclaw-healthcheck.sh
+*/5 * * * * root /usr/local/bin/openclaw-api-liveness.sh
