@@ -863,8 +863,8 @@ function renderCostSentinel() {
       `).join('')}
     </div>
     <div class="sentinel-footer">
-      <span>Last run: ${escapeHtml(formatTs(sentinelData.last_run || sentinelData.lastRun || null))}</span>
-      <span>Last alert: ${escapeHtml(formatTs(sentinelData.last_alert || sentinelData.lastAlert || null))}</span>
+      <span>Last run: ${escapeHtml(formatTs(sentinelData.timestamp || null))}</span>
+      <span>Last alert: ${escapeHtml(formatTs(sentinelData.alerts_sent ? sentinelData.timestamp : null))}</span>
     </div>
   `;
 }
