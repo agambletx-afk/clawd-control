@@ -1,12 +1,11 @@
 // ===========================================================================
 // graph-memory-ttl-refresh.js
 // ===========================================================================
-// Snippet to add to the graph-memory plugin's activation bump section.
-// This updates last_confirmed_at and recalculates expires_at when facts
-// are retrieved during context injection.
+// Legacy reference snippet for the TTL refresh logic.
 //
-// WHERE TO ADD: Inside the graph-memory plugin's activation bump logic,
-// after the existing Hebbian score bump, before returning results.
+// NOTE: The active graph-memory entrypoint already includes this behavior in
+// extensions/graph-memory/index.js via refreshAccessedFacts(). This file is
+// intentionally kept in scripts/ as a utility/reference script.
 //
 // DEPENDS ON: better-sqlite3 (already installed in the plugin)
 // ===========================================================================
@@ -68,7 +67,7 @@ function refreshAccessedFacts(db, factIds) {
 }
 
 // ===========================================================================
-// INTEGRATION POINT
+// HISTORICAL INTEGRATION POINT
 // ===========================================================================
 // In the graph-memory plugin's main file (index.js or similar), find the
 // section that bumps activation scores after retrieving facts. It looks
