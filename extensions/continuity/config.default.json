@@ -1,0 +1,103 @@
+{
+  "contextBudget": {
+    "contextBudgetRatio": 0.65,
+    "recentTurnsAlwaysFull": 5,
+    "recentTurnCharLimit": 3000,
+    "midTurnCharLimit": 1500,
+    "olderTurnCharLimit": 500,
+    "poolRatios": {
+      "essential": 0.30,
+      "high": 0.25,
+      "medium": 0.25,
+      "low": 0.15,
+      "minimal": 0.05
+    }
+  },
+
+  "anchors": {
+    "enabled": true,
+    "maxAge": 7200000,
+    "maxCount": 15,
+    "keywords": {
+      "identity": ["who am i", "what am i", "my name", "i am", "identity", "who are you", "what are you"],
+      "contradiction": ["but", "however", "contradict", "conflict", "tension", "inconsistent", "doesn't match"],
+      "tension": ["problem", "issue", "challenge", "struggle", "confused", "stuck", "frustrated", "unclear"]
+    }
+  },
+
+  "topicTracking": {
+    "enabled": true,
+    "windowSize": 6,
+    "fixationThreshold": 5,
+    "decayFactor": 0.5,
+    "customPatterns": [],
+    "stopWords": [
+      "the", "and", "that", "this", "with", "from", "have", "been",
+      "will", "would", "could", "should", "about", "their", "there",
+      "which", "what", "when", "where", "just", "also", "into",
+      "some", "than", "then", "them", "these", "those", "being",
+      "does", "doing", "each", "here", "more", "most", "much",
+      "only", "other", "over", "same", "such", "very", "your"
+    ],
+    "minWordLength": 6,
+    "pruneAge": 86400000
+  },
+
+  "compaction": {
+    "threshold": 0.80,
+    "fallbackMessages": 20,
+    "taskAwareCompaction": true
+  },
+
+  "tokenEstimation": {
+    "tokensPerWord": 1.3,
+    "specialCharTokenWeight": 0.5,
+    "defaultMaxTokens": 8192
+  },
+
+  "archive": {
+    "archiveDir": "archive",
+    "retentionDays": 36500,
+    "batchIndexDelay": 100
+  },
+
+  "embedding": {
+    "model": "Xenova/all-MiniLM-L6-v2",
+    "dimensions": 384,
+    "dbFile": "continuity.db"
+  },
+
+  "search": {
+    "recencyHalfLifeDays": 14,
+    "recencyWeight": 0.15,
+    "rrfK": 60,
+    "formationalBoost": 0.08,
+    "formationalWeight": 0.85,
+    "arcWeight": 0.5
+  },
+
+  "session": {
+    "interruptedGap": 7200000,
+    "newSessionGap": 21600000
+  },
+
+  "continuityIndicators": [
+    "remember", "recall", "recollect", "recollection",
+    "forgot", "forget",
+    "don't remember", "can't remember", "do you recall",
+    "you said", "you told", "i told you", "told me",
+    "we were talking", "we talked", "we discussed",
+    "earlier", "before", "last time", "previously",
+    "mentioned", "brought up", "came up",
+    "lost thread", "what did we", "what was that",
+    "back to", "going back", "picking up",
+    "do you know", "have you heard", "are you familiar",
+    "do you recognize", "does that ring"
+  ],
+
+  "continuitySection": {
+    "enabled": true,
+    "maxAnchorsShown": 5,
+    "maxTopicsShown": 5
+  }
+}
