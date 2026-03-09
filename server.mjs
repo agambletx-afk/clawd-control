@@ -5152,7 +5152,7 @@ const server = createServer((req, res) => {
       const { lines, total } = tailJsonLines(CORTEX_LOG_PATH, limit * 3);
       const decisions = lines.filter(l => !l.event && (l.modelSelected || l.selectedModel || l.model));
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ decisions: decisions.slice(-limit), total }));
+      res.end(JSON.stringify({ decisions: decisions.slice(-limit).reverse(), total }));
     } catch (e) {
       console.error('[API] /api/cortex/decisions error:', e.message);
       res.writeHead(500, { 'Content-Type': 'application/json' });
