@@ -5114,6 +5114,11 @@ const server = createServer((req, res) => {
 
   if (path === '/api/cortex/status' && req.method === 'GET') {
     try {
+      let quotaState = null;
+      try {
+        const qPath = join(CORTEX_DIR, 'quota-state.json');
+        if (existsSync(qPath)) quotaState = JSON.parse(readFileSync(qPath, 'utf8'));
+      } catch { /* ignore */ }
       const config = readCortexConfig();
       if (!config) {
         res.writeHead(404, { 'Content-Type': 'application/json' });
@@ -5129,6 +5134,7 @@ const server = createServer((req, res) => {
         quotaThresholds: config.quotaThresholds && typeof config.quotaThresholds === 'object' ? config.quotaThresholds : {},
         alerts: config.alerts && typeof config.alerts === 'object' ? config.alerts : {},
       };
+      if (quotaState) payload.providerQuota = quotaState;
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(payload));
     } catch (e) {
