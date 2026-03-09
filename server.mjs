@@ -5149,9 +5149,10 @@ const server = createServer((req, res) => {
     try {
       const requestedLimit = parseInt(url.searchParams.get('limit') || '20', 10);
       const limit = Math.max(1, Math.min(Number.isFinite(requestedLimit) ? requestedLimit : 20, 200));
-      const { lines, total } = tailJsonLines(CORTEX_LOG_PATH, limit);
+      const { lines, total } = tailJsonLines(CORTEX_LOG_PATH, limit * 3);
+      const decisions = lines.filter(l => !l.event && (l.modelSelected || l.selectedModel || l.model));
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ decisions: lines, total }));
+      res.end(JSON.stringify({ decisions: decisions.slice(-limit), total }));
     } catch (e) {
       console.error('[API] /api/cortex/decisions error:', e.message);
       res.writeHead(500, { 'Content-Type': 'application/json' });
