@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Cortex — Clawd Control</title>
+<style>
+:root { --bg-base:#0f1419; --bg-surface:#161b26; --bg-elevated:#1e2535; --bg-input:#0d1117; --border-subtle:#1e2535; --text-primary:#f1f5f9; --text-secondary:#94a3b8; --text-tertiary:#475569; --accent-green:#22c55e; --accent-amber:#f59e0b; --accent-red:#ef4444; --accent-violet:#7c3aed; }
+*{box-sizing:border-box} body{margin:0;background:var(--bg-base);color:var(--text-primary);font-family:Inter,system-ui,sans-serif}
+main{padding:20px;max-width:1500px;margin:0 auto}
+.page-title{font-size:2rem;font-weight:800;color:var(--accent-violet);text-shadow:0 0 8px rgba(124,58,237,0.6)}
+.subtitle{color:var(--text-secondary);margin:6px 0 18px}
+.mono,.stat-value,.pill,.quota-val,.decision-time,.model-last,.dim-bar-val{font-family:'JetBrains Mono','Fira Code','Consolas',monospace}
+.grid5{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+.card{background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:10px;padding:12px}
+.card:hover{background:var(--bg-elevated);transition:150ms}
+.stat-label{font-size:.72rem;color:var(--text-tertiary);text-transform:uppercase}.stat-value{font-size:1.35rem;font-weight:800}.stat-sub,.panel-sub{font-size:.8rem;color:var(--text-secondary)}
+.zone2{margin-top:12px;display:grid;grid-template-columns:3fr 2fr;gap:12px}.panel-title{font-size:1rem;font-weight:800;display:flex;align-items:center;gap:8px}
+.ladder-head,.model-row{display:grid;grid-template-columns:70px 1fr 80px 120px 130px;gap:8px;align-items:center}.ladder-head{padding:8px;border-bottom:1px solid var(--border-subtle);color:var(--text-tertiary);font-size:.72rem}
+.provider-head{padding:8px 10px;background:var(--bg-elevated);display:flex;gap:8px;align-items:center;font-weight:700}.provider-dot{width:8px;height:8px;border-radius:9999px}
+.model-row{padding:6px 8px;border-top:1px solid var(--border-subtle);font-size:.78rem}.model-row.disabled{color:var(--text-tertiary)}
+.pill{border:1px solid var(--text-tertiary);border-radius:9999px;padding:3px 8px;background:transparent;color:var(--text-secondary);font-size:.68rem;cursor:pointer}.pill.on{background:rgba(34,197,94,.15);border-color:transparent;color:var(--accent-green)}
+.tag{border-radius:4px;padding:1px 6px;font-size:.68rem;background:rgba(124,58,237,.17);color:#c4b5fd}
+.bar{height:8px;border-radius:9999px;background:rgba(148,163,184,.2);overflow:hidden}.bar>span{display:block;height:100%}
+.quota-row{display:grid;grid-template-columns:70px 1fr auto;gap:6px;align-items:center;margin-top:6px}.quota-val{font-size:.72rem;color:var(--text-secondary)}
+.zone3{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+.filters{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}.filter-pill{border-radius:9999px;padding:4px 9px;border:1px solid var(--border-subtle);background:transparent;color:var(--text-secondary);cursor:pointer;font-size:.72rem}.filter-pill.active{background:var(--bg-elevated);color:var(--text-primary)}
+.decision-list{max-height:430px;overflow:auto;border:1px solid var(--border-subtle);border-radius:8px}.decision-row{padding:7px 9px;border-bottom:1px solid var(--border-subtle);cursor:pointer}.decision-row:hover,.decision-row.active{background:var(--bg-elevated);transition:150ms}
+.decision-top{display:grid;grid-template-columns:105px 85px 1fr 70px;gap:8px;align-items:center;font-size:.75rem}
+.decision-time{font-size:.68rem;color:var(--text-tertiary)} .score-strip{height:6px;border-radius:999px;background:rgba(148,163,184,.2)} .score-strip>span{display:block;height:100%;border-radius:999px;background:var(--accent-violet)}
+.dim-row{display:grid;grid-template-columns:110px 1fr 44px;gap:8px;align-items:center;margin-top:6px;font-size:.75rem}
+.settings-head{display:flex;justify-content:space-between;align-items:center;cursor:pointer}.settings-body{display:none;margin-top:10px}.settings-body.open{display:block}
+.settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px}
+@media (max-width:1024px){.grid5{grid-template-columns:repeat(2,1fr)}.zone2,.zone3{grid-template-columns:1fr}.ladder-head,.model-row{grid-template-columns:58px 1fr 70px 95px 120px}}
+</style>
+</head>
+<body>
+<main>
+  <div class="page-title">⚡ CORTEX</div>
+  <div class="subtitle">Classify, Orchestrate, Route, Track, Execute — multi-model routing intelligence</div>
+
+  <section class="grid5" id="statCards"></section>
+
+  <section class="zone2">
+    <div class="card">
+      <div class="panel-title"><i data-lucide="layers"></i>Model Ladder</div>
+      <div class="panel-sub">Choose which models can be routed and when each was last used.</div>
+      <div class="ladder-head"><div>Provider</div><div>Model</div><div>Score</div><div>Toggle</div><div>Last Used</div></div>
+      <div id="cortexLadder"></div>
+      <div id="cortexPins" style="margin-top:8px"></div>
+    </div>
+    <div class="card">
+      <div class="panel-title"><i data-lucide="gauge"></i>Provider Quotas</div>
+      <div class="panel-sub">Know which providers are near limits before requests fail.</div>
+      <div id="providerQuotaList"></div>
+    </div>
+  </section>
+
+  <section class="zone3">
+    <div class="card">
+      <div class="panel-title"><i data-lucide="route"></i>Routing Decisions</div>
+      <div class="panel-sub">Recent routes and why each request went to a specific provider.</div>
+      <div class="filters" id="decisionFilters"></div>
+      <div id="decisionList" class="decision-list"></div>
+    </div>
+    <div class="card">
+      <div class="panel-title"><i data-lucide="chart-no-axes-column"></i>Scoring Profile</div>
+      <div class="panel-sub">Click a routing row to inspect dimension contributions.</div>
+      <div id="scoreProfile"></div>
+      <div id="scoreExplain" class="panel-sub" style="margin-top:10px"></div>
+    </div>
+  </section>
+
+  <section class="card" style="margin-top:12px">
+    <div class="settings-head" onclick="toggleSettings()"><div class="panel-title"><i data-lucide="sliders-horizontal"></i>Cortex Settings</div><button class="pill">Expand</button></div>
+    <div class="panel-sub">Adjust routing behavior without leaving this tab.</div>
+    <div id="settingsBody" class="settings-body">
+      <div class="card" id="settingsCortexWeights"></div>
+      <div class="card" id="settingsCortexLadder" style="margin-top:8px"></div>
+      <div class="card" id="settingsCortexPins" style="margin-top:8px"></div>
+      <div class="card" id="settingsCortexSchedule" style="margin-top:8px"></div>
+      <div class="card" id="settingsDiscovery" style="margin-top:8px"></div>
+    </div>
+  </section>
+</main>
+<script src="/layout.js"></script>
+<script>
+const providerColors={google:'#4285f4',openai:'#10a37f','openai-codex':'#10a37f',anthropic:'#d97706',groq:'#f97316',cerebras:'#06b6d4',mistral:'#6366f1',nvidia:'#76b900'};
+const dims=['tokenCount','reasoning','simple','system','agentic','domain','code','image','context'];
+let state={status:null,decisions:[],usage:null,provider:'all',selected:null};
+const $=(s)=>document.querySelector(s); const esc=(s)=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmtAgo=(iso)=>{if(!iso)return '—'; const d=Math.floor((Date.now()-new Date(iso).getTime())/60000); if(d<1)return 'now'; if(d<60)return `${d}m ago`; const h=Math.floor(d/60); if(h<24)return `${h}h ago`; return `${Math.floor(h/24)}d ago`;};
+const scoreColor=(n)=>n<.3?'var(--accent-green)':(n<=.6?'var(--accent-amber)':'var(--accent-red)');
+
+async function load(){
+  const [s,d,u]=await Promise.all([fetch('/api/cortex/status').then(r=>r.json()).catch(()=>({})),fetch('/api/cortex/decisions?limit=50').then(r=>r.json()).catch(()=>({decisions:[]})),fetch('/api/cortex/usage').then(r=>r.json()).catch(()=>({providers:{}}))]);
+  state.status=s; state.decisions=Array.isArray(d.decisions)?d.decisions:[]; state.usage=u; if(!state.selected&&state.decisions[0])state.selected=state.decisions[0];
+  renderStats(); renderLadder(); renderQuotas(); renderFilters(); renderDecisions(); renderScore(); renderSettings();
+}
+function getModelLastUsedMap(){const m={}; for(const r of state.decisions){const model=String(r.modelSelected||r.selectedModel||r.model||''); const t=r.ts||r.timestamp||r.time; if(model&&t&&(!m[model]||new Date(t)>new Date(m[model])))m[model]=t;} return m;}
+function renderStats(){const ladder=Array.isArray(state.status?.ladder)?state.status.ladder:[]; const enabled=ladder.filter(m=>m?.enabled!==false); const pCount=new Set(enabled.map(e=>String(e.provider||e.model?.split('/')[0]||'unknown'))).size; const last20=state.decisions.slice(0,20); const avg=last20.length?last20.reduce((a,b)=>a+(Number(b.score||0)),0)/last20.length:0; const day=Date.now()-86400000; const today=state.decisions.filter(d=>new Date(d.ts||d.timestamp||d.time||0).getTime()>=day).length; const top=Object.entries(last20.reduce((a,d)=>{const m=String(d.modelSelected||d.selectedModel||d.model||'unknown'); a[m]=(a[m]||0)+1; return a;},{})).sort((a,b)=>b[1]-a[1])[0]?.[0]||'—';
+  const cards=[['Active Models',enabled.length,'Models available for routing'],['Providers',pCount,'Connected inference providers'],['Avg Score',avg.toFixed(2),'Request complexity (0-1)'],['Routing Today',today,'Requests routed by Cortex'],['Top Model',top,'Most frequently selected']];
+  $('#statCards').innerHTML=cards.map(([l,v,s])=>`<div class='card'><div class='stat-label'>${l}</div><div class='stat-value'>${v}</div><div class='stat-sub'>${s}</div></div>`).join('');
+}
+function renderLadder(){const ladder=Array.isArray(state.status?.ladder)?state.status.ladder:[]; const by={}; ladder.forEach(e=>{const p=String(e.provider||e.model?.split('/')[0]||'unknown'); (by[p]=by[p]||[]).push(e);}); const lastUsed=getModelLastUsedMap();
+  $('#cortexLadder').innerHTML=Object.keys(by).sort().map(p=>`<div><div class='provider-head'><span class='provider-dot' style='background:${providerColors[p]||"#64748b"}'></span>${p}<span class='tag'>${by[p].length}</span></div>${by[p].map(e=>{const model=String(e.model||''); return `<div class='model-row ${e.enabled===false?'disabled':''}'><div>${p}</div><div>${esc(model)}</div><div class='mono'>${Number(e.minScore||0).toFixed(2)}</div><div><button class='pill ${e.enabled!==false?'on':''}' onclick="toggleModel('${encodeURIComponent(model)}')">${e.enabled!==false?'ON':'OFF'}</button></div><div class='model-last'>${fmtAgo(lastUsed[model])}</div></div>`;}).join('')}</div>`).join('');
+  const pins=state.status?.agentPins||{}; $('#cortexPins').innerHTML=Object.keys(pins).length?Object.entries(pins).map(([a,m])=>`<span class='tag'>${esc(a)} → ${esc(m)}</span>`).join(' '):"<span class='panel-sub'>No agent pins configured.</span>";
+}
+function quotaBar(v,l){const p=l>0?Math.min(100,(v/l)*100):0; return `<div class='bar'><span style='width:${p}%;background:${p>80?'var(--accent-red)':(p>60?'var(--accent-amber)':'var(--accent-green)')}'></span></div>`;}
+function renderQuotas(){const p=state.usage?.providers||{}; const order=['google','groq','cerebras','mistral','nvidia','openai','anthropic']; $('#providerQuotaList').innerHTML=order.map(k=>{const q=p[k]; const n=k[0].toUpperCase()+k.slice(1); if(!q) return `<div class='card' style='margin-top:8px'><div class='panel-title'><span class='provider-dot' style='background:${providerColors[k]||"#64748b"}'></span>${n}</div><div class='panel-sub' style='color:var(--text-tertiary)'>No usage data yet</div></div>`;
+ let rows=''; if(q.rpmLimit)rows+=`<div class='quota-row'><div>RPM</div><div>${quotaBar(q.rpm||0,q.rpmLimit)}</div><div class='quota-val'>${q.rpm||0}/${q.rpmLimit}</div></div>`; if(q.rpdLimit)rows+=`<div class='quota-row'><div>RPD</div><div>${quotaBar(q.rpd||0,q.rpdLimit)}</div><div class='quota-val'>${q.rpd||0}/${q.rpdLimit}</div></div>`; if(q.tpmLimit)rows+=`<div class='quota-row'><div>TPM</div><div>${quotaBar(q.tpm||0,q.tpmLimit)}</div><div class='quota-val'>${q.tpm||0}/${q.tpmLimit}</div></div>`;
+ return `<div class='card' style='margin-top:8px'><div class='panel-title'><span class='provider-dot' style='background:${providerColors[k]||"#64748b"}'></span>${n}<span class='pill'>${q.status||'normal'}</span></div>${rows}<div class='panel-sub'>Last request: ${fmtAgo(q.lastRequest)}</div></div>`;}).join('');}
+function renderFilters(){const providers=['all',...new Set(state.decisions.map(d=>String(d.provider||(d.modelSelected||d.selectedModel||d.model||'').split('/')[0]||'unknown')))].sort(); $('#decisionFilters').innerHTML=providers.map(p=>`<button class='filter-pill ${state.provider===p?'active':''}' onclick="state.provider='${p}';renderFilters();renderDecisions()">${p==='all'?'All':`<span class='provider-dot' style='display:inline-block;background:${providerColors[p]||'#64748b'}'></span> ${p}`}</button>`).join('');}
+function renderDecisions(){const list=state.decisions.filter(d=>state.provider==='all'||String(d.provider||(d.modelSelected||d.selectedModel||d.model||'').split('/')[0]||'unknown')===state.provider); $('#decisionList').innerHTML=list.map((d,i)=>{const model=String(d.modelSelected||d.selectedModel||d.model||'unknown'); const s=Number(d.score||0); const t=d.ts||d.timestamp||d.time||''; const provider=String(d.provider||model.split('/')[0]||'unknown'); return `<div class='decision-row ${state.selected===d?'active':''}' onclick='selectDecision(${i})'><div class='decision-top'><div class='decision-time'>${fmtAgo(t)}</div><div><span class='tag'>${provider}</span></div><div>${esc(model)}</div><div class='mono'>${s.toFixed(2)}</div></div><div class='score-strip'><span style='width:${Math.min(100,s*100)}%'></span></div></div>`;}).join('')||"<div class='panel-sub' style='padding:10px'>No decisions.</div>"; state.filtered=list;}
+function selectDecision(i){state.selected=state.filtered[i]; renderDecisions(); renderScore();}
+function renderScore(){const d=state.selected||{}; const b=d.breakdown||d.scores||{}; $('#scoreProfile').innerHTML=dims.map(k=>{const v=Number(b[k]??0); return `<div class='dim-row'><div>${k}</div><div class='bar'><span style='width:${Math.min(100,v*100)}%;background:${scoreColor(v)}'></span></div><div class='dim-bar-val mono'>${v.toFixed(2)}</div></div>`;}).join(''); const score=Number(d.score||0); const model=String(d.modelSelected||d.selectedModel||d.model||'—'); $('#scoreExplain').textContent=`Score ${score.toFixed(2)} → ${score<.3?'low':'mid'}-complexity. Routed to ${model} (minScore ${Number(d.minScore||0).toFixed(2)}).`;}
+async function toggleModel(encoded){await fetch(`/api/cortex/ladder/${encoded}/toggle`,{method:'PUT'}); await load();}
+function toggleSettings(){ $('#settingsBody').classList.toggle('open'); }
+function renderSettings(){const s=state.status||{}; const weights=s?.scoring?.weights||{}; const ladder=Array.isArray(s?.ladder)?s.ladder:[]; const pins=s?.agentPins||{}; const schedule=s?.schedule||{}; const quota=s?.quotaThresholds||{};
+ $('#settingsCortexWeights').innerHTML=`<div class='panel-title'>Scoring Weights</div><div class='panel-sub'>Tune how Cortex scores complexity dimensions.</div><div class='settings-grid'>${Object.keys(weights).map(k=>`<label>${k}<input data-cw='${k}' type='range' min='0' max='1' step='0.01' value='${Number(weights[k]||0)}'></label>`).join('')}</div><button class='pill on' onclick='saveWeights()'>Save Weights</button>`;
+ $('#settingsCortexLadder').innerHTML=`<div class='panel-title'>Model Ladder</div><div class='panel-sub'>Edit model thresholds and context windows.</div>${ladder.map((e,i)=>`<div class='model-row'><input type='checkbox' data-cle='${i}' ${e.enabled!==false?'checked':''}><input data-clm='${i}' value='${esc(e.model||'')}'><input data-cls='${i}' type='number' step='0.01' min='0' max='1' value='${Number(e.minScore||0)}'><input data-clc='${i}' type='number' step='1' min='1' value='${Number(e.contextWindow||0)}'></div>`).join('')}<button class='pill on' onclick='saveLadder()'>Save Ladder</button>`;
+ const em=ladder.filter(e=>e.enabled!==false).map(e=>String(e.model||'')).filter(Boolean); const agents=[...new Set([...Object.keys(pins),'main','janitor'])];
+ $('#settingsCortexPins').innerHTML=`<div class='panel-title'>Agent Pins</div><div class='panel-sub'>Lock an agent to a model or leave Auto.</div>${agents.map(a=>`<div class='model-row'><div>${a}</div><select data-cpa='${a}'><option value=''>Auto (Router)</option>${em.map(m=>`<option value='${esc(m)}' ${pins[a]===m?'selected':''}>${esc(m)}</option>`).join('')}</select></div>`).join('')}<button class='pill on' onclick='savePins()'>Save Pins</button>`;
+ $('#settingsCortexSchedule').innerHTML=`<div class='panel-title'>Schedule & Quota Thresholds</div><div class='panel-sub'>Define work hours and provider pressure cutoffs.</div><div class='settings-grid'><input id='ctz' value='${esc(schedule.timezone||'UTC')}'><input id='cws' value='${esc(schedule.workStart||'09:00')}'><input id='cwe' value='${esc(schedule.workEnd||'17:00')}'></div>${Object.entries(quota).map(([k,v])=>`<div class='model-row'><div>${k}</div><input data-cq='${k}' type='number' min='0' max='1' step='0.01' value='${Number(v)||0}'></div>`).join('')}<button class='pill on' onclick='saveSchedule()'>Save Schedule</button>`;
+ $('#settingsDiscovery').innerHTML=`<div class='panel-title'>Discovery Config</div><div class='panel-sub'>Discovery uses server-side defaults from cortex config.</div>`;
+}
+async function saveWeights(){const weights=Object.fromEntries([...document.querySelectorAll('[data-cw]')].map(e=>[e.dataset.cw,Number(e.value)||0])); await fetch('/api/cortex/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({scoring:{weights}})}); await load();}
+async function saveLadder(){const rows=[...document.querySelectorAll('[data-clm]')].map(el=>{const i=el.dataset.clm; return {model:el.value.trim(),enabled:document.querySelector(`[data-cle='${i}']`)?.checked!==false,minScore:Number(document.querySelector(`[data-cls='${i}']`)?.value||0),contextWindow:Number(document.querySelector(`[data-clc='${i}']`)?.value||0),provider:(el.value.split('/')[0]||'unknown')};}).filter(r=>r.model); await fetch('/api/cortex/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({ladder:rows})}); await load();}
+async function savePins(){for(const el of document.querySelectorAll('[data-cpa]')) await fetch('/api/cortex/pins',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({agentId:el.dataset.cpa,model:el.value||null})}); await load();}
+async function saveSchedule(){const quota=Object.fromEntries([...document.querySelectorAll('[data-cq]')].map(e=>[e.dataset.cq,Number(e.value)||0])); await fetch('/api/cortex/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({schedule:{...(state.status?.schedule||{}),timezone:$('#ctz').value||'UTC',workStart:$('#cws').value||'09:00',workEnd:$('#cwe').value||'17:00'},quotaThresholds:quota})}); await load();}
+load();
+</script>
+<script src="/lucide.min.js"></script>
+<script>lucide.createIcons();</script>
+</body></html>
