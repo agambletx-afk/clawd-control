@@ -570,31 +570,45 @@
 .fade-up { animation: fadeUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
 
 
-.cortex-ladder-list { margin-top: 8px; max-height: 400px; overflow: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); }
-.cortex-provider-group { border-bottom: 1px solid var(--border-subtle); }
-.cortex-provider-header { position: sticky; top: 0; z-index: 1; display:flex; align-items:center; gap:8px; min-height:30px; padding: 6px 10px; background: color-mix(in srgb, var(--bg-card) 82%, black); font-weight: 700; }
+.cortex-ladder-list { margin-top: 8px; max-height: 400px; overflow: auto; border: 1px solid #1e2535; border-radius: var(--radius-sm); background: #161b26; }
+.cortex-provider-group { border-bottom: 1px solid #1e2535; margin: 0; }
+.cortex-provider-group:last-child { border-bottom: 0; }
+.cortex-provider-header { display:flex; align-items:center; gap:8px; min-height:30px; padding: 8px 12px; background: #1e2535; font-weight: 700; color: #f1f5f9; }
 .cortex-provider-dot { width: 8px; height: 8px; border-radius: 999px; display: inline-block; }
-.cortex-provider-meta { margin-left: auto; font-size: 0.72rem; color: var(--text-secondary); }
-.cortex-provider-toggle { font-size: 0.75rem; color: var(--text-secondary); }
-.cortex-model-row { display:grid; grid-template-columns: 48px minmax(200px, 1fr) auto 46px; align-items:center; gap:8px; min-height:28px; padding: 2px 10px; border-top: 1px solid color-mix(in srgb, var(--border-subtle) 70%, transparent); font-size: 0.76rem; }
-.cortex-model-row.disabled { color: var(--text-secondary); }
-.cortex-toggle-pill { border: 1px solid var(--border-subtle); border-radius: 999px; font-size: 0.66rem; font-weight: 700; line-height: 1; padding: 4px 6px; background: transparent; color: var(--text-secondary); }
-.cortex-toggle-pill.on { color: var(--success); border-color: color-mix(in srgb, var(--success) 40%, var(--border-subtle)); }
-.cortex-minscore-badge { font-size: 0.68rem; color: var(--text-secondary); }
-.cortex-quality { width: 40px; height: 6px; border-radius: 999px; background: color-mix(in srgb, var(--text-secondary) 25%, transparent); overflow: hidden; }
+.cortex-provider-meta { margin-left: auto; font-size: 0.72rem; color: #94a3b8; font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace; }
+.cortex-provider-toggle { font-size: 0.75rem; color: #94a3b8; font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace; }
+.cortex-model-row { display:grid; grid-template-columns: 42px minmax(220px, 1fr) 70px 44px; align-items:center; gap:8px; min-height:28px; padding: 4px 12px; border-top: 1px solid #1e2535; font-size: 0.76rem; transition: background 150ms ease; }
+.cortex-model-row:hover { background: #1e2535; }
+.cortex-model-row.disabled { color: #475569; }
+.cortex-model-name { color: #f1f5f9; overflow: visible; text-overflow: clip; white-space: nowrap; }
+.cortex-model-row.disabled .cortex-model-name { color: #475569; }
+.cortex-toggle-pill { border: 1px solid #475569; border-radius: 9999px; font-size: 0.66rem; font-weight: 700; line-height: 1; padding: 4px 6px; background: transparent; color: #94a3b8; font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace; }
+.cortex-toggle-pill.on { color: #22c55e; border-color: transparent; background: rgba(34,197,94,0.15); }
+.cortex-minscore-badge { font-size: 0.68rem; color: #94a3b8; font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace; }
+.cortex-quality { width: 44px; height: 6px; border-radius: 999px; background: rgba(148,163,184,0.2); overflow: hidden; }
 .cortex-quality > span { display: block; height: 100%; }
-.cortex-disabled-summary { cursor: pointer; color: var(--text-secondary); font-size: 0.74rem; padding: 4px 10px 6px 66px; border-top: 1px dashed var(--border-subtle); }
-.cortex-pins-inline { margin-top: 8px; font-size: 0.78rem; color: var(--text-secondary); display:flex; flex-wrap:wrap; gap:8px; }
-.cortex-pin-chip { border:1px solid var(--border-subtle); border-radius:999px; padding:2px 8px; }
-.cortex-decision-list { border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); overflow: hidden; }
-.cortex-decision-row { display:flex; align-items:center; gap:8px; min-height:24px; padding: 2px 8px; border-bottom:1px solid var(--border-subtle); font-size:0.74rem; cursor:pointer; }
-.cortex-decision-score { width:60px; height:6px; border-radius:999px; background: color-mix(in srgb, var(--text-secondary) 24%, transparent); overflow:hidden; }
+.cortex-disabled-summary { cursor: pointer; color: #475569; font-size: 0.74rem; padding: 4px 12px 4px 62px; border-top: 1px solid #1e2535; font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace; }
+.cortex-pins-inline { margin-top: 8px; font-size: 0.78rem; color: #94a3b8; display:flex; flex-wrap:wrap; gap:8px; }
+.cortex-pin-chip { border:1px solid #475569; border-radius:9999px; padding:2px 8px; }
+.cortex-decision-list { border: 1px solid #1e2535; border-radius: var(--radius-sm); overflow: hidden; background: #161b26; }
+.cortex-decision-row { display:flex; align-items:center; gap:8px; min-height:24px; padding: 4px 10px; border-bottom:1px solid #1e2535; font-size:0.74rem; cursor:pointer; transition: background 150ms ease; }
+.cortex-decision-row:hover { background: #1e2535; }
+.cortex-decision-time { color: #475569; font-size: 11px; font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace; }
+.cortex-agent-badge { display:inline-flex; align-items:center; padding:1px 6px; border-radius:4px; }
+.cortex-decision-score-wrap { display:inline-flex; align-items:center; gap:6px; }
+.cortex-decision-score { width:52px; height:6px; border-radius:999px; background: rgba(148,163,184,0.24); overflow:hidden; }
 .cortex-decision-score > span { display:block; height:100%; }
-.cortex-task-badge { display:inline-flex; align-items:center; padding:1px 6px; border-radius:999px; background: color-mix(in srgb, var(--accent) 22%, transparent); }
-.cortex-reason-badge { margin-left:auto; color: var(--text-secondary); font-size:0.7rem; }
-.cortex-decision-detail { display:none; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:4px 10px; padding:6px 8px 8px 8px; font-size:0.72rem; color:var(--text-secondary); border-bottom:1px solid var(--border-subtle); }
+.cortex-score-value { width:32px; color:#94a3b8; font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace; }
+.cortex-task-badge { display:inline-flex; align-items:center; padding:1px 6px; border-radius:4px; background: rgba(124,58,237,0.18); }
+.cortex-selected-model { color:#f1f5f9; overflow: visible; text-overflow: clip; white-space: nowrap; }
+.cortex-reason-badge { margin-left:auto; color: #475569; font-size:11px; text-align:right; }
+.cortex-decision-detail { display:none; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:4px 10px; padding:6px 10px 8px 10px; font-size:0.72rem; border-bottom:1px solid #1e2535; }
 .cortex-decision-detail.open { display:grid; }
+.cortex-detail-label { color:#475569; }
+.cortex-detail-value { color:#94a3b8; font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace; }
 .cortex-pin-select { background: transparent; color: var(--text-primary); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 4px 6px; }
+.cortex-glow-title { color:#f1f5f9; text-shadow: 0 0 8px rgba(124,58,237,0.6); }
+.cortex-glow-icon { color:#7c3aed; filter: drop-shadow(0 0 8px rgba(124,58,237,0.6)); }
 
 
 </style>
@@ -3121,23 +3135,27 @@ async function loadCortexData() {
 
 function cortexProviderColor(provider) {
   const key = String(provider || '').toLowerCase();
-  if (key === 'google') return '#4285f4';
-  if (key === 'openai' || key === 'openai-codex') return '#10a37f';
-  if (key === 'anthropic') return '#d97706';
-  if (key === 'moonshot') return '#6366f1';
-  if (key === 'qwen') return '#06b6d4';
-  if (key === 'openrouter') return '#f43f5e';
-  if (key === 'groq') return '#f97316';
-  if (key === 'nvidia') return '#76b900';
-  return 'var(--text-secondary)';
+  const palette = ['#7c3aed', '#22c55e', '#f59e0b', '#ef4444', '#94a3b8'];
+  let hash = 0;
+  for (let i = 0; i < key.length; i += 1) hash = ((hash << 5) - hash) + key.charCodeAt(i);
+  return palette[Math.abs(hash) % palette.length];
 }
 
 function renderCortexLadder() {
   const root = $('#cortexLadder');
   const subtitle = $('#cortexSchedulePolicy');
+  const routerTitle = document.querySelector('#cortexRouterPanel .chart-title');
+  if (routerTitle) {
+    routerTitle.classList.add('cortex-glow-title');
+    const icon = routerTitle.querySelector('i');
+    if (icon) icon.classList.add('cortex-glow-icon');
+  }
   if (!root || !subtitle) return;
   const status = cortexData?.status;
-  subtitle.textContent = status?.schedule?.policy || status?.schedule?.mode || 'No schedule policy';
+  const policy = String(status?.schedule?.policy || status?.schedule?.mode || '').toLowerCase();
+  if (policy.includes('work')) subtitle.textContent = 'Working hours policy active';
+  else if (policy.includes('off')) subtitle.textContent = 'Off-hours policy active';
+  else subtitle.textContent = 'Routes requests to the best model by task complexity';
   const ladder = Array.isArray(status?.ladder) ? status.ladder : [];
   if (!ladder.length) {
     root.innerHTML = '<div style="padding:8px;color:var(--text-secondary)">Cortex ladder unavailable</div>';
@@ -3166,8 +3184,8 @@ function renderCortexLadder() {
       const profileAvg = profile.length ? profile.reduce((a, b) => a + Number(b || 0), 0) / profile.length : row.minScore;
       return `<div class="cortex-model-row ${disabled ? 'disabled' : ''}">
         <button class="cortex-toggle-pill ${row.enabled ? 'on' : ''}" onclick="toggleCortexModel('${encodeURIComponent(row.model)}')">${row.enabled ? 'ON' : 'OFF'}</button>
-        <span>${escapeHtml(row.model)}</span>
-        <span class="cortex-minscore-badge">minScore: ${Number(row.minScore || 0).toFixed(2)}</span>
+        <span class="cortex-model-name">${escapeHtml(row.model)}</span>
+        <span class="cortex-minscore-badge">${Number(row.minScore || 0).toFixed(2)}</span>
         <span class="cortex-quality"><span style="width:${Math.max(0, Math.min(profileAvg, 1)) * 100}%;background:${cortexScoreColor(profileAvg)}"></span></span>
       </div>`;
     };
@@ -3204,13 +3222,19 @@ function renderCortexPins() {
 }
 
 function cortexScoreColor(score) {
-  if (score < 0.3) return 'var(--success)';
-  if (score <= 0.6) return 'var(--warning)';
-  return '#f97316';
+  if (score < 0.3) return '#22c55e';
+  if (score <= 0.6) return '#f59e0b';
+  return '#ef4444';
 }
 
 function renderCortexDecisions() {
   const root = $('#cortexDecisionsList');
+  const decisionsTitle = document.querySelector('[data-panel="cortex-decisions"] .zone3-panel-title');
+  if (decisionsTitle) {
+    decisionsTitle.classList.add('cortex-glow-title');
+    const icon = decisionsTitle.querySelector('i');
+    if (icon) icon.classList.add('cortex-glow-icon');
+  }
   if (!root) return;
   const decisions = Array.isArray(cortexData?.decisions) ? cortexData.decisions : [];
   if (!decisions.length) {
@@ -3228,15 +3252,14 @@ function renderCortexDecisions() {
     const reason = String(d?.selectionReason || d?.reason || 'ladder');
     const agentId = String(d?.agentId || d?.agent || 'unknown');
     const raw = (d?.scoreBreakdown && typeof d.scoreBreakdown === 'object') ? d.scoreBreakdown : ((d?.scores && typeof d.scores === 'object') ? d.scores : {});
-    const details = dims.map((k) => `<div>${k}: ${Number(raw[k] ?? 0).toFixed(2)}</div>`).join('');
+    const details = dims.map((k) => `<div><span class="cortex-detail-label">${k}</span>: <span class="cortex-detail-value">${Number(raw[k] ?? 0).toFixed(2)}</span></div>`).join('');
     const open = Boolean(cortexDecisionExpanded[idx]);
     return `<div class="cortex-decision-row" onclick="toggleCortexDecisionDetail(${idx})">
-      <span style="color:var(--text-secondary)">${escapeHtml(formatRelativeTime(tsMs))}</span>
-      <span class="cortex-task-badge" style="background:color-mix(in srgb, ${agentIdToHslColor(agentId)} 30%, transparent)">${escapeHtml(agentId)}</span>
-      <span class="cortex-decision-score"><span style="width:${Math.max(0, Math.min(score, 1)) * 100}%; background:${cortexScoreColor(score)}"></span></span>
-      <span style="width:32px;color:var(--text-secondary)">${score.toFixed(2)}</span>
-      <span class="cortex-task-badge">${escapeHtml(taskType)}</span>
-      <span style="min-width:180px">${escapeHtml(model)}</span>
+      <span class="cortex-decision-time">${escapeHtml(formatRelativeTime(tsMs))}</span>
+      <span class="cortex-agent-badge" style="background:color-mix(in srgb, ${agentIdToHslColor(agentId)} 20%, transparent)">${escapeHtml(agentId)}</span>
+      <span class="cortex-decision-score-wrap"><span class="cortex-score-value">${score.toFixed(2)}</span><span class="cortex-decision-score"><span style="width:${Math.max(0, Math.min(score, 1)) * 100}%; background:${cortexScoreColor(score)}"></span></span></span>
+      <span class="cortex-task-badge" style="background:rgba(124,58,237,0.15)">${escapeHtml(taskType)}</span>
+      <span class="cortex-selected-model">${escapeHtml(model)}</span>
       <span class="cortex-reason-badge">${escapeHtml(reason)}</span>
     </div><div class="cortex-decision-detail ${open ? 'open' : ''}">${details}</div>`;
   }).join('');
@@ -3273,7 +3296,7 @@ function renderCortexSettings() {
 
   const weightKeys = ['tokenCount','reasoning','simple','system','agentic','domain','code','image','context'];
   weightsRoot.innerHTML = `<div class="settings-section-title">Cortex Scoring Weights</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px">${weightKeys.map((k) => `<label style="display:grid;grid-template-columns:90px 1fr auto;align-items:center;gap:8px;min-height:32px"><span>${escapeHtml(k)}</span><input type="range" min="0" max="1" step="0.01" data-cortex-weight="${k}" value="${Number(weights[k] ?? 0)}" oninput="this.nextElementSibling.textContent=Number(this.value).toFixed(2)"><span style="font-size:0.72rem;color:var(--text-secondary)">${Number(weights[k] ?? 0).toFixed(2)}</span></label>`).join('')}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px">${weightKeys.map((k) => `<label style="display:grid;grid-template-columns:90px 1fr auto;align-items:center;gap:8px;min-height:32px"><span>${escapeHtml(k)}</span><input type="range" min="0" max="1" step="0.01" data-cortex-weight="${k}" value="${Number(weights[k] ?? 0)}" oninput="this.nextElementSibling.textContent=Number(this.value).toFixed(2)"><span style="font-size:0.72rem;color:var(--text-secondary);font-family:'JetBrains Mono', 'Fira Code', 'Consolas', monospace">${Number(weights[k] ?? 0).toFixed(2)}</span></label>`).join('')}</div>
     <button class="settings-save-btn" onclick="saveCortexWeights()">Save Weights</button>`;
 
   const grouped = ladder.reduce((acc, entry, index) => {
@@ -3284,14 +3307,14 @@ function renderCortexSettings() {
     return acc;
   }, {});
   ladderRoot.innerHTML = `<div class="settings-section-title">Cortex Model Ladder</div>
-    ${Object.keys(grouped).sort().map((provider) => `<div style="margin-bottom:8px"><div style="font-size:0.75rem;font-weight:700;color:var(--text-secondary);padding:4px 6px;background:color-mix(in srgb, var(--bg-card) 80%, black);border:1px solid var(--border-subtle);border-radius:var(--radius-sm)">${escapeHtml(provider)}</div>
-      ${grouped[provider].map(({ entry, index }) => `<div style="display:grid;grid-template-columns:24px minmax(200px,1fr) 110px 70px 90px;gap:8px;align-items:center;margin-top:4px"><input type="checkbox" data-cortex-ladder-enabled="${index}" ${entry?.enabled !== false ? 'checked' : ''}><input class="settings-input" data-cortex-ladder-model="${index}" value="${escapeHtml(entry?.model || '')}" style="min-width:200px"><input class="settings-input" value="${escapeHtml(String(provider))}" disabled><input class="settings-input" type="number" min="0" max="1" step="0.01" data-cortex-ladder-minscore="${index}" value="${Number(entry?.minScore ?? 0)}"><input class="settings-input" type="number" min="1" step="1" data-cortex-ladder-context="${index}" value="${Number(entry?.contextWindow ?? 0)}"></div>`).join('')}
+    ${Object.keys(grouped).sort().map((provider) => `<div style="margin-bottom:8px"><div style="font-size:0.75rem;font-weight:700;color:var(--text-secondary);padding:4px 6px;background:#1e2535;border:1px solid var(--border-subtle);border-radius:var(--radius-sm)">${escapeHtml(provider)}</div>
+      ${grouped[provider].map(({ entry, index }) => `<div style="display:grid;grid-template-columns:24px minmax(220px,1fr) 80px 100px;gap:8px;align-items:center;margin-top:4px"><input type="checkbox" data-cortex-ladder-enabled="${index}" ${entry?.enabled !== false ? 'checked' : ''}><input class="settings-input" data-cortex-ladder-model="${index}" value="${escapeHtml(entry?.model || '')}" style="min-width:220px"><input class="settings-input" type="number" min="0" max="1" step="0.01" data-cortex-ladder-minscore="${index}" value="${Number(entry?.minScore ?? 0)}" style="font-family:'JetBrains Mono', 'Fira Code', 'Consolas', monospace"><input class="settings-input" type="number" min="1" step="1" data-cortex-ladder-context="${index}" value="${Number(entry?.contextWindow ?? 0)}" style="font-family:'JetBrains Mono', 'Fira Code', 'Consolas', monospace"></div>`).join('')}
     </div>`).join('')}
     <div style="display:grid;grid-template-columns:120px minmax(200px,1fr) 70px 90px auto;gap:8px;align-items:center;margin-top:8px">
       <input id="cortexAddProvider" class="settings-input" placeholder="provider">
       <input id="cortexAddModel" class="settings-input" placeholder="provider/model or model id">
-      <input id="cortexAddMinScore" class="settings-input" type="number" min="0" max="1" step="0.01" value="0">
-      <input id="cortexAddContext" class="settings-input" type="number" min="1" step="1" value="128000">
+      <input id="cortexAddMinScore" class="settings-input" type="number" min="0" max="1" step="0.01" value="0" style="font-family:'JetBrains Mono', 'Fira Code', 'Consolas', monospace">
+      <input id="cortexAddContext" class="settings-input" type="number" min="1" step="1" value="128000" style="font-family:'JetBrains Mono', 'Fira Code', 'Consolas', monospace">
       <button class="settings-add-btn" onclick="addCortexModel()">Add Model</button>
     </div>
     <button class="settings-save-btn" onclick="saveCortexLadder()">Save Ladder</button>`;
@@ -3302,7 +3325,7 @@ function renderCortexSettings() {
 
   scheduleRoot.innerHTML = `<div class="settings-section-title">Cortex Schedule & Quota</div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px"><input id="cortexTimezone" class="settings-input" value="${escapeHtml(String(schedule.timezone || 'UTC'))}" placeholder="Timezone"><input id="cortexWorkStart" class="settings-input" value="${escapeHtml(String(schedule.workStart || '09:00'))}" placeholder="Work start"><input id="cortexWorkEnd" class="settings-input" value="${escapeHtml(String(schedule.workEnd || '17:00'))}" placeholder="Work end"></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px">${Object.entries(quotaThresholds).map(([provider, threshold]) => `<label style="display:grid;grid-template-columns:120px 1fr;gap:8px;align-items:center"><span>${escapeHtml(provider)}</span><input class="settings-input" type="number" min="0" max="1" step="0.01" data-cortex-quota="${escapeHtml(provider)}" value="${Number(threshold) || 0}"></label>`).join('')}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px">${Object.entries(quotaThresholds).map(([provider, threshold]) => `<label style="display:grid;grid-template-columns:120px 1fr;gap:8px;align-items:center"><span>${escapeHtml(provider)}</span><input class="settings-input" type="number" min="0" max="1" step="0.01" data-cortex-quota="${escapeHtml(provider)}" value="${Number(threshold) || 0}" style="font-family:'JetBrains Mono', 'Fira Code', 'Consolas', monospace"></label>`).join('')}</div>
     <button class="settings-save-btn" onclick="saveCortexSchedule()">Save Schedule</button>`;
 }
 
