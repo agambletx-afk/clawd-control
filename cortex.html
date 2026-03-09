@@ -150,7 +150,7 @@ function renderLadder(){const ladder=Array.isArray(state.status?.ladder)?state.s
   }).join('');
   const pins=state.status?.agentPins||{}; $('#cortexPins').innerHTML=Object.keys(pins).length?Object.entries(pins).map(([a,m])=>`<span class='tag'>${esc(a)} → ${esc(m)}</span>`).join(' '):"<span class='panel-sub'>No agent pins configured.</span>";
 }
-function renderSubscriptionStatus(){const anth=state.status?.providerQuota?.anthropic||{}; const cli=state.cliUsage||{}; const codex=cli?.codex||cli?.openai||{};
+function renderSubscriptionStatus(){const anth=state.status?.providerQuota?.anthropic||{}; const cli=state.cliUsage||{}; const codex=cli?.providers?.codex||cli?.codex||{};
  const resetRaw=anth.reset5h||anth.resetAt||anth.reset_at; const reset=resetRaw?fmtAgo(resetRaw).replace('ago','').trim():'No data';
  const a5=anth.utilization5h==null?null:Number(anth.utilization5h)*100; const a7=anth.utilization7d==null?null:Number(anth.utilization7d)*100;
  const cSession=codex.session_pct==null?null:Number(codex.session_pct); const cWeekly=codex.weekly_pct==null?null:Number(codex.weekly_pct);
