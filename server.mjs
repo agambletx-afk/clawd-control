@@ -2517,6 +2517,47 @@ function getDecisionTimestampMs(decision) {
   return 0;
 }
 
+
+function buildCortexUsageFromLogs() {
+  const { lines } = tailJsonLines(CORTEX_LOG_PATH, 1000);
+  const now = Date.now();
+  const hourAgo = now - (60 * 60 * 1000);
+  const dayAgo = now - (24 * 60 * 60 * 1000);
+  const providers = {};
+
+  for (const decision of lines) {
+    const model = String(decision?.modelSelected || decision?.selectedModel || decision?.model || '');
+    const provider = String(decision?.provider || model.split('/')[0] || 'unknown').toLowerCase();
+    const tsMs = getDecisionTimestampMs(decision);
+    if (!providers[provider]) providers[provider] = { rpm: 0, rpd: 0, tpm: 0, lastRequest: null };
+    if (tsMs >= hourAgo) providers[provider].rpm += 1;
+    if (tsMs >= dayAgo) providers[provider].rpd += 1;
+    const tokenGuess = Number(decision?.tokenCount || decision?.tokens || decision?.totalTokens || 0);
+    if (Number.isFinite(tokenGuess) && tokenGuess > 0 && tsMs >= hourAgo) providers[provider].tpm += tokenGuess;
+    if (tsMs > 0) {
+      const iso = new Date(tsMs).toISOString();
+      if (!providers[provider].lastRequest || iso > providers[provider].lastRequest) providers[provider].lastRequest = iso;
+    }
+  }
+
+  const limits = {
+    google: { rpmLimit: 15, rpdLimit: 1000 },
+    groq: { rpmLimit: 30, rpdLimit: 1000, tpmLimit: 30000 },
+    cerebras: { tpmLimit: 1000000 },
+    mistral: { tpmLimit: 500000 },
+    nvidia: { rpmLimit: 40 }
+  };
+  Object.entries(limits).forEach(([provider, vals]) => {
+    providers[provider] = { ...(providers[provider] || {}), ...vals };
+  });
+
+  return {
+    providers,
+    anthropic: { utilization5h: 0, utilization7d: 0, status: 'normal' },
+    openai: { remainingRequests: null, remainingTokens: null, resetRequests: null }
+  };
+}
+
 const server = createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const path = url.pathname;
@@ -5035,6 +5076,21 @@ const server = createServer((req, res) => {
     return;
   }
 
+
+  if (path === '/cortex') {
+    const fullPath = join(DIR, 'cortex.html');
+    if (existsSync(fullPath)) {
+      res.writeHead(200, {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+      });
+      res.end(readFileSync(fullPath));
+    } else {
+      res.writeHead(404); res.end('Not found');
+    }
+    return;
+  }
+
   // ── Agent Actions (stop/start/reset) ──
   if (path.startsWith('/api/agents/') && path.endsWith('/action') && req.method === 'POST') {
     const agentId = path.split('/')[3];
@@ -5094,6 +5150,20 @@ const server = createServer((req, res) => {
       console.error('[API] /api/cortex/decisions error:', e.message);
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Failed to load cortex decisions' }));
+    }
+    return;
+  }
+
+
+  if (path === '/api/cortex/usage' && req.method === 'GET') {
+    try {
+      const payload = buildCortexUsageFromLogs();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(payload));
+    } catch (e) {
+      console.error('[API] /api/cortex/usage error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to load cortex usage' }));
     }
     return;
   }

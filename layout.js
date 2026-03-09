@@ -39,6 +39,8 @@
     '/security.html': 'security',
     '/create.html': 'create',
     '/analytics.html': 'analytics',
+    '/cortex.html': 'cortex',
+    '/cortex': 'cortex',
     '/tokens.html': 'tokens',
     '/waterfall.html': 'waterfall',
     '/traces.html': 'traces',
@@ -563,6 +565,9 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
     // Start chat unread indicator polling
     initChatUnreadPolling();
 
+    // Start Cortex badge polling
+    initCortexBadgePolling();
+
     // Refresh lucide icons if already loaded
     refreshIcons();
   }
@@ -617,6 +622,11 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
       <a href="/fleet.html" class="nav-item${isActive('fleet')}">
         <i data-lucide="users" class="nav-icon"></i>
         <span class="nav-label">Fleet Matrix</span>
+      </a>
+      <a href="/cortex" class="nav-item${isActive('cortex')}">
+        <i data-lucide="brain" class="nav-icon"></i>
+        <span class="nav-label">Cortex</span>
+        <span id="cortexNavBadge" class="security-nav-dot unknown" style="position:static;display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:16px;border-radius:9999px;font-size:10px;padding:0 5px;background:var(--surface);border:1px solid var(--border);color:var(--text-secondary)">—</span>
       </a>
       <a href="/analytics.html" class="nav-item${isActive('analytics')}">
         <i data-lucide="bar-chart-3" class="nav-icon"></i>
@@ -696,6 +706,28 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
   // ════════════════════════════════════════════════════
   // SSE CONNECTION
   // ════════════════════════════════════════════════════
+
+
+  async function updateCortexBadge() {
+    const el = document.getElementById('cortexNavBadge');
+    if (!el) return;
+    try {
+      const res = await fetch('/api/cortex/status', { credentials: 'same-origin' });
+      if (!res.ok) throw new Error('status');
+      const data = await res.json();
+      const count = Array.isArray(data?.ladder) ? data.ladder.filter((m) => m?.enabled !== false).length : 0;
+      el.textContent = String(count);
+      el.classList.remove('unknown');
+    } catch {
+      el.textContent = '—';
+      el.classList.add('unknown');
+    }
+  }
+
+  function initCortexBadgePolling() {
+    updateCortexBadge();
+    window.setInterval(updateCortexBadge, 60000);
+  }
 
   function connectSSE() {
     evtSource = new EventSource('/api/stream');
