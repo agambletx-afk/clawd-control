@@ -15,7 +15,7 @@ main{padding:20px;max-width:1500px;margin:0 auto}
 .card{background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:10px;padding:12px}
 .card:hover{background:var(--bg-elevated);transition:150ms}
 .stat-label{font-size:.72rem;color:var(--text-tertiary);text-transform:uppercase}.stat-value{font-size:1.35rem;font-weight:800}.stat-sub,.panel-sub{font-size:.8rem;color:var(--text-secondary)}
-.zone2{margin-top:12px;display:grid;grid-template-columns:3fr 2fr;gap:12px}.panel-title{font-size:1rem;font-weight:800;display:flex;align-items:center;gap:8px}
+.zone2{margin-top:12px;display:grid;grid-template-columns:3fr 2fr;gap:12px;max-height:600px}.zone2>.card{overflow:auto}.panel-title{font-size:1rem;font-weight:800;display:flex;align-items:center;gap:8px}
 .ladder-head,.model-row{display:grid;grid-template-columns:70px 1fr 80px 120px 130px;gap:8px;align-items:center}.ladder-head{padding:8px;border-bottom:1px solid var(--border-subtle);color:var(--text-tertiary);font-size:.72rem}
 .provider-head{padding:8px 10px;background:var(--bg-elevated);display:flex;gap:8px;align-items:center;font-weight:700}.provider-dot{width:8px;height:8px;border-radius:9999px}
 .model-row{padding:6px 8px;border-top:1px solid var(--border-subtle);font-size:.78rem}.model-row.disabled{color:var(--text-tertiary)}
@@ -46,7 +46,7 @@ main{padding:20px;max-width:1500px;margin:0 auto}
       <div class="panel-title"><i data-lucide="layers"></i>Model Ladder</div>
       <div class="panel-sub">Choose which models can be routed and when each was last used.</div>
       <div class="ladder-head"><div>Provider</div><div>Model</div><div>Score</div><div>Toggle</div><div>Last Used</div></div>
-      <div id="cortexLadder" style="max-height:500px;overflow:auto"></div>
+      <div id="cortexLadder" ></div>
       <div id="cortexPins" style="margin-top:8px"></div>
     </div>
     <div class="card">
