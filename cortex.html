@@ -15,14 +15,18 @@ main{padding:20px;max-width:1500px;margin:0 auto}
 .card{background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:10px;padding:12px}
 .card:hover{background:var(--bg-elevated);transition:150ms}
 .stat-label{font-size:.72rem;color:var(--text-tertiary);text-transform:uppercase}.stat-value{font-size:1.1rem;font-weight:800;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word}.stat-sub,.panel-sub{font-size:.8rem;color:var(--text-secondary)}
-.zone2{margin-top:12px;display:grid;grid-template-columns:3fr 2fr;gap:12px}.panel-title{font-size:1rem;font-weight:800;display:flex;align-items:center;gap:8px}
-.ladder-head,.model-row{display:grid;grid-template-columns:70px 1fr 80px 120px 130px;gap:8px;align-items:center}.ladder-head{padding:8px;border-bottom:1px solid var(--border-subtle);color:var(--text-tertiary);font-size:.72rem}
-.provider-head{padding:8px 10px;background:var(--bg-elevated);display:flex;gap:8px;align-items:center;font-weight:700}.provider-dot{width:8px;height:8px;border-radius:9999px}
+.zone2{margin-top:12px;display:block}.panel-title{font-size:1rem;font-weight:800;display:flex;align-items:center;gap:8px}
+.ladder-head,.model-row{display:grid;grid-template-columns:1.4fr 70px 90px 90px 90px 90px;gap:8px;align-items:center}.ladder-head{padding:8px;border-bottom:1px solid var(--border-subtle);color:var(--text-tertiary);font-size:.72rem}
+.provider-head{padding:8px 10px;background:var(--bg-elevated);display:flex;gap:8px;align-items:center;font-weight:700;cursor:pointer}.provider-dot{width:8px;height:8px;border-radius:9999px}
+.provider-summary{display:flex;gap:8px;align-items:center;flex-wrap:wrap;flex:1}
 .model-row{padding:6px 8px;border-top:1px solid var(--border-subtle);font-size:.78rem}.model-row.disabled{color:var(--text-tertiary)}
+.disabled-toggle{padding:6px 8px;border-top:1px solid var(--border-subtle);color:var(--text-secondary);cursor:pointer;font-size:.76rem}
+.usage-chip{display:inline-flex;align-items:center;gap:4px;padding:1px 6px;border-radius:4px;background:rgba(148,163,184,.12);font-size:.68rem;color:var(--text-secondary)}
+.usage-inline{display:flex;align-items:center;gap:6px}.usage-mini{width:40px;height:6px;border-radius:999px;background:rgba(148,163,184,.2);overflow:hidden}.usage-mini>span{display:block;height:100%}
 .pill{border:1px solid var(--text-tertiary);border-radius:9999px;padding:3px 8px;background:transparent;color:var(--text-secondary);font-size:.68rem;cursor:pointer}.pill.on{background:rgba(34,197,94,.15);border-color:transparent;color:var(--accent-green)}
 .tag{border-radius:4px;padding:1px 6px;font-size:.68rem;background:rgba(124,58,237,.17);color:#c4b5fd}
 .bar{height:8px;border-radius:9999px;background:rgba(148,163,184,.2);overflow:hidden}.bar>span{display:block;height:100%}
-.quota-row{display:grid;grid-template-columns:70px 1fr auto;gap:6px;align-items:center;margin-top:6px}.quota-val{font-size:.72rem;color:var(--text-secondary)}
+.quota-row{display:grid;grid-template-columns:120px 1fr auto;gap:6px;align-items:center;margin-top:6px}.quota-val{font-size:.72rem;color:var(--text-secondary)}
 .zone3{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
 .filters{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}.filter-pill{border-radius:9999px;padding:4px 9px;border:1px solid var(--border-subtle);background:transparent;color:var(--text-secondary);cursor:pointer;font-size:.72rem}.filter-pill.active{background:var(--bg-elevated);color:var(--text-primary)}
 .decision-list{max-height:430px;overflow:auto;border:1px solid var(--border-subtle);border-radius:8px}.decision-row{padding:7px 9px;border-bottom:1px solid var(--border-subtle);cursor:pointer}.decision-row:hover,.decision-row.active{background:var(--bg-elevated);transition:150ms}
@@ -38,7 +42,7 @@ main{padding:20px;max-width:1500px;margin:0 auto}
 .decision-tags{display:flex;gap:6px;align-items:center}
 .settings-head{display:flex;justify-content:space-between;align-items:center;cursor:pointer}.settings-body{display:none;margin-top:10px}.settings-body.open{display:block}
 .settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px}
-@media (max-width:1024px){.grid5{grid-template-columns:repeat(2,1fr)}.zone2,.zone3{grid-template-columns:1fr}.ladder-head,.model-row{grid-template-columns:58px 1fr 70px 95px 120px}.candidate-row{grid-template-columns:26px 1fr 54px auto}}
+@media (max-width:1024px){.grid5{grid-template-columns:repeat(2,1fr)}.zone3{grid-template-columns:1fr}.ladder-head,.model-row{grid-template-columns:1.3fr 55px 72px 72px 72px 72px}.candidate-row{grid-template-columns:26px 1fr 54px auto}}
 </style>
 </head>
 <body>
@@ -51,15 +55,15 @@ main{padding:20px;max-width:1500px;margin:0 auto}
   <section class="zone2">
     <div class="card" style="display:flex;flex-direction:column">
       <div class="panel-title"><i data-lucide="layers"></i>Model Ladder</div>
-      <div class="panel-sub">Choose which models can be routed and when each was last used.</div>
-      <div class="ladder-head"><div>Provider</div><div>Model</div><div>Score</div><div>Toggle</div><div>Last Used</div></div>
+      <div class="panel-sub">Routing availability and quota utilization in one view.</div>
+      <div class="ladder-head"><div>Model</div><div>Score</div><div>Toggle</div><div>RPD</div><div>RPM</div><div>Last Used</div></div>
       <div id="cortexLadder" ></div>
       <div id="cortexPins" style="margin-top:8px"></div>
     </div>
-    <div class="card">
-      <div class="panel-title"><i data-lucide="gauge"></i>Provider Quotas</div>
-      <div class="panel-sub">Know which providers are near limits before requests fail.</div>
-      <div id="providerQuotaList"></div>
+    <div class="card" style="margin-top:12px">
+      <div class="panel-title"><i data-lucide="shield-check"></i>Subscription Status</div>
+      <div class="panel-sub">Subscription pressure and CLI usage snapshots.</div>
+      <div id="subscriptionStatus"></div>
     </div>
   </section>
 
@@ -95,7 +99,7 @@ main{padding:20px;max-width:1500px;margin:0 auto}
 const providerColors={google:'#4285f4',openai:'#10a37f','openai-codex':'#10a37f',anthropic:'#d97706',groq:'#f97316',cerebras:'#06b6d4',mistral:'#6366f1',nvidia:'#76b900'};
 const taskDims=['reasoning','coding','conversation','instruction'];
 const dims=['tokenCount','reasoning','simple','system','agentic','domain','code','image','context'];
-let state={status:null,decisions:[],usage:null,provider:'all',selected:null,filtered:[],rawExpanded:false};
+let state={status:null,decisions:[],usage:null,modelUsage:{},cliUsage:null,provider:'all',selected:null,filtered:[],rawExpanded:false};
 const $=(s)=>document.querySelector(s); const esc=(s)=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fmtAgo=(iso)=>{if(!iso)return '—'; const d=Math.floor((Date.now()-new Date(iso).getTime())/60000); if(d<1)return 'now'; if(d<60)return `${d}m ago`; const h=Math.floor(d/60); if(h<24)return `${h}h ago`; return `${Math.floor(h/24)}d ago`;};
 const scoreColor=(n)=>n<.3?'var(--accent-green)':(n<=.6?'var(--accent-amber)':'var(--accent-red)');
@@ -104,8 +108,9 @@ const costTierDot=(tier)=>tier==='credits'?'#f59e0b':(tier==='subscription'?'#ef
 const reasonClass=(r)=>({affinity:'reason-affinity',pin:'reason-pin',sticky:'reason-sticky',fallback:'reason-fallback'})[r]||'reason-sticky';
 const domTypeColor=(t)=>({reasoning:'#7c3aed',coding:'#22c55e',conversation:'#3b82f6',instruction:'#f59e0b'})[t]||'#7c3aed';
 
-window._cortexCollapsed=window._cortexCollapsed||{}; window._cortexDefaultCollapsed=true;
+window._cortexCollapsed=window._cortexCollapsed||{}; window._cortexDefaultCollapsed=true; window._cortexDisabledCollapsed=window._cortexDisabledCollapsed||{};
 function toggleProvider(p){const cur=window._cortexDefaultCollapsed?(window._cortexCollapsed[p]!==false):(!!window._cortexCollapsed[p]);window._cortexCollapsed[p]=!cur;renderLadder();}
+function toggleDisabled(p){window._cortexDisabledCollapsed[p]=!(window._cortexDisabledCollapsed[p]===false); renderLadder();}
 function getTaskVector(d){const v=d?.taskVector||d?.task_vector||{}; return {reasoning:Number(v.reasoning??v.reason??0),coding:Number(v.coding??v.code??0),conversation:Number(v.conversation??v.conv??0),instruction:Number(v.instruction??v.instructions??0)};}
 function getModelProfile(d){const v=d?.modelProfile||d?.qualityProfile||d?.modelQualityProfile||{}; return {reasoning:Number(v.reasoning??0),coding:Number(v.coding??0),conversation:Number(v.conversation??0),instruction:Number(v.instruction??0)};}
 function getDominantTaskType(d){const vec=getTaskVector(d); return Object.entries(vec).sort((a,b)=>b[1]-a[1])[0]?.[0]||'reasoning';}
@@ -117,26 +122,40 @@ const shortDim=(d)=>({conversation:'Conv',coding:'Code',reasoning:'Reason',instr
 const titleDim=(d)=>d.charAt(0).toUpperCase()+d.slice(1);
 
 async function load(){
-  const [s,d,u]=await Promise.all([fetch('/api/cortex/status').then(r=>r.json()).catch(()=>({})),fetch('/api/cortex/decisions?limit=50').then(r=>r.json()).catch(()=>({decisions:[]})),fetch('/api/cortex/usage').then(r=>r.json()).catch(()=>({providers:{}}))]);
-  state.status=s; state.decisions=Array.isArray(d.decisions)?d.decisions:[]; state.usage=u;
-  renderStats(); renderLadder(); renderQuotas(); renderFilters(); renderDecisions(); renderScore(); renderSettings();
+  const [s,d,u,cli]=await Promise.all([fetch('/api/cortex/status').then(r=>r.json()).catch(()=>({})),fetch('/api/cortex/decisions?limit=50').then(r=>r.json()).catch(()=>({decisions:[]})),fetch('/api/cortex/usage').then(r=>r.json()).catch(()=>({providers:{}})),fetch('/api/cli-usage').then(r=>r.json()).catch(()=>({}))]);
+  state.status=s; state.decisions=Array.isArray(d.decisions)?d.decisions:[]; state.usage=u; state.modelUsage=s?.providerQuota?.modelUsage||{}; state.cliUsage=cli;
+  renderStats(); renderLadder(); renderSubscriptionStatus(); renderFilters(); renderDecisions(); renderScore(); renderSettings();
 }
 function getModelLastUsedMap(){const m={}; for(const r of state.decisions){const model=String(r.modelSelected||r.selectedModel||r.model||''); const t=r.ts||r.timestamp||r.time; if(model&&t&&(!m[model]||new Date(t)>new Date(m[model])))m[model]=t;} return m;}
+function getUsageForModel(model){const usage=state.modelUsage||{}; return usage[model]||usage[model.split('/').slice(1).join('/')]||usage[model.split('/').pop()]||{};}
+function usageColor(p){return p>80?'var(--accent-red)':(p>=60?'var(--accent-amber)':'var(--accent-green)');}
+function usageInline(used,limit){const pct=limit>0?Math.min(100,(used/limit)*100):0; return `<span class='usage-inline'><span class='usage-mini'><span style='width:${pct}%;background:${usageColor(pct)}'></span></span><span class='mono'>${used}/${limit}</span></span>`;}
+function pctInline(pct){const n=Math.max(0,Math.min(100,Number(pct)||0)); return `<span class='usage-inline'><span class='usage-mini'><span style='width:${n}%;background:${usageColor(n)}'></span></span><span class='mono'>${Math.round(n)}%</span></span>`;}
+function synthesizeProviderUsage(entries){const out={rpdUsed:0,rpdLimit:0,rpmUsed:0,rpmLimit:0,lastUsed:null};
+ for(const e of entries.filter(v=>v.enabled!==false)){const model=String(e.model||''); const mu=getUsageForModel(model); const last=mu.lastUsed||mu.lastRequest; if(last&&(!out.lastUsed||new Date(last)>new Date(out.lastUsed)))out.lastUsed=last;
+  const rpdLimit=Number(mu.rpdLimit??e?.rateLimit?.rpd??0); if(rpdLimit>0){out.rpdLimit+=rpdLimit; out.rpdUsed+=Number(mu.rpd??mu.rpdUsed??0);} const rpmLimit=Number(mu.rpmLimit??e?.rateLimit?.rpm??0); if(rpmLimit>0){out.rpmLimit+=rpmLimit; out.rpmUsed+=Number(mu.rpm??mu.rpmUsed??0);} }
+ return out;}
 function renderStats(){const ladder=Array.isArray(state.status?.ladder)?state.status.ladder:[]; const enabled=ladder.filter(m=>m?.enabled!==false); const pCount=new Set(enabled.map(e=>String(e.provider||e.model?.split('/')[0]||'unknown'))).size; const last20=state.decisions.slice(0,20); const avg=last20.length?last20.reduce((a,b)=>a+(Number(b.score||0)),0)/last20.length:0; const day=Date.now()-86400000; const today=state.decisions.filter(d=>new Date(d.ts||d.timestamp||d.time||0).getTime()>=day).length; const topFull=Object.entries(last20.reduce((a,d)=>{const m=String(d.modelSelected||d.selectedModel||d.model||'unknown'); a[m]=(a[m]||0)+1; return a;},{})).sort((a,b)=>b[1]-a[1])[0]?.[0]||'—'; const top=topFull.includes('/')?topFull.split('/').slice(1).join('/'):topFull;
   const cards=[['Active Models',enabled.length,'Models available for routing'],['Providers',pCount,'Connected inference providers'],['Avg Score',avg.toFixed(2),'Request complexity (0-1)'],['Routing Today',today,'Requests routed by Cortex'],['Top Model',top,'Most frequently selected'],['Workload Profile',workloadProfileLabel(),'Primary task type from last 50 decisions']];
   $('#statCards').innerHTML=cards.map(([l,v,s])=>`<div class='card'><div class='stat-label'>${l}</div><div class='stat-value'>${v}</div><div class='stat-sub'>${s}</div></div>`).join('');
 }
 function renderLadder(){const ladder=Array.isArray(state.status?.ladder)?state.status.ladder:[]; const by={}; ladder.forEach(e=>{const p=String(e.provider||e.model?.split('/')[0]||'unknown'); (by[p]=by[p]||[]).push(e);}); const lastUsed=getModelLastUsedMap();
-  $('#cortexLadder').innerHTML=Object.keys(by).sort().map(p=>{const en=by[p].filter(e=>e.enabled!==false).length;const col=window._cortexDefaultCollapsed?(window._cortexCollapsed[p]!==false):(!!window._cortexCollapsed[p]);return `<div><div class='provider-head' onclick="toggleProvider('${p}')" style='cursor:pointer'><span class='provider-dot' style='background:${providerColors[p]||"#64748b"}'></span>${p}<span class='tag'>${en}/${by[p].length}</span><span class='mono' style='margin-left:auto;font-size:.7rem;color:var(--text-tertiary)'>${col?'▸':'▾'}</span></div>${col?'':by[p].map(e=>{const model=String(e.model||''); const tier=String(e.costTier||'free'); return `<div class='model-row ${e.enabled===false?'disabled':''}'><div>${p}</div><div>${esc(model)}</div><div class='mono'>${Number(e.minScore||0).toFixed(2)}</div><div><button class='pill ${e.enabled!==false?'on':''}' onclick="toggleModel('${encodeURIComponent(model)}')">${e.enabled!==false?'ON':'OFF'}</button><span class='cost-dot' style='background:${costTierDot(tier)}'></span></div><div class='model-last'>${fmtAgo(lastUsed[model])}</div></div>`;}).join('')}</div>`;}).join('');
+  $('#cortexLadder').innerHTML=Object.keys(by).sort().map(p=>{const rows=by[p]; const enabled=rows.filter(e=>e.enabled!==false); const disabled=rows.filter(e=>e.enabled===false); const summary=synthesizeProviderUsage(rows); const col=window._cortexDefaultCollapsed?(window._cortexCollapsed[p]!==false):(!!window._cortexCollapsed[p]); const isSub=['openai','openai-codex','anthropic'].includes(p);
+    const summaryBits=[`<span class='tag mono'>${enabled.length}/${rows.length}</span>`,isSub?"<span class='usage-chip mono'>[subscription]</span>":'',summary.rpdLimit>0?`<span class='usage-chip mono'>[RPD ${summary.rpdUsed}/${summary.rpdLimit}]</span>`:'',summary.rpmLimit>0?`<span class='usage-chip mono'>[RPM ${summary.rpmUsed}/${summary.rpmLimit}]</span>`:'',`<span class='usage-chip mono'>Last: ${fmtAgo(summary.lastUsed)}</span>`].filter(Boolean).join('');
+    const models=enabled.map(e=>{const model=String(e.model||''); const tier=String(e.costTier||'free'); const mu=getUsageForModel(model); const rpdLimit=Number(mu.rpdLimit??e?.rateLimit?.rpd??0); const rpmLimit=Number(mu.rpmLimit??e?.rateLimit?.rpm??0); const rpdUsed=Number(mu.rpd??mu.rpdUsed??0); const rpmUsed=Number(mu.rpm??mu.rpmUsed??0); const subBadge=(rpdLimit<=0&&rpmLimit<=0)?"<span class='usage-chip mono'>[sub]</span>":'';
+      return `<div class='model-row'><div>${esc(model)}</div><div class='mono'>${Number(e.minScore||0).toFixed(2)}</div><div><button class='pill ${e.enabled!==false?'on':''}' onclick="toggleModel('${encodeURIComponent(model)}')">${e.enabled!==false?'ON':'OFF'}</button><span class='cost-dot' style='background:${costTierDot(tier)}'></span></div><div>${rpdLimit>0?usageInline(rpdUsed,rpdLimit):subBadge||'—'}</div><div>${rpmLimit>0?usageInline(rpmUsed,rpmLimit):subBadge||'—'}</div><div class='model-last'>${fmtAgo(mu.lastUsed||lastUsed[model])}</div></div>`;}).join('');
+    const dcol=window._cortexDisabledCollapsed[p]!==false;
+    const disabledBlock=disabled.length?`<div class='disabled-toggle mono' onclick="event.stopPropagation();toggleDisabled('${p}')">${disabled.length} disabled ${dcol?'▸':'▾'}</div>${dcol?'':disabled.map(e=>`<div class='model-row disabled'><div>${esc(String(e.model||''))}</div><div class='mono'>${Number(e.minScore||0).toFixed(2)}</div><div><button class='pill' onclick="toggleModel('${encodeURIComponent(String(e.model||''))}')">OFF</button></div><div>—</div><div>—</div><div>—</div></div>`).join('')}`:'';
+    return `<div><div class='provider-head' onclick="toggleProvider('${p}')"><span class='provider-dot' style='background:${providerColors[p]||"#64748b"}'></span><b>${p}</b><div class='provider-summary'>${summaryBits}</div><span class='mono' style='margin-left:auto;font-size:.7rem;color:var(--text-tertiary)'>${col?'▸':'▾'}</span></div>${col?'':models+disabledBlock}</div>`;
+  }).join('');
   const pins=state.status?.agentPins||{}; $('#cortexPins').innerHTML=Object.keys(pins).length?Object.entries(pins).map(([a,m])=>`<span class='tag'>${esc(a)} → ${esc(m)}</span>`).join(' '):"<span class='panel-sub'>No agent pins configured.</span>";
 }
-function quotaBar(v,l){const p=l>0?Math.min(100,(v/l)*100):0; return `<div class='bar'><span style='width:${p}%;background:${p>80?'var(--accent-red)':(p>60?'var(--accent-amber)':'var(--accent-green)')}'></span></div>`;}
-function renderQuotas(){const usage=state.usage?.providers||{}; const live=state.status?.providerQuota||state.status?.quota||{}; const order=['google','groq','cerebras','mistral','nvidia','openai','anthropic']; $('#providerQuotaList').innerHTML=order.map(k=>{const q=usage[k]||{}; const l=live[k]||{}; const n=k[0].toUpperCase()+k.slice(1);
- if(k==='anthropic'&&Object.keys(l).length){const h5=Number(l.utilization5h??l.fiveHourUtilization??0); const d7=Number(l.utilization7d??l.sevenDayUtilization??0); return `<div class='card' style='margin-top:8px'><div class='panel-title'><span class='provider-dot' style='background:${providerColors[k]||"#64748b"}'></span>${n}<span class='pill'>${l.status||'normal'}</span></div><div class='quota-row'><div>5h util</div><div>${quotaBar(h5,1)}</div><div class='quota-val mono'>${Math.round(h5*100)}%</div></div><div class='quota-row'><div>7d util</div><div>${quotaBar(d7,1)}</div><div class='quota-val mono'>${Math.round(d7*100)}%</div></div><div class='panel-sub'>Last probe: ${fmtAgo(l.lastProbe||l.lastUpdated)}</div></div>`;}
- if(k==='openai'&&Object.keys(l).length){return `<div class='card' style='margin-top:8px'><div class='panel-title'><span class='provider-dot' style='background:${providerColors[k]||"#64748b"}'></span>${n}<span class='pill'>${l.status||'normal'}</span></div><div class='quota-row'><div style='grid-column:1/3'>Remaining requests: <span class='mono'>${Number(l.remainingRequests??0).toLocaleString()}</span></div></div><div class='quota-row'><div style='grid-column:1/3'>Remaining tokens: <span class='mono'>${Number(l.remainingTokens??0).toLocaleString()}</span></div></div><div class='quota-row'><div style='grid-column:1/3'>Reset: <span class='mono'>${esc(l.resetIn||'—')}</span></div></div><div class='panel-sub'>Last probe: ${fmtAgo(l.lastProbe||l.lastUpdated)}</div></div>`;}
- if(!Object.keys(q).length) return `<div class='card' style='margin-top:8px'><div class='panel-title'><span class='provider-dot' style='background:${providerColors[k]||"#64748b"}'></span>${n}</div><div class='panel-sub' style='color:var(--text-tertiary)'>No usage data yet</div></div>`;
- let rows=''; if(q.rpmLimit)rows+=`<div class='quota-row'><div>RPM</div><div>${quotaBar(q.rpm||0,q.rpmLimit)}</div><div class='quota-val mono'>${q.rpm||0}/${q.rpmLimit}</div></div>`; if(q.rpdLimit)rows+=`<div class='quota-row'><div>RPD</div><div>${quotaBar(q.rpd||0,q.rpdLimit)}</div><div class='quota-val mono'>${q.rpd||0}/${q.rpdLimit}</div></div>`; if(q.tpmLimit)rows+=`<div class='quota-row'><div>TPM</div><div>${quotaBar(q.tpm||0,q.tpmLimit)}</div><div class='quota-val mono'>${q.tpm||0}/${q.tpmLimit}</div></div>`;
- return `<div class='card' style='margin-top:8px'><div class='panel-title'><span class='provider-dot' style='background:${providerColors[k]||"#64748b"}'></span>${n}<span class='pill'>${q.status||'normal'}</span></div>${rows}<div class='panel-sub'>Last request: ${fmtAgo(q.lastRequest)}</div></div>`;}).join('');}
+function renderSubscriptionStatus(){const anth=state.status?.providerQuota?.anthropic||{}; const cli=state.cliUsage||{}; const codex=cli?.codex||cli?.openai||{};
+ const resetRaw=anth.reset5h||anth.resetAt||anth.reset_at; const reset=resetRaw?fmtAgo(resetRaw).replace('ago','').trim():'No data';
+ const a5=anth.utilization5h==null?null:Number(anth.utilization5h)*100; const a7=anth.utilization7d==null?null:Number(anth.utilization7d)*100;
+ const cSession=codex.session_pct==null?null:Number(codex.session_pct); const cWeekly=codex.weekly_pct==null?null:Number(codex.weekly_pct);
+ $('#subscriptionStatus').innerHTML=`<div class='quota-row'><div><span class='provider-dot' style='background:${providerColors.anthropic}'></span> Anthropic <span class='pill'>pressure</span></div><div>${a5==null?"<span class='panel-sub'>No data</span>":`5h: ${pctInline(a5)} 7d: ${pctInline(a7??0)}`}</div><div class='quota-val mono'>Resets: ${reset}</div></div><div class='quota-row'><div><span class='provider-dot' style='background:${providerColors.openai}'></span> OpenAI (Codex)</div><div>${cSession==null?"<span class='panel-sub'>No data</span>":`Session: ${pctInline(cSession)} Weekly: ${pctInline(cWeekly??0)}`}</div><div class='quota-val mono'>CLI usage</div></div>`;
+}
 function renderFilters(){const providers=['all',...new Set(state.decisions.map(d=>String(d.provider||(d.modelSelected||d.selectedModel||d.model||'').split('/')[0]||'unknown')))].sort(); $('#decisionFilters').innerHTML=providers.map(p=>`<button class='filter-pill ${state.provider===p?'active':''}' onclick="state.provider='${p}';renderFilters();renderDecisions()">${p==='all'?'All':`<span class='provider-dot' style='display:inline-block;background:${providerColors[p]||'#64748b'}'></span> ${p}`}</button>`).join('');}
 function renderDecisions(){const list=state.decisions.filter(d=>state.provider==='all'||String(d.provider||(d.modelSelected||d.selectedModel||d.model||'').split('/')[0]||'unknown')===state.provider); $('#decisionList').innerHTML=list.map((d,i)=>{const model=String(d.modelSelected||d.selectedModel||d.model||'unknown'); const s=Number(d.score||0); const t=d.ts||d.timestamp||d.time||''; const provider=String(d.provider||model.split('/')[0]||'unknown'); const reason=String(d.selectionReason||'affinity'); const taskType=getDominantTaskType(d); return `<div class='decision-row ${state.selected===d?'active':''}' onclick='selectDecision(${i})'><div class='decision-top'><div class='decision-time'>${fmtAgo(t)}</div><div><span class='tag'>${provider}</span></div><div>${esc(model)}</div><div class='decision-tags'><span class='mono'>${s.toFixed(2)}</span><span class='tag ${reasonClass(reason)}'>${esc(reason)}</span></div></div><div class='score-strip'><span style='width:${Math.min(100,s*100)}%;background:${domTypeColor(taskType)}'></span></div></div>`;}).join('')||"<div class='panel-sub' style='padding:10px'>No decisions.</div>"; state.filtered=list;}
 function selectDecision(i){state.selected=state.filtered[i]; renderDecisions(); renderScore();}
