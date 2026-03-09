@@ -5116,7 +5116,7 @@ const server = createServer((req, res) => {
     try {
       let quotaState = null;
       try {
-        const qPath = join(CORTEX_DIR, 'quota-state.json');
+        const qPath = join(OPENCLAW_DIR, 'workspace/cortex/quota-state.json');
         if (existsSync(qPath)) quotaState = JSON.parse(readFileSync(qPath, 'utf8'));
       } catch { /* ignore */ }
       const config = readCortexConfig();
