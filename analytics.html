@@ -569,19 +569,33 @@
 @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 .fade-up { animation: fadeUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
 
-.cortex-ladder-list { display: grid; gap: 8px; margin-top: 10px; }
-.cortex-ladder-item { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 8px 10px; }
-.cortex-ladder-item.disabled { opacity: 0.6; }
-.cortex-model-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--text-secondary); }
-.cortex-model-badge .dot { width: 8px; height: 8px; border-radius: 999px; display: inline-block; }
-.cortex-score-bar { height: 6px; background: color-mix(in srgb, var(--text-secondary) 20%, transparent); border-radius: 999px; overflow: hidden; margin-top: 4px; }
-.cortex-score-bar > span { display: block; height: 100%; background: var(--accent); }
-.cortex-decision-row { border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 8px 10px; margin-bottom: 8px; background: var(--bg-card); }
-.cortex-decision-row details { margin-top: 6px; color: var(--text-secondary); font-size: 0.78rem; }
+
+.cortex-ladder-list { margin-top: 8px; max-height: 400px; overflow: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); }
+.cortex-provider-group { border-bottom: 1px solid var(--border-subtle); }
+.cortex-provider-header { position: sticky; top: 0; z-index: 1; display:flex; align-items:center; gap:8px; min-height:30px; padding: 6px 10px; background: color-mix(in srgb, var(--bg-card) 82%, black); font-weight: 700; }
+.cortex-provider-dot { width: 8px; height: 8px; border-radius: 999px; display: inline-block; }
+.cortex-provider-meta { margin-left: auto; font-size: 0.72rem; color: var(--text-secondary); }
+.cortex-provider-toggle { font-size: 0.75rem; color: var(--text-secondary); }
+.cortex-model-row { display:grid; grid-template-columns: 48px minmax(200px, 1fr) auto 46px; align-items:center; gap:8px; min-height:28px; padding: 2px 10px; border-top: 1px solid color-mix(in srgb, var(--border-subtle) 70%, transparent); font-size: 0.76rem; }
+.cortex-model-row.disabled { color: var(--text-secondary); }
+.cortex-toggle-pill { border: 1px solid var(--border-subtle); border-radius: 999px; font-size: 0.66rem; font-weight: 700; line-height: 1; padding: 4px 6px; background: transparent; color: var(--text-secondary); }
+.cortex-toggle-pill.on { color: var(--success); border-color: color-mix(in srgb, var(--success) 40%, var(--border-subtle)); }
+.cortex-minscore-badge { font-size: 0.68rem; color: var(--text-secondary); }
+.cortex-quality { width: 40px; height: 6px; border-radius: 999px; background: color-mix(in srgb, var(--text-secondary) 25%, transparent); overflow: hidden; }
+.cortex-quality > span { display: block; height: 100%; }
+.cortex-disabled-summary { cursor: pointer; color: var(--text-secondary); font-size: 0.74rem; padding: 4px 10px 6px 66px; border-top: 1px dashed var(--border-subtle); }
+.cortex-pins-inline { margin-top: 8px; font-size: 0.78rem; color: var(--text-secondary); display:flex; flex-wrap:wrap; gap:8px; }
+.cortex-pin-chip { border:1px solid var(--border-subtle); border-radius:999px; padding:2px 8px; }
+.cortex-decision-list { border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); overflow: hidden; }
+.cortex-decision-row { display:flex; align-items:center; gap:8px; min-height:24px; padding: 2px 8px; border-bottom:1px solid var(--border-subtle); font-size:0.74rem; cursor:pointer; }
+.cortex-decision-score { width:60px; height:6px; border-radius:999px; background: color-mix(in srgb, var(--text-secondary) 24%, transparent); overflow:hidden; }
+.cortex-decision-score > span { display:block; height:100%; }
+.cortex-task-badge { display:inline-flex; align-items:center; padding:1px 6px; border-radius:999px; background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.cortex-reason-badge { margin-left:auto; color: var(--text-secondary); font-size:0.7rem; }
+.cortex-decision-detail { display:none; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:4px 10px; padding:6px 8px 8px 8px; font-size:0.72rem; color:var(--text-secondary); border-bottom:1px solid var(--border-subtle); }
+.cortex-decision-detail.open { display:grid; }
 .cortex-pin-select { background: transparent; color: var(--text-primary); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 4px 6px; }
-.cortex-badge-enabled { color: var(--success); }
-.cortex-badge-disabled { color: var(--error); }
-.cortex-task-badge { display:inline-flex; align-items:center; padding:2px 6px; border-radius:999px; background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--text-primary); font-size:0.72rem; }
+
 
 </style>
 </head>
@@ -703,10 +717,8 @@
         <div class="chart-title"><i data-lucide="brain"></i> Cortex Model Router</div>
         <div class="chart-subtitle" id="cortexSchedulePolicy">—</div>
       </div>
-      <div id="cortexLadder" class="cortex-ladder-list">
-        <div class="loading-state"><div class="icon">⏳</div><p>Loading...</p></div>
-      </div>
-      <div id="cortexPins" style="margin-top:8px; font-size:0.8rem; color:var(--text-secondary)"></div>
+      <div id="cortexLadder" class="cortex-ladder-list"><div class="loading-state"><p>Loading…</p></div></div>
+      <div id="cortexPins" class="cortex-pins-inline"></div>
     </div>
   </section>
 
@@ -975,6 +987,8 @@ let limitsData = [];
 let budgetData = {};
 let cronHealthData = [];
 let cortexData = { status: null, decisions: [] };
+let cortexDisabledExpanded = {};
+let cortexDecisionExpanded = {};
 let costMode = 'daily';
 let zone2AgentFilter = 'all';
 let quotaInterval = null;
@@ -3093,6 +3107,8 @@ async function loadCortexData() {
     cortexData.status = statusRes.ok ? await statusRes.json() : null;
     const decisionsPayload = decisionsRes.ok ? await decisionsRes.json() : { decisions: [] };
     cortexData.decisions = Array.isArray(decisionsPayload?.decisions) ? decisionsPayload.decisions : [];
+    const providers = new Set((Array.isArray(cortexData?.status?.ladder) ? cortexData.status.ladder : []).map((e) => String(e?.provider || String(e?.model || '').split('/')[0] || 'unknown')));
+    cortexDisabledExpanded = Object.fromEntries(Object.entries(cortexDisabledExpanded).filter(([p]) => providers.has(p)));
     renderCortexLadder();
     renderCortexPins();
     renderCortexDecisions();
@@ -3106,8 +3122,13 @@ async function loadCortexData() {
 function cortexProviderColor(provider) {
   const key = String(provider || '').toLowerCase();
   if (key === 'google') return '#4285f4';
-  if (key === 'openai') return '#10a37f';
+  if (key === 'openai' || key === 'openai-codex') return '#10a37f';
   if (key === 'anthropic') return '#d97706';
+  if (key === 'moonshot') return '#6366f1';
+  if (key === 'qwen') return '#06b6d4';
+  if (key === 'openrouter') return '#f43f5e';
+  if (key === 'groq') return '#f97316';
+  if (key === 'nvidia') return '#76b900';
   return 'var(--text-secondary)';
 }
 
@@ -3119,31 +3140,55 @@ function renderCortexLadder() {
   subtitle.textContent = status?.schedule?.policy || status?.schedule?.mode || 'No schedule policy';
   const ladder = Array.isArray(status?.ladder) ? status.ladder : [];
   if (!ladder.length) {
-    root.innerHTML = '<div class="empty-state"><div class="icon">🧠</div><p>Cortex ladder unavailable</p></div>';
+    root.innerHTML = '<div style="padding:8px;color:var(--text-secondary)">Cortex ladder unavailable</div>';
     return;
   }
-  root.innerHTML = ladder.map((entry) => {
-    const enabled = entry?.enabled !== false;
-    const deprecated = Boolean(entry?.deprecated);
+  const groups = {};
+  for (const entry of ladder) {
     const model = String(entry?.model || 'unknown/model');
     const provider = String(entry?.provider || model.split('/')[0] || 'unknown');
-    const minScore = Number(entry?.minScore ?? 0);
-    const profile = Array.isArray(entry?.qualityProfile) ? entry.qualityProfile : [];
-    const profileAvg = profile.length ? profile.reduce((a, b) => a + Number(b || 0), 0) / profile.length : minScore;
-    const modelLabel = deprecated ? `<s>${escapeHtml(model)}</s>` : escapeHtml(model);
-    return `
-      <div class="cortex-ladder-item ${enabled ? '' : 'disabled'}">
-        <button class="mini-btn ${enabled ? 'active' : ''}" onclick="toggleCortexModel('${encodeURIComponent(model)}')">${enabled ? 'Enabled' : 'Disabled'}</button>
-        <div>
-          <div class="cortex-model-badge"><span class="dot" style="background:${cortexProviderColor(provider)}"></span>${escapeHtml(provider)}</div>
-          <div style="font-weight:600; color:var(--text-primary)">${modelLabel}</div>
-          <div style="font-size:0.75rem; color:var(--text-secondary)">minScore: ${minScore.toFixed(2)}</div>
-          <div class="cortex-score-bar"><span style="width:${Math.max(0, Math.min(profileAvg, 1)) * 100}%"></span></div>
-        </div>
-        <div class="${enabled ? 'cortex-badge-enabled' : 'cortex-badge-disabled'}">${enabled ? '●' : '○'}</div>
+    if (!groups[provider]) groups[provider] = [];
+    groups[provider].push({ ...entry, model, provider, minScore: Number(entry?.minScore ?? 0), enabled: entry?.enabled !== false });
+  }
+  const providers = Object.keys(groups).sort((a, b) => {
+    const aEnabled = groups[a].some((e) => e.enabled);
+    const bEnabled = groups[b].some((e) => e.enabled);
+    if (aEnabled !== bEnabled) return aEnabled ? -1 : 1;
+    return a.localeCompare(b);
+  });
+  root.innerHTML = providers.map((provider) => {
+    const rows = groups[provider].sort((a, b) => a.minScore - b.minScore);
+    const enabledRows = rows.filter((r) => r.enabled);
+    const disabledRows = rows.filter((r) => !r.enabled);
+    const expanded = Boolean(cortexDisabledExpanded[provider]);
+    const makeRow = (row, disabled = false) => {
+      const profile = Array.isArray(row?.qualityProfile) ? row.qualityProfile : [];
+      const profileAvg = profile.length ? profile.reduce((a, b) => a + Number(b || 0), 0) / profile.length : row.minScore;
+      return `<div class="cortex-model-row ${disabled ? 'disabled' : ''}">
+        <button class="cortex-toggle-pill ${row.enabled ? 'on' : ''}" onclick="toggleCortexModel('${encodeURIComponent(row.model)}')">${row.enabled ? 'ON' : 'OFF'}</button>
+        <span>${escapeHtml(row.model)}</span>
+        <span class="cortex-minscore-badge">minScore: ${Number(row.minScore || 0).toFixed(2)}</span>
+        <span class="cortex-quality"><span style="width:${Math.max(0, Math.min(profileAvg, 1)) * 100}%;background:${cortexScoreColor(profileAvg)}"></span></span>
+      </div>`;
+    };
+    return `<div class="cortex-provider-group">
+      <div class="cortex-provider-header">
+        <span class="cortex-provider-dot" style="background:${cortexProviderColor(provider)}"></span>
+        <span>${escapeHtml(provider)}</span>
+        <span class="cortex-provider-meta">${enabledRows.length}/${rows.length}</span>
+        <span class="cortex-provider-toggle">${expanded ? '▾' : '▸'}</span>
       </div>
-    `;
+      ${enabledRows.map((row) => makeRow(row)).join('')}
+      ${disabledRows.length ? `<div class="cortex-disabled-summary" onclick="toggleCortexProviderDisabled('${encodeURIComponent(provider)}')">${disabledRows.length} disabled ${expanded ? '▾' : '▸'}</div>` : ''}
+      ${expanded ? disabledRows.map((row) => makeRow(row, true)).join('') : ''}
+    </div>`;
   }).join('');
+}
+
+function toggleCortexProviderDisabled(encodedProvider) {
+  const provider = decodeURIComponent(encodedProvider);
+  cortexDisabledExpanded[provider] = !cortexDisabledExpanded[provider];
+  renderCortexLadder();
 }
 
 function renderCortexPins() {
@@ -3152,10 +3197,10 @@ function renderCortexPins() {
   const pins = cortexData?.status?.agentPins || {};
   const entries = Object.entries(pins);
   if (!entries.length) {
-    root.textContent = 'Agent Pins: Auto (Router)';
+    root.innerHTML = '<span class="cortex-pin-chip">Auto (Router)</span>';
     return;
   }
-  root.innerHTML = `Agent Pins: ${entries.map(([agent, model]) => `${escapeHtml(agent)} → ${escapeHtml(model || 'Auto (Router)')}`).join(' · ')}`;
+  root.innerHTML = entries.map(([agent, model]) => `<span class="cortex-pin-chip">${escapeHtml(agent)} → ${escapeHtml(model || 'Auto (Router)')}</span>`).join('');
 }
 
 function cortexScoreColor(score) {
@@ -3169,105 +3214,96 @@ function renderCortexDecisions() {
   if (!root) return;
   const decisions = Array.isArray(cortexData?.decisions) ? cortexData.decisions : [];
   if (!decisions.length) {
-    root.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>No routing decisions yet</p></div>';
+    root.innerHTML = '<div style="padding:8px;color:var(--text-secondary)">No routing decisions yet</div>';
     return;
   }
-  root.innerHTML = decisions.map((d) => {
+  const dims = ['tokenCount', 'reasoning', 'simple', 'system', 'agentic', 'domain', 'code', 'image', 'context'];
+  root.className = 'cortex-decision-list';
+  root.innerHTML = decisions.map((d, idx) => {
     const tsRaw = d?.timestamp || d?.ts || d?.createdAt || d?.time || null;
     const tsMs = typeof tsRaw === 'number' ? (tsRaw > 1e12 ? tsRaw : tsRaw * 1000) : Date.parse(tsRaw || '') || 0;
     const score = Number(d?.score ?? d?.totalScore ?? 0);
     const model = String(d?.modelSelected || d?.selectedModel || d?.model || 'unknown/model');
     const taskType = String(d?.taskType || d?.task || 'unknown');
-    const reason = String(d?.selectionReason || d?.reason || 'n/a');
+    const reason = String(d?.selectionReason || d?.reason || 'ladder');
     const agentId = String(d?.agentId || d?.agent || 'unknown');
-    const breakdown = d?.scoreBreakdown && typeof d.scoreBreakdown === 'object' ? d.scores : (d?.scores && typeof d.scores === 'object' ? d.dimensions : {});
-    return `
-      <div class="cortex-decision-row">
-        <div style="display:flex; justify-content:space-between; gap:8px; align-items:center">
-          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center">
-            <span style="color:var(--text-secondary); font-size:0.75rem">${escapeHtml(formatRelativeTime(tsMs))}</span>
-            <span>${escapeHtml(agentId)}</span>
-            <span class="cortex-task-badge">${escapeHtml(taskType)}</span>
-            <span style="color:var(--text-primary)">${escapeHtml(model)}</span>
-          </div>
-          <span style="font-size:0.75rem;color:var(--text-secondary)">${escapeHtml(reason)}</span>
-        </div>
-        <div class="cortex-score-bar"><span style="width:${Math.max(0, Math.min(score, 1)) * 100}%; background:${cortexScoreColor(score)}"></span></div>
-        <details>
-          <summary>Score breakdown</summary>
-          <pre style="white-space:pre-wrap; margin:6px 0 0">${escapeHtml(JSON.stringify(breakdown, null, 2))}</pre>
-        </details>
-      </div>
-    `;
+    const raw = (d?.scoreBreakdown && typeof d.scoreBreakdown === 'object') ? d.scoreBreakdown : ((d?.scores && typeof d.scores === 'object') ? d.scores : {});
+    const details = dims.map((k) => `<div>${k}: ${Number(raw[k] ?? 0).toFixed(2)}</div>`).join('');
+    const open = Boolean(cortexDecisionExpanded[idx]);
+    return `<div class="cortex-decision-row" onclick="toggleCortexDecisionDetail(${idx})">
+      <span style="color:var(--text-secondary)">${escapeHtml(formatRelativeTime(tsMs))}</span>
+      <span class="cortex-task-badge" style="background:color-mix(in srgb, ${agentIdToHslColor(agentId)} 30%, transparent)">${escapeHtml(agentId)}</span>
+      <span class="cortex-decision-score"><span style="width:${Math.max(0, Math.min(score, 1)) * 100}%; background:${cortexScoreColor(score)}"></span></span>
+      <span style="width:32px;color:var(--text-secondary)">${score.toFixed(2)}</span>
+      <span class="cortex-task-badge">${escapeHtml(taskType)}</span>
+      <span style="min-width:180px">${escapeHtml(model)}</span>
+      <span class="cortex-reason-badge">${escapeHtml(reason)}</span>
+    </div><div class="cortex-decision-detail ${open ? 'open' : ''}">${details}</div>`;
   }).join('');
+}
+
+function toggleCortexDecisionDetail(index) {
+  cortexDecisionExpanded[index] = !cortexDecisionExpanded[index];
+  renderCortexDecisions();
 }
 
 async function toggleCortexModel(encodedModel) {
   try {
     const res = await fetch(`/api/cortex/ladder/${encodedModel}/toggle`, { method: 'PUT', credentials: 'same-origin' });
-    if (!res.ok) throw new Error('toggle_failed');
+    if (!res.ok) throw new Error(`Toggle failed: ${res.status}`);
     await loadCortexData();
-    if (typeof showToast === 'function') showToast('Cortex model updated', 'success');
   } catch (e) {
-    console.error('Failed toggling model:', e);
-    if (typeof showToast === 'function') showToast('Failed to toggle model', 'error');
+    console.error('Failed toggling cortex model:', e);
   }
 }
 
 function renderCortexSettings() {
-  const status = cortexData?.status;
   const weightsRoot = $('#settingsCortexWeights');
   const ladderRoot = $('#settingsCortexLadder');
   const pinsRoot = $('#settingsCortexPins');
   const scheduleRoot = $('#settingsCortexSchedule');
   if (!weightsRoot || !ladderRoot || !pinsRoot || !scheduleRoot) return;
-  if (!status) {
-    const empty = '<div class="empty-state"><div class="icon">🧠</div><p>Cortex not configured</p></div>';
-    weightsRoot.innerHTML = empty;
-    ladderRoot.innerHTML = empty;
-    pinsRoot.innerHTML = empty;
-    scheduleRoot.innerHTML = empty;
-    return;
-  }
-  const weights = status?.scoring?.weights || {};
+  const status = cortexData?.status || {};
+  const scoring = status?.scoring || {};
+  const weights = scoring?.weights || {};
   const ladder = Array.isArray(status?.ladder) ? status.ladder : [];
-  const enabledModels = ladder.filter(m => m?.enabled !== false).map(m => m.model).filter(Boolean);
   const pins = status?.agentPins || {};
   const schedule = status?.schedule || {};
   const quotaThresholds = status?.quotaThresholds || {};
 
-  weightsRoot.innerHTML = `
-    <div class="settings-section-title">Cortex Scoring Weights</div>
-    ${Object.entries(weights).map(([k, v]) => `<label style="display:grid; grid-template-columns:140px 1fr 44px; gap:8px; align-items:center; margin-bottom:8px;"><span>${escapeHtml(k)}</span><input class="settings-input" type="range" min="0" max="1" step="0.01" data-cortex-weight="${escapeHtml(k)}" value="${Number(v) || 0}"><span>${Number(v).toFixed(2)}</span></label>`).join('')}
-    <button class="settings-save-btn" onclick="saveCortexWeights()">Save Weights</button>
-  `;
+  const weightKeys = ['tokenCount','reasoning','simple','system','agentic','domain','code','image','context'];
+  weightsRoot.innerHTML = `<div class="settings-section-title">Cortex Scoring Weights</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px">${weightKeys.map((k) => `<label style="display:grid;grid-template-columns:90px 1fr auto;align-items:center;gap:8px;min-height:32px"><span>${escapeHtml(k)}</span><input type="range" min="0" max="1" step="0.01" data-cortex-weight="${k}" value="${Number(weights[k] ?? 0)}" oninput="this.nextElementSibling.textContent=Number(this.value).toFixed(2)"><span style="font-size:0.72rem;color:var(--text-secondary)">${Number(weights[k] ?? 0).toFixed(2)}</span></label>`).join('')}</div>
+    <button class="settings-save-btn" onclick="saveCortexWeights()">Save Weights</button>`;
 
-  ladderRoot.innerHTML = `
-    <div class="settings-section-title">Cortex Model Ladder</div>
-    ${ladder.map((entry, idx) => `<div style="display:grid;grid-template-columns:auto 1fr 90px 90px;gap:8px;align-items:center;margin-bottom:8px"><input type="checkbox" data-cortex-ladder-enabled="${idx}" ${entry?.enabled !== false ? 'checked' : ''}><input class="settings-input" data-cortex-ladder-model="${idx}" value="${escapeHtml(entry?.model || '')}"><input class="settings-input" type="number" min="0" max="1" step="0.01" data-cortex-ladder-minscore="${idx}" value="${Number(entry?.minScore ?? 0)}"><input class="settings-input" type="number" min="1" step="1" data-cortex-ladder-context="${idx}" value="${Number(entry?.contextWindow ?? 0)}"></div>`).join('')}
-    <div style="display:grid;grid-template-columns:120px 1fr 90px 90px auto;gap:8px;align-items:center;margin-top:10px">
-      <select id="cortexAddProvider" class="cortex-pin-select"><option value="google">google</option><option value="openai">openai</option><option value="anthropic">anthropic</option></select>
-      <input id="cortexAddModel" class="settings-input" placeholder="model id">
+  const grouped = ladder.reduce((acc, entry, index) => {
+    const model = String(entry?.model || '');
+    const provider = String(entry?.provider || model.split('/')[0] || 'unknown');
+    if (!acc[provider]) acc[provider] = [];
+    acc[provider].push({ entry, index, provider });
+    return acc;
+  }, {});
+  ladderRoot.innerHTML = `<div class="settings-section-title">Cortex Model Ladder</div>
+    ${Object.keys(grouped).sort().map((provider) => `<div style="margin-bottom:8px"><div style="font-size:0.75rem;font-weight:700;color:var(--text-secondary);padding:4px 6px;background:color-mix(in srgb, var(--bg-card) 80%, black);border:1px solid var(--border-subtle);border-radius:var(--radius-sm)">${escapeHtml(provider)}</div>
+      ${grouped[provider].map(({ entry, index }) => `<div style="display:grid;grid-template-columns:24px minmax(200px,1fr) 110px 70px 90px;gap:8px;align-items:center;margin-top:4px"><input type="checkbox" data-cortex-ladder-enabled="${index}" ${entry?.enabled !== false ? 'checked' : ''}><input class="settings-input" data-cortex-ladder-model="${index}" value="${escapeHtml(entry?.model || '')}" style="min-width:200px"><input class="settings-input" value="${escapeHtml(String(provider))}" disabled><input class="settings-input" type="number" min="0" max="1" step="0.01" data-cortex-ladder-minscore="${index}" value="${Number(entry?.minScore ?? 0)}"><input class="settings-input" type="number" min="1" step="1" data-cortex-ladder-context="${index}" value="${Number(entry?.contextWindow ?? 0)}"></div>`).join('')}
+    </div>`).join('')}
+    <div style="display:grid;grid-template-columns:120px minmax(200px,1fr) 70px 90px auto;gap:8px;align-items:center;margin-top:8px">
+      <input id="cortexAddProvider" class="settings-input" placeholder="provider">
+      <input id="cortexAddModel" class="settings-input" placeholder="provider/model or model id">
       <input id="cortexAddMinScore" class="settings-input" type="number" min="0" max="1" step="0.01" value="0">
       <input id="cortexAddContext" class="settings-input" type="number" min="1" step="1" value="128000">
       <button class="settings-add-btn" onclick="addCortexModel()">Add Model</button>
     </div>
-    <button class="settings-save-btn" onclick="saveCortexLadder()">Save Ladder</button>
-  `;
+    <button class="settings-save-btn" onclick="saveCortexLadder()">Save Ladder</button>`;
 
-  const agents = ['main', 'janitor'];
-  pinsRoot.innerHTML = `
-    <div class="settings-section-title">Cortex Agent Pins</div>
-    ${agents.map((agent) => `<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><label style="width:80px">${agent}</label><select class="cortex-pin-select" data-cortex-pin-agent="${agent}"><option value="">Auto (Router)</option>${enabledModels.map(m => `<option value="${escapeHtml(m)}" ${pins[agent] === m ? 'selected' : ''}>${escapeHtml(m)}</option>`).join('')}</select></div>`).join('')}
-    <button class="settings-save-btn" onclick="saveCortexPins()">Save Pins</button>
-  `;
+  const enabledModels = ladder.filter((e) => e?.enabled !== false).map((e) => String(e?.model || '')).filter(Boolean);
+  const agents = Array.from(new Set([...Object.keys(pins), 'main', 'janitor']));
+  pinsRoot.innerHTML = `<div class="settings-section-title">Cortex Agent Pins</div><div style="display:grid;gap:6px">${agents.map((agent) => `<div style="display:grid;grid-template-columns:90px 1fr;gap:8px;align-items:center"><label>${escapeHtml(agent)}</label><select class="cortex-pin-select" data-cortex-pin-agent="${agent}"><option value="">Auto (Router)</option>${enabledModels.map((m) => `<option value="${escapeHtml(m)}" ${pins[agent] === m ? 'selected' : ''}>${escapeHtml(m)}</option>`).join('')}</select></div>`).join('')}</div><button class="settings-save-btn" onclick="saveCortexPins()">Save Pins</button>`;
 
-  scheduleRoot.innerHTML = `
-    <div class="settings-section-title">Cortex Schedule & Quota</div>
+  scheduleRoot.innerHTML = `<div class="settings-section-title">Cortex Schedule & Quota</div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px"><input id="cortexTimezone" class="settings-input" value="${escapeHtml(String(schedule.timezone || 'UTC'))}" placeholder="Timezone"><input id="cortexWorkStart" class="settings-input" value="${escapeHtml(String(schedule.workStart || '09:00'))}" placeholder="Work start"><input id="cortexWorkEnd" class="settings-input" value="${escapeHtml(String(schedule.workEnd || '17:00'))}" placeholder="Work end"></div>
-    ${Object.entries(quotaThresholds).map(([provider, threshold]) => `<label style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><span style="width:120px">${escapeHtml(provider)}</span><input class="settings-input" type="number" min="0" max="1" step="0.01" data-cortex-quota="${escapeHtml(provider)}" value="${Number(threshold) || 0}"></label>`).join('')}
-    <button class="settings-save-btn" onclick="saveCortexSchedule()">Save Schedule</button>
-  `;
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px">${Object.entries(quotaThresholds).map(([provider, threshold]) => `<label style="display:grid;grid-template-columns:120px 1fr;gap:8px;align-items:center"><span>${escapeHtml(provider)}</span><input class="settings-input" type="number" min="0" max="1" step="0.01" data-cortex-quota="${escapeHtml(provider)}" value="${Number(threshold) || 0}"></label>`).join('')}</div>
+    <button class="settings-save-btn" onclick="saveCortexSchedule()">Save Schedule</button>`;
 }
 
 async function saveCortexWeights() {
@@ -3278,13 +3314,15 @@ async function saveCortexWeights() {
 }
 
 function addCortexModel() {
-  const provider = $('#cortexAddProvider')?.value || '';
-  const modelId = $('#cortexAddModel')?.value?.trim() || '';
+  const providerRaw = $('#cortexAddProvider')?.value?.trim() || '';
+  const modelInput = $('#cortexAddModel')?.value?.trim() || '';
   const minScore = Number($('#cortexAddMinScore')?.value || 0);
   const contextWindow = Number($('#cortexAddContext')?.value || 0);
-  if (!provider || !modelId) return;
+  if (!modelInput) return;
+  const provider = providerRaw || modelInput.split('/')[0] || 'unknown';
+  const model = modelInput.includes('/') ? modelInput : `${provider}/${modelInput}`;
   const next = Array.isArray(cortexData?.status?.ladder) ? [...cortexData.status.ladder] : [];
-  next.push({ provider, model: `${provider}/${modelId}`.replace(/\/+/g, '/'), minScore, contextWindow, enabled: true });
+  next.push({ provider, model: model.replace(/\/+/g, '/'), minScore, contextWindow, enabled: true });
   cortexData.status = { ...(cortexData.status || {}), ladder: next };
   renderCortexSettings();
 }
