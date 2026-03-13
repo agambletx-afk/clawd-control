@@ -151,7 +151,7 @@ async function toggleRuleEnabled(id,enabled){const s=state.status||{}; const rul
 
 window._cortexCollapsed=window._cortexCollapsed||{}; window._cortexDefaultCollapsed=true; window._cortexDisabledCollapsed=window._cortexDisabledCollapsed||{};
 function toggleProvider(p){const cur=window._cortexDefaultCollapsed?(window._cortexCollapsed[p]!==false):(!!window._cortexCollapsed[p]);window._cortexCollapsed[p]=!cur;renderLadder();}
-function toggleDisabled(p){window._cortexDisabledCollapsed[p]=!(window._cortexDisabledCollapsed[p]===false); renderLadder();}
+function toggleDisabled(p){window._cortexDisabledCollapsed[p]=!(window._cortexDisabledCollapsed[p]??true); renderLadder();}
 function getTaskVector(d){const v=d?.taskVector||d?.task_vector||{}; return {reasoning:Number(v.reasoning??v.reason??0),coding:Number(v.coding??v.code??0),conversation:Number(v.conversation??v.conv??0),instruction:Number(v.instruction??v.instructions??0)};}
 function getModelProfile(d){const v=d?.modelProfile||d?.qualityProfile||d?.modelQualityProfile||{}; return {reasoning:Number(v.reasoning??0),coding:Number(v.coding??0),conversation:Number(v.conversation??0),instruction:Number(v.instruction??0)};}
 function getDominantTaskType(d){const vec=getTaskVector(d); return Object.entries(vec).sort((a,b)=>b[1]-a[1])[0]?.[0]||'reasoning';}
