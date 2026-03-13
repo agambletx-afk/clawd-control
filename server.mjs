@@ -61,6 +61,7 @@ const RATE_LIMITS_CONFIG_PATH = join(process.env.HOME || '/home/openclaw', '.ope
 const OPENCLAW_DIR = join(homedir(), '.openclaw');
 const OPENCLAW_WORKSPACE = join(OPENCLAW_DIR, 'workspace');
 const CORTEX_CONFIG_PATH = join(OPENCLAW_WORKSPACE, 'cortex/cortex.json');
+const OUTCOME_DB_PATH = join(OPENCLAW_WORKSPACE, 'cortex', 'outcome.db');
 const CORTEX_LOG_PATH = join(OPENCLAW_DIR, 'logs/cortex.log');
 const CRON_JOBS_PATH = join(homedir(), '.openclaw', 'cron', 'jobs.json');
 const PRIMARY_ENV_PATH = join(DIR, '.env');
@@ -760,6 +761,7 @@ async function handleAgentAction(agentId, action) {
 // ── Security Audit (Frodo's checks) ─────────────────
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
+const openSqlite = require('better-sqlite3');
 
 function runSecurityAudit() {
   const secDir = join(DIR, 'security-lib', 'checks');
@@ -5157,6 +5159,86 @@ const server = createServer((req, res) => {
       console.error('[API] /api/cortex/decisions error:', e.message);
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Failed to load cortex decisions' }));
+    }
+    return;
+  }
+
+  if (path === '/api/cortex/outcomes' && req.method === 'GET') {
+    try {
+      const requestedLimit = parseInt(url.searchParams.get('limit') || '20', 10);
+      const limit = Math.max(1, Math.min(Number.isFinite(requestedLimit) ? requestedLimit : 20, 200));
+      if (!existsSync(OUTCOME_DB_PATH)) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ outcomes: [] }));
+        return;
+      }
+      const db = openSqlite(OUTCOME_DB_PATH, { readonly: true });
+      try {
+        const rows = db.prepare('SELECT * FROM outcome_records ORDER BY timestamp DESC LIMIT ?').all(limit);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ outcomes: rows }));
+      } finally {
+        db.close();
+      }
+    } catch (e) {
+      console.error('[API] /api/cortex/outcomes error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to load cortex outcomes' }));
+    }
+    return;
+  }
+
+  if (path === '/api/cortex/outcomes/stats' && req.method === 'GET') {
+    try {
+      const requestedPeriod = String(url.searchParams.get('period') || '24h');
+      const periodHours = ({ '24h': 24, '7d': 168, '30d': 720 })[requestedPeriod] || 24;
+      const period = ({ 24: '24h', 168: '7d', 720: '30d' })[periodHours] || '24h';
+      if (!existsSync(OUTCOME_DB_PATH)) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          period,
+          summary: { total_decisions: 0, avg_reward: null, correction_rate: null, escalation_rate: null },
+          byModel: [],
+          byWorkType: [],
+        }));
+        return;
+      }
+
+      const sinceIso = new Date(Date.now() - (periodHours * 60 * 60 * 1000)).toISOString();
+      const db = openSqlite(OUTCOME_DB_PATH, { readonly: true });
+      try {
+        const summary = db.prepare(`
+          SELECT
+            COUNT(*) as total_decisions,
+            AVG(reward_score) as avg_reward,
+            AVG(CASE WHEN followup_correction = 1 THEN 1.0 ELSE 0.0 END) as correction_rate,
+            AVG(CASE WHEN escalated = 1 THEN 1.0 ELSE 0.0 END) as escalation_rate
+          FROM outcome_records WHERE timestamp >= ?
+        `).get(sinceIso);
+
+        const byModel = db.prepare(`
+          SELECT chosen_model, COUNT(*) as decision_count, AVG(reward_score) as avg_reward,
+            AVG(CASE WHEN followup_correction = 1 THEN 1.0 ELSE 0.0 END) as correction_rate,
+            AVG(CASE WHEN escalated = 1 THEN 1.0 ELSE 0.0 END) as escalation_rate
+          FROM outcome_records WHERE timestamp >= ? GROUP BY chosen_model ORDER BY decision_count DESC
+        `).all(sinceIso);
+
+        const byWorkType = db.prepare(`
+          SELECT json_extract(policy_input, '$.workType') as work_type, COUNT(*) as decision_count, AVG(reward_score) as avg_reward,
+            AVG(CASE WHEN followup_correction = 1 THEN 1.0 ELSE 0.0 END) as correction_rate,
+            AVG(CASE WHEN escalated = 1 THEN 1.0 ELSE 0.0 END) as escalation_rate
+          FROM outcome_records WHERE timestamp >= ? GROUP BY json_extract(policy_input, '$.workType') ORDER BY decision_count DESC
+        `).all(sinceIso);
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ period, summary: summary || { total_decisions: 0 }, byModel, byWorkType }));
+      } finally {
+        db.close();
+      }
+    } catch (e) {
+      console.error('[API] /api/cortex/outcomes/stats error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to load cortex outcome stats' }));
     }
     return;
   }
