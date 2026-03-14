@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+HEARTBEAT_ID="gemini-rate-tracker"
+source /usr/local/bin/heartbeat-lib.sh
+
 SESSIONS_DIR="${OPENCLAW_SESSIONS_DIR:-$HOME/.openclaw/sessions}"
 OUTPUT_FILE="${OPENCLAW_RATE_STATUS_FILE:-$HOME/.openclaw/workspace/gemini-rate-status.json}"
 NOW_UTC="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -83,3 +86,4 @@ else
 }
 JSON
 fi
+heartbeat_finish

@@ -1,6 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
+HEARTBEAT_ID="system-health"
+source /usr/local/bin/heartbeat-lib.sh
+
 NOW_EPOCH=$(date -u +%s)
 
 check_service() {
@@ -78,3 +81,4 @@ overall=$(jq -r 'if any(.[]; .status=="red") then "red" elif any(.[]; .status=="
 
 jq -n --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg overall "$overall" --argjson checks "$checks" \
   '{timestamp:$timestamp,overall_status:$overall,checks:$checks}'
+heartbeat_finish

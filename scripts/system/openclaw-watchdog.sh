@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+HEARTBEAT_ID="watchdog"
+source /usr/local/bin/heartbeat-lib.sh
+
 SERVICE_NAME="${SERVICE_NAME:-openclaw.service}"
 WATCHDOG_LOG="${WATCHDOG_LOG:-/var/log/openclaw-watchdog.log}"
 COOLDOWN_SECONDS="${COOLDOWN_SECONDS:-300}"
@@ -235,6 +238,9 @@ main() {
   fi
 
   write_liveness_json
+
+  heartbeat_finish
+  chmod 644 "$HEARTBEAT_FILE" 2>/dev/null || true
 
   return "$exit_code"
 }

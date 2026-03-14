@@ -1,0 +1,2 @@
+# Description: Daily memory fact extraction from conversation history
+0 8 * * * openclaw /usr/local/bin/memory-ingest-wrapper.sh 2>/dev/null
