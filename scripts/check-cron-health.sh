@@ -35,6 +35,21 @@ minutes_between() {
   awk -v n="$newer" -v o="$older" 'BEGIN { printf "%.2f", (n-o)/60 }'
 }
 
+epoch_from_iso() {
+  local iso_ts="$1"
+  if [[ -z "$iso_ts" || "$iso_ts" == "null" ]]; then
+    echo ""
+    return 0
+  fi
+
+  date -u -d "$iso_ts" +%s 2>/dev/null || echo ""
+}
+
+duration_seconds_from_ms() {
+  local duration_ms="$1"
+  awk -v ms="$duration_ms" 'BEGIN { printf "%.1f", ms/1000 }'
+}
+
 find_last_syslog_match_epoch() {
   local needle="$1"
   local cutoff_epoch="$2"
@@ -170,56 +185,144 @@ main() {
   gateway_tmp="$(mktemp)"
   warnings_tmp="$(mktemp)"
 
-  local system_stale=0 system_missing=0 system_unknown=0 system_healthy=0 system_total=0
+  local system_stale=0 system_missing=0 system_unknown=0 system_healthy=0 system_total=0 system_failed=0 system_stuck=0
 
-  while IFS=$'\t' read -r id description cadence output_path check_method; do
+  while IFS=$'	' read -r id description cadence output_path check_method heartbeat_path; do
     [[ -n "$id" ]] || continue
     system_total=$((system_total + 1))
 
     local threshold_minutes threshold_seconds status last_seen age_minutes message
+    local started_at finished_at duration_ms exit_code heartbeat_version check_method_used
     threshold_minutes="$(awk -v c="$cadence" -v m="$staleness_multiplier" 'BEGIN { printf "%.2f", c*m }')"
     threshold_seconds="$(awk -v t="$threshold_minutes" 'BEGIN { printf "%d", t*60 }')"
     status="healthy"
     last_seen="null"
     age_minutes="null"
     message="null"
+    started_at="null"
+    finished_at="null"
+    duration_ms="null"
+    exit_code="null"
+    heartbeat_version="null"
+    check_method_used="$check_method"
 
-    if [[ "$check_method" == "mtime" ]]; then
-      if [[ -n "$output_path" && "$output_path" != "null" && -e "$output_path" ]]; then
-        local mtime age_seconds
-        mtime="$(stat -c %Y "$output_path")"
-        age_seconds=$((now_epoch - mtime))
-        age_minutes="$(minutes_between "$now_epoch" "$mtime")"
-        last_seen="\"$(iso_from_epoch "$mtime")\""
+    local heartbeat_file
+    heartbeat_file="/tmp/${id}-heartbeat.json"
+    if [[ -n "$heartbeat_path" && "$heartbeat_path" != "null" ]]; then
+      heartbeat_file="$heartbeat_path"
+    fi
 
-        if (( age_seconds > threshold_seconds )); then
-          status="stale"
-          message="\"Output file is stale\""
+    if [[ -e "$heartbeat_file" ]]; then
+      local hb_version
+      hb_version="$(jq -r '.version // empty' "$heartbeat_file" 2>/dev/null || true)"
+      if [[ "$hb_version" == "2" ]]; then
+        local hb_status hb_started hb_finished hb_duration hb_exit
+        hb_status="$(jq -r '.status // empty' "$heartbeat_file" 2>/dev/null || true)"
+        hb_started="$(jq -r '.started_at // empty' "$heartbeat_file" 2>/dev/null || true)"
+        hb_finished="$(jq -r '.finished_at // empty' "$heartbeat_file" 2>/dev/null || true)"
+        hb_duration="$(jq -r '.duration_ms // empty' "$heartbeat_file" 2>/dev/null || true)"
+        hb_exit="$(jq -r '.exit_code // empty' "$heartbeat_file" 2>/dev/null || true)"
+
+        check_method_used="heartbeat_v2"
+        heartbeat_version='"2"'
+        if [[ -n "$hb_started" && "$hb_started" != "null" ]]; then
+          started_at='"'"$hb_started"'"'
         fi
-      else
-        status="missing"
-        message="\"Output file not found\""
+        if [[ -n "$hb_finished" && "$hb_finished" != "null" ]]; then
+          finished_at='"'"$hb_finished"'"'
+        fi
+        [[ "$hb_duration" =~ ^[0-9]+$ ]] && duration_ms="$hb_duration"
+        [[ "$hb_exit" =~ ^-?[0-9]+$ ]] && exit_code="$hb_exit"
+
+        if [[ "$hb_status" == "success" ]]; then
+          status="healthy"
+          if [[ -n "$hb_finished" && "$hb_finished" != "null" ]]; then
+            local finished_epoch
+            last_seen='"'"$hb_finished"'"'
+            finished_epoch="$(epoch_from_iso "$hb_finished")"
+            if [[ -n "$finished_epoch" ]]; then
+              age_minutes="$(minutes_between "$now_epoch" "$finished_epoch")"
+            fi
+          fi
+        elif [[ "$hb_status" == "failed" ]]; then
+          status="failed"
+          if [[ -n "$hb_finished" && "$hb_finished" != "null" ]]; then
+            last_seen='"'"$hb_finished"'"'
+          elif [[ -n "$hb_started" && "$hb_started" != "null" ]]; then
+            last_seen='"'"$hb_started"'"'
+          fi
+          message="\"Exit code ${hb_exit:-unknown}\""
+        elif [[ "$hb_status" == "running" ]]; then
+          local started_epoch running_seconds
+          started_epoch="$(epoch_from_iso "$hb_started")"
+          if [[ -n "$started_epoch" ]]; then
+            running_seconds=$((now_epoch - started_epoch))
+            age_minutes="$(minutes_between "$now_epoch" "$started_epoch")"
+            last_seen='"'"$hb_started"'"'
+            if (( running_seconds > threshold_seconds )); then
+              status="stuck"
+              message="\"Heartbeat running longer than threshold\""
+            else
+              status="running"
+              message="\"Heartbeat currently running\""
+            fi
+          else
+            status="unknown"
+            message="\"Heartbeat missing started_at\""
+          fi
+        else
+          status="unknown"
+          message="\"Invalid heartbeat status\""
+        fi
       fi
-    elif [[ "$check_method" == "cron_log" ]]; then
-      local cutoff_epoch match_epoch
-      cutoff_epoch=$(( now_epoch - threshold_seconds ))
-      match_epoch="$(find_last_syslog_match_epoch "$id" "$cutoff_epoch" "$now_epoch")"
-      if [[ -n "$match_epoch" ]]; then
-        last_seen="\"$(iso_from_epoch "$match_epoch")\""
-        age_minutes="$(minutes_between "$now_epoch" "$match_epoch")"
+    fi
+
+    if [[ "$check_method_used" != "heartbeat_v2" ]]; then
+      if [[ "$check_method" == "mtime" || "$check_method" == "heartbeat_v2" ]]; then
+        if [[ -n "$output_path" && "$output_path" != "null" && -e "$output_path" ]]; then
+          local mtime age_seconds
+          mtime="$(stat -c %Y "$output_path")"
+          age_seconds=$((now_epoch - mtime))
+          age_minutes="$(minutes_between "$now_epoch" "$mtime")"
+          last_seen="\"$(iso_from_epoch "$mtime")\""
+
+          if (( age_seconds > threshold_seconds )); then
+            status="stale"
+            message="\"Output file is stale\""
+          else
+            status="healthy"
+            message="null"
+          fi
+        else
+          status="missing"
+          message="\"Output file not found\""
+        fi
+        check_method_used="$check_method"
+      elif [[ "$check_method" == "cron_log" ]]; then
+        local cutoff_epoch match_epoch
+        cutoff_epoch=$(( now_epoch - threshold_seconds ))
+        match_epoch="$(find_last_syslog_match_epoch "$id" "$cutoff_epoch" "$now_epoch")"
+        if [[ -n "$match_epoch" ]]; then
+          status="healthy"
+          last_seen="\"$(iso_from_epoch "$match_epoch")\""
+          age_minutes="$(minutes_between "$now_epoch" "$match_epoch")"
+        else
+          status="unknown"
+          message="\"No matching syslog entry in threshold window\""
+        fi
+        check_method_used="$check_method"
       else
         status="unknown"
-        message="\"No matching syslog entry in threshold window\""
+        message="\"Unsupported check method\""
       fi
-    else
-      status="unknown"
-      message="\"Unsupported check method\""
     fi
 
     case "$status" in
-      healthy) system_healthy=$((system_healthy + 1)) ;;
+      healthy|running) system_healthy=$((system_healthy + 1)) ;;
       stale) system_stale=$((system_stale + 1)) ;;
       missing) system_missing=$((system_missing + 1)) ;;
+      failed) system_failed=$((system_failed + 1)) ;;
+      stuck) system_stuck=$((system_stuck + 1)) ;;
       unknown) system_unknown=$((system_unknown + 1)) ;;
     esac
 
@@ -230,9 +333,14 @@ main() {
       --argjson last_seen "$last_seen" \
       --argjson age_minutes "$age_minutes" \
       --argjson threshold_minutes "$threshold_minutes" \
-      --arg check_method "$check_method" \
+      --arg check_method "$check_method_used" \
       --arg output_path "$output_path" \
       --argjson message "$message" \
+      --argjson started_at "$started_at" \
+      --argjson finished_at "$finished_at" \
+      --argjson duration_ms "$duration_ms" \
+      --argjson exit_code "$exit_code" \
+      --argjson heartbeat_version "$heartbeat_version" \
       '{
         id: $id,
         description: $description,
@@ -242,9 +350,14 @@ main() {
         threshold_minutes: $threshold_minutes,
         check_method: $check_method,
         output_path: (if ($output_path == "null" or $output_path == "") then null else $output_path end),
-        message: $message
+        message: $message,
+        started_at: $started_at,
+        finished_at: $finished_at,
+        duration_ms: $duration_ms,
+        exit_code: $exit_code,
+        heartbeat_version: $heartbeat_version
       }' >>"$system_tmp"
-  done < <(jq -r '.system_crons[] | [.id, .description, .cadence_minutes, (.output_path // "null"), .check_method] | @tsv' "$CONFIG_FILE")
+  done < <(jq -r '.system_crons[] | [.id, .description, .cadence_minutes, (.output_path // "null"), .check_method, (.heartbeat_path // "null")] | @tsv' "$CONFIG_FILE")
 
   local jobs_file alert_on_consecutive_errors alert_on_disabled_with_errors
   jobs_file="$(jq -r '.gateway_crons.jobs_file' "$CONFIG_FILE")"
@@ -315,7 +428,7 @@ main() {
   description_warning_count="$(wc -l <"$warnings_tmp" | tr -d ' ')"
 
   local overall_status="healthy"
-  if (( system_missing > 0 || gateway_erroring > 0 || system_stale >= 3 )); then
+  if (( system_missing > 0 || gateway_erroring > 0 || system_stale >= 3 || system_failed > 0 || system_stuck > 0 )); then
     overall_status="critical"
   elif (( system_stale > 0 || description_warning_count > 0 || gateway_disabled_with_errors > 0 )); then
     overall_status="warning"
@@ -347,6 +460,8 @@ main() {
     --argjson system_stale "$system_stale" \
     --argjson system_missing "$system_missing" \
     --argjson system_unknown "$system_unknown" \
+    --argjson system_failed "$system_failed" \
+    --argjson system_stuck "$system_stuck" \
     --argjson gateway_total "$gateway_total" \
     --argjson gateway_healthy "$gateway_healthy" \
     --argjson gateway_erroring "$gateway_erroring" \
@@ -364,6 +479,8 @@ main() {
         system_stale: $system_stale,
         system_missing: $system_missing,
         system_unknown: $system_unknown,
+        system_failed: $system_failed,
+        system_stuck: $system_stuck,
         gateway_total: $gateway_total,
         gateway_healthy: $gateway_healthy,
         gateway_erroring: $gateway_erroring,
@@ -375,22 +492,31 @@ main() {
   local -a alert_lines=()
   local -a recovery_lines=()
 
-  while IFS=$'\t' read -r id description status age threshold; do
+  while IFS=$'\t' read -r id description status age threshold exit_code duration_ms; do
     local prev="${prev_system_status[$id]:-}"
     if [[ "$status" == "unknown" ]]; then
       continue
     fi
 
-    if [[ "$prev" == "healthy" && "$status" != "healthy" ]]; then
+    if [[ "$prev" == "healthy" && "$status" != "healthy" && "$status" != "running" ]]; then
       if [[ "$status" == "stale" ]]; then
         alert_lines+=("[STALE] ${description} - last seen ${age}m ago (threshold: ${threshold}m)")
       elif [[ "$status" == "missing" ]]; then
         alert_lines+=("[MISSING] ${description} - output file missing")
+      elif [[ "$status" == "failed" ]]; then
+        local failed_duration_seconds
+        failed_duration_seconds="n/a"
+        if [[ "$duration_ms" =~ ^[0-9]+$ ]]; then
+          failed_duration_seconds="$(duration_seconds_from_ms "$duration_ms")s"
+        fi
+        alert_lines+=("[FAILED] ${description} - exit code ${exit_code} after ${failed_duration_seconds}")
+      elif [[ "$status" == "stuck" ]]; then
+        alert_lines+=("[STUCK] ${description} - running for ${age}m (threshold: ${threshold}m)")
       fi
-    elif [[ "$prev" =~ ^(stale|missing)$ && "$status" == "healthy" ]]; then
+    elif [[ "$prev" =~ ^(stale|missing|failed|stuck)$ && ( "$status" == "healthy" || "$status" == "running" ) ]]; then
       recovery_lines+=("[OK] ${description} - back to healthy")
     fi
-  done < <(jq -r '.system_crons[] | [.id, .description, .status, (.age_minutes // 0), .threshold_minutes] | @tsv' "$status_tmp")
+  done < <(jq -r '.system_crons[] | [.id, .description, .status, (.age_minutes // 0), .threshold_minutes, (.exit_code // ""), (.duration_ms // "")] | @tsv' "$status_tmp")
 
   while IFS=$'\t' read -r id name status consecutive_errors last_error; do
     local prev="${prev_gateway_status[$id]:-}"
@@ -413,7 +539,7 @@ main() {
       echo
       printf '%s\n' "${alert_lines[@]}"
       echo
-      printf '%s system crons: %s healthy, %s stale\n' "$system_total" "$system_healthy" "$system_stale"
+      printf '%s system crons: %s healthy, %s stale, %s failed, %s stuck\n' "$system_total" "$system_healthy" "$system_stale" "$system_failed" "$system_stuck"
       printf '%s gateway crons: %s erroring\n' "$gateway_total" "$gateway_erroring"
     })"
     send_telegram_alert "$alert_message"

@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+HEARTBEAT_ID="session-ops"
+source /usr/local/bin/heartbeat-lib.sh
+
 DEFAULT_MAX_SIZE=256000
 CONFIG_FILE="/etc/jarvis/session-ops.conf"
 AGENTS_ROOT="/home/openclaw/.openclaw/agents"
@@ -220,7 +223,7 @@ main() {
   cleanup_processes
   cleanup_temp_files
   rotate_and_prune_sessions
-  echo "{\"last_success_at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"exit_code\":0}" > /tmp/session-ops-heartbeat.json
+  heartbeat_finish
   log "completed"
 }
 

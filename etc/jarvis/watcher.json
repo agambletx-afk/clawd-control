@@ -7,7 +7,8 @@
       "description": "Claude/Anthropic token refresh",
       "cadence_minutes": 240,
       "output_path": "/tmp/claude-token-heartbeat.json",
-      "check_method": "mtime"
+      "check_method": "heartbeat_v2",
+      "heartbeat_path": "/tmp/claude-token-refresh-heartbeat.json"
     },
     {
       "id": "cli-usage-tracker",
@@ -70,7 +71,8 @@
       "description": "Unified session operations",
       "cadence_minutes": 5,
       "output_path": "/tmp/session-ops-heartbeat.json",
-      "check_method": "mtime"
+      "check_method": "heartbeat_v2",
+      "heartbeat_path": "/tmp/session-ops-heartbeat.json"
     },
     {
       "id": "security-health",
@@ -84,7 +86,8 @@
       "description": "Security hook alert monitor",
       "cadence_minutes": 5,
       "output_path": "/tmp/security-hook-heartbeat.json",
-      "check_method": "mtime"
+      "check_method": "heartbeat_v2",
+      "heartbeat_path": "/tmp/security-hook-alert-heartbeat.json"
     },
     {
       "id": "version-check",

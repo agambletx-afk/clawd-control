@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # security-hook-alert.sh — Telegram alert on new blocked calls
-trap 'echo "{"last_success_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","exit_code":$?}" > /tmp/security-hook-heartbeat.json' EXIT
 # Runs via cron. Reads security-hook.log, compares line count against
 # a watermark file. Sends one Telegram message per run summarizing
 # new blocks. Zero tokens consumed.
@@ -19,6 +18,9 @@ LOG_FILE="/home/openclaw/.openclaw/logs/security-hook.log"
 WATERMARK_FILE="/tmp/security-hook-alert-watermark"
 BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-}"
 CHAT_ID="${TELEGRAM_CHAT_ID:-}"
+
+HEARTBEAT_ID="security-hook-alert"
+source /usr/local/bin/heartbeat-lib.sh
 
 # Bail if no Telegram config
 if [[ -z "$BOT_TOKEN" || -z "$CHAT_ID" ]]; then
@@ -90,3 +92,5 @@ curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
 
 # Update watermark
 echo "$CURRENT_LINES" > "$WATERMARK_FILE"
+
+heartbeat_finish

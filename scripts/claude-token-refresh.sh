@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -u
 
+HEARTBEAT_ID="claude-token-refresh"
+source /usr/local/bin/heartbeat-lib.sh
+
 # Claude Code OAuth Token Auto-Refresh
 # Refreshes the access token using the refresh token when expired.
 # IMPORTANT: Refresh tokens are single-use. Do NOT run while Claude Code is active.
@@ -88,4 +91,4 @@ mv "$tmp_file" "$CREDENTIALS_FILE"
 chmod 600 "$CREDENTIALS_FILE"
 
 echo "OK: Token refreshed successfully (new expiresAt=${new_expires_at})"
-echo "{\"last_success_at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"exit_code\":0}" > /tmp/claude-token-heartbeat.json
+heartbeat_finish
