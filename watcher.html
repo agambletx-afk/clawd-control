@@ -194,7 +194,7 @@
               <div class="meta">
                 <div><span class="tag">${c.model || 'unknown-model'}</span></div>
                 <div>Schedule: ${c.schedule_human || c.schedule || 'n/a'}</div>
-                <div>Last run: <span class="mono">${rel((Date.now()-Date.parse(c.last_run_at||0))/1000)}</span>${c.last_duration_seconds ? `, took <span class="mono">${c.last_duration_seconds}s</span>` : ''}</div>
+                <div>Last run: <span class="mono">${rel((Date.now()-(String(c.last_run||'').length>12 ? Number(c.last_run) : (String(c.last_run||'').length>12 ? Number(c.last_run) : Date.parse(c.last_run||0))))/1000)}</span>${c.last_duration_seconds ? `, took <span class="mono">${c.last_duration_seconds}s</span>` : ''}</div>
                 ${c.consecutive_errors > 0 ? `<div><span class="chip red">${c.consecutive_errors} errors</span> ${c.last_error || ''}</div>` : ''}
               </div>
               <div class="actions">
