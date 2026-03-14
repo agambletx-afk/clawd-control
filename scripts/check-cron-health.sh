@@ -254,77 +254,41 @@ main() {
   local gateway_total=0 gateway_healthy=0 gateway_erroring=0 gateway_disabled=0 gateway_disabled_with_errors=0
 
   if [[ -r "$jobs_file" ]]; then
-    while IFS=$'\t' read -r id name enabled last_run last_duration_ms last_status consecutive_errors last_error model agent schedule schedule_tz; do
-      [[ -n "$id" ]] || continue
+    jq -c '.jobs[]? | {
+      id: (.id // ""),
+      name: (.name // .id // ""),
+      enabled: (.enabled // false),
+      last_run: ((.state.lastRunAtMs // null) | if . then tostring else null end),
+      last_duration_ms: (.state.lastDurationMs // 0),
+      last_status: (.state.lastStatus // null),
+      consecutive_errors: (.state.consecutiveErrors // 0),
+      last_error: (.state.lastError // null),
+      model: (.modelOverride // .payload.model // null),
+      agent: (.agentId // null),
+      schedule: ((.schedule.expr) // ""),
+      schedule_tz: ((.schedule.tz) // null)
+    }' "$jobs_file" | while IFS= read -r gw_json; do
+      [[ -n "$gw_json" ]] || continue
       gateway_total=$((gateway_total + 1))
-
-      local gw_status
-      if [[ "$enabled" == "true" ]]; then
-        if [[ "$consecutive_errors" =~ ^[0-9]+$ ]] && (( consecutive_errors >= alert_on_consecutive_errors )); then
-          gw_status="erroring"
-          gateway_erroring=$((gateway_erroring + 1))
+      local gw_enabled gw_errors gw_lstatus gw_status
+      gw_enabled="$(jq -r '.enabled' <<< "$gw_json")"
+      gw_errors="$(jq -r '.consecutive_errors' <<< "$gw_json")"
+      gw_lstatus="$(jq -r '.last_status // empty' <<< "$gw_json")"
+      if [[ "$gw_enabled" == "true" ]]; then
+        if [[ "$gw_errors" =~ ^[0-9]+$ ]] && (( gw_errors >= alert_on_consecutive_errors )); then
+          gw_status="erroring"; gateway_erroring=$((gateway_erroring + 1))
         else
-          gw_status="healthy"
-          gateway_healthy=$((gateway_healthy + 1))
+          gw_status="healthy"; gateway_healthy=$((gateway_healthy + 1))
         fi
       else
-        if [[ "$alert_on_disabled_with_errors" == "true" && "$last_status" == "error" ]]; then
-          gw_status="disabled_with_errors"
-          gateway_disabled_with_errors=$((gateway_disabled_with_errors + 1))
+        if [[ "$alert_on_disabled_with_errors" == "true" && "$gw_lstatus" == "error" ]]; then
+          gw_status="disabled_with_errors"; gateway_disabled_with_errors=$((gateway_disabled_with_errors + 1))
         else
-          gw_status="disabled"
-          gateway_disabled=$((gateway_disabled + 1))
+          gw_status="disabled"; gateway_disabled=$((gateway_disabled + 1))
         fi
       fi
-
-      jq -n \
-        --arg id "$id" \
-        --arg name "$name" \
-        --arg status "$gw_status" \
-        --argjson enabled "$enabled" \
-        --arg last_run "$last_run" \
-        --argjson last_duration_ms "$last_duration_ms" \
-        --arg last_status "$last_status" \
-        --argjson consecutive_errors "$consecutive_errors" \
-        --arg last_error "$last_error" \
-        --arg model "$model" \
-        --arg agent "$agent" \
-        --arg schedule "$schedule" \
-        --arg schedule_tz "$schedule_tz" \
-        '{
-          id: $id,
-          name: $name,
-          status: $status,
-          enabled: $enabled,
-          last_run: (if $last_run == "null" or $last_run == "" then null else $last_run end),
-          last_duration_ms: $last_duration_ms,
-          last_status: (if $last_status == "null" or $last_status == "" then null else $last_status end),
-          consecutive_errors: $consecutive_errors,
-          last_error: (if $last_error == "null" or $last_error == "" then null else $last_error end),
-          model: (if $model == "null" or $model == "" then null else $model end),
-          agent: (if $agent == "null" or $agent == "" then null else $agent end),
-          schedule: $schedule,
-          schedule_tz: (if $schedule_tz == "null" or $schedule_tz == "" then null else $schedule_tz end)
-        }' >>"$gateway_tmp"
-    done < <(
-      jq -r '
-        .jobs[]? |
-        [
-          (.id // ""),
-          (.name // .id // ""),
-          (.enabled // false),
-          (.state.lastRun // null),
-          (.state.lastDurationMs // 0),
-          (.state.lastStatus // null),
-          (.state.consecutiveErrors // 0),
-          (.state.lastError // null),
-          (.model // null),
-          (.agent // null),
-          (.schedule // ""),
-          (.scheduleTz // null)
-        ] | @tsv
-      ' "$jobs_file"
-    )
+      jq --arg status "$gw_status" '. + {status: $status}' <<< "$gw_json" >> "$gateway_tmp"
+    done
   fi
 
   collect_description_warnings "$warnings_tmp"
