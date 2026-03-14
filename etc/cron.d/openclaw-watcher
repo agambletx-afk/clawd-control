@@ -1,0 +1,2 @@
+# Description: WATCHER cron health monitor (staleness detection, gateway cron health, Telegram alerts)
+*/5 * * * * openclaw . /opt/openclaw.env && /usr/local/bin/check-cron-health.sh 2>/dev/null
