@@ -166,7 +166,7 @@
           return `<article class="watcher-card" data-sys="${i}">
             <div class="watcher-row"><div class="accent ${accentClass(c.status)}"></div><div class="content">
               <div class="title-row"><div><div class="name">${c.description || c.id || 'System cron'}</div><div class="subtitle">System cron health check</div></div><span class="chip ${chipClass(c.status)}">${c.status || 'Unknown'}</span></div>
-              <div class="meta"><div>Last seen: <span class="mono">${rel(ageMin * 60)}</span></div><div>${c.cadence || 'cadence unknown'} · stale after ${c.threshold_minutes ?? '?'} min</div><div class="tiny"><span class="tag">${c.check_method || 'unknown'}</span></div></div>
+              <div class="meta"><div>Last seen: <span class="mono">${rel(ageMin * 60)}</span></div><div>every ${c.threshold_minutes ? Math.round(c.threshold_minutes / 2.5) + ' min' : 'unknown'} · stale after ${c.threshold_minutes ?? '?'} min</div><div class="tiny"><span class="tag">${c.check_method || 'unknown'}</span></div></div>
             </div></div>
             <div class="details"><div class="details-inner">
               <div>output_file: ${c.path || c.output_file || 'n/a'}</div>
