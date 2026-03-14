@@ -252,6 +252,7 @@ main() {
   alert_on_disabled_with_errors="$(jq -r '.gateway_crons.alert_on_disabled_with_errors // true' "$CONFIG_FILE")"
 
   local gateway_total=0 gateway_healthy=0 gateway_erroring=0 gateway_disabled=0 gateway_disabled_with_errors=0
+  # Note: gateway while-loop runs in a subshell (jq pipe), so counters are derived from gateway_tmp after the loop
 
   if [[ -r "$jobs_file" ]]; then
     jq -c '.jobs[]? | {
@@ -289,6 +290,23 @@ main() {
       fi
       jq --arg status "$gw_status" '. + {status: $status}' <<< "$gw_json" >> "$gateway_tmp"
     done
+  fi
+
+  # Derive gateway counts from written JSON (subshell counters lost)
+  if [[ -s "$gateway_tmp" ]]; then
+    gateway_total=$(jq -s 'length' "$gateway_tmp")
+    gateway_healthy=$(jq -s '[.[] | select(.status == "healthy")] | length' "$gateway_tmp")
+    gateway_erroring=$(jq -s '[.[] | select(.status == "erroring")] | length' "$gateway_tmp")
+    gateway_disabled=$(jq -s '[.[] | select(.status == "disabled" or .status == "disabled_with_errors")] | length' "$gateway_tmp")
+    gateway_disabled_with_errors=$(jq -s '[.[] | select(.status == "disabled_with_errors")] | length' "$gateway_tmp")
+  fi
+
+  if [[ -s "$gateway_tmp" ]]; then
+    gateway_total=$(jq -s 'length' "$gateway_tmp")
+    gateway_healthy=$(jq -s '[.[] | select(.status == "healthy")] | length' "$gateway_tmp")
+    gateway_erroring=$(jq -s '[.[] | select(.status == "erroring")] | length' "$gateway_tmp")
+    gateway_disabled=$(jq -s '[.[] | select(.status == "disabled" or .status == "disabled_with_errors")] | length' "$gateway_tmp")
+    gateway_disabled_with_errors=$(jq -s '[.[] | select(.status == "disabled_with_errors")] | length' "$gateway_tmp")
   fi
 
   collect_description_warnings "$warnings_tmp"
