@@ -51,14 +51,21 @@
     .accent.red { background: #ef4444; }
     .content { flex: 1; padding: 9px 10px 10px 0; min-width: 0; }
     .title-row { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
+    .status-wrap { display: inline-flex; align-items: center; gap: 6px; }
     .name { font-size: 0.84rem; font-weight: 700; color: var(--text-primary); }
     .subtitle { font-size: 0.7rem; color: var(--text-secondary); margin-top: 2px; }
     .meta { margin-top: 8px; font-size: 0.7rem; color: var(--text-secondary); display: grid; gap: 3px; }
     .tiny { color: var(--text-tertiary); font-size: 11px; }
     .tag { border: 1px solid #8b5cf6; color: #c4b5fd; border-radius: 4px; padding: 1px 6px; font-size: 0.66rem; }
     .details { max-height: 0; overflow: hidden; transition: max-height .25s ease; border-top: 1px solid transparent; }
-    .watcher-card.open .details { max-height: 220px; border-top-color: var(--border-subtle); }
+    .watcher-card.open .details { max-height: 360px; border-top-color: var(--border-subtle); }
     .details-inner { padding: 8px 10px; font-size: 0.7rem; color: var(--text-secondary); display: grid; gap: 3px; font-family: var(--font-mono); }
+    .history-head { margin-top: 4px; color: var(--text-primary); font-weight: 700; }
+    .history-row { display: grid; grid-template-columns: auto auto auto auto; gap: 8px; align-items: center; }
+    .status-dot { width: 7px; height: 7px; border-radius: 999px; display: inline-block; margin-right: 4px; }
+    .status-dot.green { background: #22c55e; }
+    .status-dot.red { background: #ef4444; }
+    .sparkline { display: inline-flex; margin-left: 6px; vertical-align: middle; }
 
     .actions { margin-top: 8px; display: flex; gap: 6px; }
     .btn { font-size: 0.68rem; border-radius: 8px; padding: 5px 8px; border: 1px solid var(--border-subtle); background: transparent; color: var(--text-primary); cursor: pointer; }
@@ -104,7 +111,7 @@
   <script src="/layout.js"></script>
   <script>
     (() => {
-      const state = { health: null, config: null, timer: null, actionPending: new Set() };
+      const state = { health: null, config: null, timer: null, actionPending: new Set(), expandedCards: new Set(), cardLoading: new Set() };
       const $ = (id) => document.getElementById(id);
       const rel = (sec) => {
         if (sec == null || !Number.isFinite(sec)) return 'unknown';
@@ -145,6 +152,45 @@
         const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg;
         document.body.appendChild(t); setTimeout(() => t.remove(), 3000);
       };
+      const msToDuration = (ms) => (ms == null || !Number.isFinite(ms)) ? 'n/a' : `${(ms / 1000).toFixed(1)}s`;
+      const esc = (value) => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
+      const sparklineSvg = (points) => {
+        const vals = points.filter((p) => Number.isFinite(Number(p.duration_ms))).map((p) => Number(p.duration_ms));
+        if (vals.length < 2) return '';
+        const w = 80; const h = 20; const min = Math.min(...vals); const max = Math.max(...vals); const span = Math.max(max - min, 1);
+        const d = vals.map((v, i) => `${i ? 'L' : 'M'} ${((i / (vals.length - 1)) * (w - 2) + 1).toFixed(1)} ${(h - 1 - (((v - min) / span) * (h - 2))).toFixed(1)}`).join(' ');
+        return `<svg width="80" height="20" viewBox="0 0 80 20" aria-hidden="true"><path d="${d}" fill="none" stroke="#3b82f6" stroke-width="1.5"/></svg>`;
+      };
+      function cardElById(jobId) { return document.querySelector(`.watcher-card[data-job-id="${CSS.escape(jobId)}"]`); }
+      async function loadCardInsights(jobId) {
+        if (!jobId || state.cardLoading.has(jobId)) return;
+        const card = cardElById(jobId);
+        if (!card) return;
+        state.cardLoading.add(jobId);
+        try {
+          const [history, trends] = await Promise.all([
+            api(`/api/watcher/history/${encodeURIComponent(jobId)}?limit=10`).catch(() => ({ runs: [], stats: null })),
+            api(`/api/watcher/trends/${encodeURIComponent(jobId)}?hours=24`).catch(() => ({ data_points: [] })),
+          ]);
+          const rows = Array.isArray(history.runs) ? history.runs : [];
+          const detail = card.querySelector('[data-role="history"]');
+          if (detail) {
+            detail.innerHTML = `<div class="history-head">Run History (last 10)</div>${rows.map((r) => `<div class="history-row"><span><span class="status-dot ${/healthy/i.test(r.status) ? 'green' : 'red'}"></span>${esc(r.status || 'unknown')}</span><span>${rel((Date.now() - Date.parse(r.recorded_at || 0)) / 1000)}</span><span class="mono">${msToDuration(Number(r.duration_ms))}</span><span class="mono">exit ${r.exit_code == null ? '?' : esc(r.exit_code)}</span></div>`).join('') || '<div class="tiny">No run history yet.</div>'}`;
+          }
+          const stats = history.stats || {};
+          const successPct = stats.total_runs ? ((stats.success_count / stats.total_runs) * 100).toFixed(1) : '0.0';
+          const statEl = card.querySelector('[data-role="stats"]');
+          if (statEl) {
+            statEl.innerHTML = `7-day stats: <span class="mono">${stats.success_count || 0}/${stats.total_runs || 0}</span> success (${successPct}%) · avg <span class="mono">${msToDuration(stats.avg_duration_ms)}</span> · p95 <span class="mono">${msToDuration(stats.p95_duration_ms)}</span> · <span class="mono">${stats.flap_count_24h || 0}</span> flaps`;
+          }
+          const flapBadge = card.querySelector('[data-role="flapping"]');
+          if (flapBadge) flapBadge.style.display = (Number(stats.flap_count_24h || 0) > 4) ? '' : 'none';
+          const sparkEl = card.querySelector('[data-role="sparkline"]');
+          if (sparkEl) sparkEl.innerHTML = sparklineSvg(trends.data_points || []);
+        } finally {
+          state.cardLoading.delete(jobId);
+        }
+      }
 
       function renderSummary(results, ageSeconds, stale, available) {
         const systems = results?.system_crons || [];
@@ -169,10 +215,11 @@
         $('systemCount').textContent = String(list.length);
         $('systemGrid').innerHTML = list.map((c, i) => {
           const ageMin = Number(c.age_minutes ?? c.age_min ?? 0);
-          return `<article class="watcher-card" data-sys="${i}">
+          const jobId = c.id || `system-${i}`;
+          return `<article class="watcher-card ${state.expandedCards.has(jobId) ? 'open' : ''}" data-job-id="${jobId}">
             <div class="watcher-row"><div class="accent ${accentClass(c.status)}"></div><div class="content">
-              <div class="title-row"><div><div class="name">${c.description || c.id || 'System cron'}</div><div class="subtitle">System cron health check</div></div><span class="chip ${chipClass(c.status)}">${c.status || 'Unknown'}</span></div>
-              <div class="meta"><div>Last seen: <span class="mono">${rel(ageMin * 60)}</span></div><div>every ${c.threshold_minutes ? hmn(c.threshold_minutes / 2.5) : 'unknown'} · stale after ${c.threshold_minutes ? hmn(c.threshold_minutes) : '?'}</div><div class="tiny"><span class="tag">${c.check_method || 'unknown'}</span></div></div>
+              <div class="title-row"><div><div class="name">${c.description || c.id || 'System cron'}</div><div class="subtitle">System cron health check</div></div><span class="status-wrap"><span class="chip ${chipClass(c.status)}">${c.status || 'Unknown'}</span><span class="chip amber" data-role="flapping" style="display:none">Flapping</span></span></div>
+              <div class="meta"><div>Last seen: <span class="mono">${rel(ageMin * 60)}</span></div><div>every ${c.threshold_minutes ? hmn(c.threshold_minutes / 2.5) : 'unknown'} · stale after ${c.threshold_minutes ? hmn(c.threshold_minutes) : '?'}</div><div>Duration: <span class="mono">${msToDuration(Number(c.duration_ms))}</span><span class="sparkline" data-role="sparkline"></span></div><div class="tiny"><span class="tag">${c.check_method || 'unknown'}</span></div></div>
             </div></div>
             <div class="details"><div class="details-inner">
               <div>output_file: ${c.path || c.output_file || 'n/a'}</div>
@@ -180,6 +227,8 @@
               <div>age_minutes: ${ageMin}</div>
               <div>threshold_minutes: ${c.threshold_minutes ?? 'n/a'}</div>
               <div>check_method: ${c.check_method || 'unknown'}</div>
+              <div data-role="history"><div class="tiny">Loading run history…</div></div>
+              <div data-role="stats" class="tiny">Loading stats…</div>
             </div></div>
           </article>`;
         }).join('') || '<div class="tiny">No system cron data available.</div>';
@@ -194,13 +243,14 @@
           const status = gatewayStatus(c);
           const id = c.id;
           const pending = state.actionPending.has(id);
-          return `<article class="watcher-card">
+          return `<article class="watcher-card ${state.expandedCards.has(id) ? 'open' : ''}" data-job-id="${id}">
             <div class="watcher-row"><div class="accent ${accentClass(status)}"></div><div class="content">
-              <div class="title-row"><div><div class="name">${c.name || id}</div><div class="subtitle">Gateway scheduler cron</div></div><span class="chip ${chipClass(status)}">${status}</span></div>
+              <div class="title-row"><div><div class="name">${c.name || id}</div><div class="subtitle">Gateway scheduler cron</div></div><span class="status-wrap"><span class="chip ${chipClass(status)}">${status}</span><span class="chip amber" data-role="flapping" style="display:none">Flapping</span></span></div>
               <div class="meta">
                 <div><span class="tag">${c.model || 'unknown-model'}</span></div>
                 <div>Schedule: ${c.schedule_human || c.schedule || 'n/a'}</div>
-                <div>Last run: <span class="mono">${rel((Date.now()-(String(c.last_run||'').length>12 ? Number(c.last_run) : (String(c.last_run||'').length>12 ? Number(c.last_run) : Date.parse(c.last_run||0))))/1000)}</span>${c.last_duration_seconds ? `, took <span class="mono">${c.last_duration_seconds}s</span>` : ''}</div>
+                <div>Last run: <span class="mono">${rel((Date.now()-(String(c.last_run||'').length>12 ? Number(c.last_run) : (String(c.last_run||'').length>12 ? Number(c.last_run) : Date.parse(c.last_run||0))))/1000)}</span></div>
+                <div>Duration: <span class="mono">${msToDuration(Number(c.last_duration_ms ?? ((Number(c.last_duration_seconds) || 0) * 1000)))}</span><span class="sparkline" data-role="sparkline"></span></div>
                 ${c.consecutive_errors > 0 ? `<div><span class="chip red">${c.consecutive_errors} errors</span> ${c.last_error || ''}</div>` : ''}
               </div>
               <div class="actions">
@@ -208,6 +258,7 @@
                 <button class="btn toggle ${c.enabled === false ? 'disabled':'enabled'}" data-action="toggle" data-enabled="${c.enabled === false ? '0':'1'}" data-name="${c.name || id}" data-id="${id}" ${pending ? 'disabled' : ''}>${c.enabled === false ? 'Enable' : 'Disable'}</button>
               </div>
             </div></div>
+            <div class="details"><div class="details-inner"><div data-role="history"><div class="tiny">Loading run history…</div></div><div data-role="stats" class="tiny">Loading stats…</div></div></div>
           </article>`;
         }).join('') || '<div class="tiny">No gateway cron data available.</div>';
       }
@@ -231,6 +282,9 @@
         renderSystem(health.results || {});
         renderGateway(health.results || {});
         renderWarnings(health.results || {});
+        for (const jobId of state.expandedCards) {
+          loadCardInsights(jobId);
+        }
         if (window.refreshWatcherBadge) window.refreshWatcherBadge();
       }
 
@@ -249,8 +303,16 @@
 
       function bind() {
         $('systemGrid').addEventListener('click', (e) => {
+          if (e.target.closest('button')) return;
           const card = e.target.closest('.watcher-card'); if (!card) return;
           card.classList.toggle('open');
+          const jobId = card.dataset.jobId;
+          if (card.classList.contains('open')) {
+            state.expandedCards.add(jobId);
+            loadCardInsights(jobId);
+          } else {
+            state.expandedCards.delete(jobId);
+          }
         });
         $('gatewayGrid').addEventListener('click', async (e) => {
           const btn = e.target.closest('button[data-action]'); if (!btn) return;
@@ -267,6 +329,18 @@
           const name = btn.dataset.name || id;
           if (enabled && !window.confirm(`Disable ${name}? It will not run until re-enabled.`)) return;
           await act(id, enabled ? 'disable' : 'enable');
+        });
+        $('gatewayGrid').addEventListener('click', (e) => {
+          if (e.target.closest('button')) return;
+          const card = e.target.closest('.watcher-card'); if (!card) return;
+          card.classList.toggle('open');
+          const jobId = card.dataset.jobId;
+          if (card.classList.contains('open')) {
+            state.expandedCards.add(jobId);
+            loadCardInsights(jobId);
+          } else {
+            state.expandedCards.delete(jobId);
+          }
         });
         $('warnHeader').addEventListener('click', () => {
           const body = $('warnBody');

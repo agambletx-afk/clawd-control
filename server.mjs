@@ -45,6 +45,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 
 import { logAction, getLog, getLogStats, pruneLog } from './ops-log-db.mjs';
 import { storeChecks, getHistory as getSecurityHistory, getTransitions } from './security-db.mjs';
+import { recordRun, getHistory as getWatcherHistory, getTrends as getWatcherTrends, getJobStats, pruneOldRuns } from './watcher-db.mjs';
 import { createSnapshot, listSnapshots, getSnapshotManifest, restoreSnapshot, deleteSnapshot, enforceRetention } from './ops-backup.mjs';
 import { ChatGatewayClient, getChatMessages, getLatestMessage } from './chat-api.mjs';
 
@@ -85,6 +86,7 @@ const WATCHER_STATUS_PATH = '/home/openclaw/.openclaw/workspace/watcher-status.j
 const WATCHER_CONFIG_PATH = '/etc/jarvis/watcher.json';
 let lastStoredSecurityGeneratedAt = null;
 let verificationRunning = false;
+let lastWatcherPruneAt = 0;
 
 // ── Security constants ──
 const MAX_BODY_SIZE = 1024 * 1024; // 1MB max POST body
@@ -4161,6 +4163,47 @@ const server = createServer((req, res) => {
       const ageSeconds = Math.max(0, Math.floor((Date.now() - stat.mtimeMs) / 1000));
       const stale = ageSeconds > 15 * 60;
 
+      try {
+        if (results?.system_crons) {
+          for (const cron of results.system_crons) {
+            recordRun({
+              job_id: cron.id,
+              job_type: 'system',
+              status: cron.status,
+              started_at: cron.started_at || null,
+              finished_at: cron.finished_at || null,
+              duration_ms: cron.duration_ms ?? null,
+              exit_code: cron.exit_code ?? null,
+              heartbeat_version: cron.heartbeat_version || null,
+              message: cron.message || null,
+            });
+          }
+        }
+        if (results?.gateway_crons) {
+          for (const cron of results.gateway_crons) {
+            recordRun({
+              job_id: cron.id,
+              job_type: 'gateway',
+              status: cron.status,
+              started_at: null,
+              finished_at: null,
+              duration_ms: cron.last_duration_ms ?? null,
+              exit_code: null,
+              heartbeat_version: null,
+              message: cron.last_error || null,
+            });
+          }
+        }
+
+        const now = Date.now();
+        if ((now - lastWatcherPruneAt) > 24 * 60 * 60 * 1000) {
+          pruneOldRuns(7);
+          lastWatcherPruneAt = now;
+        }
+      } catch (dbError) {
+        console.error('[WATCHER] history ingestion failed:', dbError.message);
+      }
+
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
         available: true,
@@ -4168,6 +4211,37 @@ const server = createServer((req, res) => {
         age_seconds: ageSeconds,
         results,
       }));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  const watcherHistoryMatch = path.match(/^\/api\/watcher\/history\/([^/]+)$/);
+  if (watcherHistoryMatch && req.method === 'GET') {
+    try {
+      const jobId = decodeURIComponent(watcherHistoryMatch[1]);
+      const limit = Math.max(1, Math.min(100, Number.parseInt(url.searchParams.get('limit'), 10) || 20));
+      const runs = getWatcherHistory(jobId, limit);
+      const stats = getJobStats(jobId);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ job_id: jobId, runs, stats }));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  const watcherTrendsMatch = path.match(/^\/api\/watcher\/trends\/([^/]+)$/);
+  if (watcherTrendsMatch && req.method === 'GET') {
+    try {
+      const jobId = decodeURIComponent(watcherTrendsMatch[1]);
+      const hours = Math.max(1, Math.min(720, Number.parseInt(url.searchParams.get('hours'), 10) || 168));
+      const dataPoints = getWatcherTrends(jobId, hours);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ job_id: jobId, hours, data_points: dataPoints }));
     } catch (e) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: e.message }));
