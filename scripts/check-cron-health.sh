@@ -483,9 +483,9 @@ main() {
       --argjson duration_ms "$duration_ms" \
       --argjson exit_code "$exit_code" \
       --argjson heartbeat_version "$heartbeat_version" \
-      --argjson validation_tier "$validation_tier" \
-      --argjson validation_status "$validation_status" \
-      --argjson validation_message "$validation_message" \
+      --arg validation_tier "$validation_tier" \
+      --arg validation_status "$validation_status" \
+      --arg validation_message "$validation_message" \
       '{
         id: $id,
         description: $description,
@@ -501,9 +501,9 @@ main() {
         duration_ms: $duration_ms,
         exit_code: $exit_code,
         heartbeat_version: $heartbeat_version,
-        validation_tier: $validation_tier,
-        validation_status: $validation_status,
-        validation_message: $validation_message
+        validation_tier: (if $validation_tier == "null" then null else $validation_tier end),
+        validation_status: (if $validation_status == "null" then null else $validation_status end),
+        validation_message: (if $validation_message == "null" then null else $validation_message end)
       }' >>"$system_tmp"
   done < <(jq -r '.system_crons[] | [.id, .description, .cadence_minutes, (.output_path // "null"), .check_method, (.heartbeat_path // "null")] | @tsv' "$CONFIG_FILE")
 

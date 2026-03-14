@@ -48,11 +48,11 @@
       "validation": {
         "type": "json",
         "required_keys": [
-          "generated_at",
-          "overall_status",
+          "timestamp",
+          "overall",
           "checks"
         ],
-        "timestamp_field": "generated_at",
+        "timestamp_field": "timestamp",
         "timestamp_max_age_minutes": 1500
       }
     },
@@ -172,10 +172,10 @@
       "validation": {
         "type": "json",
         "required_keys": [
-          "checked_at",
+          "timestamp",
           "status"
         ],
-        "timestamp_field": "checked_at",
+        "timestamp_field": "timestamp",
         "timestamp_max_age_minutes": 65
       }
     }
