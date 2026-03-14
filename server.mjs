@@ -81,6 +81,8 @@ const VERIFY_RESULTS_PATH = '/tmp/verify-deployment-results.json';
 const VERIFY_SCRIPT_PATH = '/usr/local/bin/verify-deployment.sh';
 const SOUL_MD_PATH = '/home/openclaw/.openclaw/workspace/SOUL.md';
 const SOUL_HASH_PATH = '/home/openclaw/.openclaw/.soul-hash';
+const WATCHER_STATUS_PATH = '/home/openclaw/.openclaw/workspace/watcher-status.json';
+const WATCHER_CONFIG_PATH = '/etc/jarvis/watcher.json';
 let lastStoredSecurityGeneratedAt = null;
 let verificationRunning = false;
 
@@ -4141,6 +4143,93 @@ const server = createServer((req, res) => {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: e.message }));
     }
+    return;
+  }
+
+  // ── WATCHER API ─────────────────────────────────────────────
+  if (path === '/api/watcher/health' && req.method === 'GET') {
+    try {
+      if (!existsSync(WATCHER_STATUS_PATH)) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ available: false, stale: false, age_seconds: null, results: null }));
+        return;
+      }
+
+      const raw = readFileSync(WATCHER_STATUS_PATH, 'utf8');
+      const results = JSON.parse(raw);
+      const stat = statSync(WATCHER_STATUS_PATH);
+      const ageSeconds = Math.max(0, Math.floor((Date.now() - stat.mtimeMs) / 1000));
+      const stale = ageSeconds > 15 * 60;
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        available: true,
+        stale,
+        age_seconds: ageSeconds,
+        results,
+      }));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (path === '/api/watcher/config' && req.method === 'GET') {
+    try {
+      if (!existsSync(WATCHER_CONFIG_PATH)) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'WATCHER config not found' }));
+        return;
+      }
+      const config = JSON.parse(readFileSync(WATCHER_CONFIG_PATH, 'utf8'));
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(config));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  const watcherActionMatch = path.match(/^\/api\/watcher\/gateway\/([0-9a-f-]{36})\/(run|enable|disable)$/i);
+  if (watcherActionMatch && req.method === 'POST') {
+    const [, jobId, action] = watcherActionMatch;
+    const isValidId = /^[0-9a-f-]{36}$/i.test(jobId);
+    if (!isValidId) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid gateway job id' }));
+      return;
+    }
+
+    const timeoutSeconds = action === 'run' ? 120 : 60;
+    const actionVerb = action === 'run' ? 'run --force' : action;
+    const command = `sudo -u openclaw timeout ${timeoutSeconds} /usr/bin/openclaw cron ${actionVerb} ${jobId} 2>&1`;
+    const started = Date.now();
+
+    exec(command, { timeout: timeoutSeconds * 1000, maxBuffer: 1024 * 1024 }, (error, stdout = '', stderr = '') => {
+      const duration = Date.now() - started;
+      const output = truncateOutput((stdout || stderr || error?.message || '').trim());
+      const success = !error;
+
+      logAction({
+        category: 'watcher',
+        action: `watcher-gateway-${action}`,
+        target: jobId,
+        status: success ? 'success' : 'failed',
+        detail: output || `${action} ${success ? 'completed' : 'failed'}`,
+        duration_ms: duration,
+      });
+
+      res.writeHead(success ? 200 : 500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success, output, duration_ms: duration }));
+    });
+    return;
+  }
+
+  if (path.startsWith('/api/watcher/gateway/') && req.method === 'POST') {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Invalid gateway job id or action' }));
     return;
   }
 

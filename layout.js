@@ -19,6 +19,7 @@
   let evtSource = null;
   let cliUsagePollTimer = null;
   let securityBadgeTimer = null;
+  let watcherBadgeTimer = null;
   let chatUnreadTimer = null;
   let cliUsageState = null;
   let expandedCliProvider = null;
@@ -37,6 +38,7 @@
     '/apis.html': 'apis',
     '/ops.html': 'ops',
     '/security.html': 'security',
+    '/watcher.html': 'watcher',
     '/create.html': 'create',
     '/analytics.html': 'analytics',
     '/cortex.html': 'cortex',
@@ -562,6 +564,9 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
     // Start security nav badge polling
     initSecurityBadgePolling();
 
+    // Start WATCHER nav badge polling
+    initWatcherBadgePolling();
+
     // Start chat unread indicator polling
     initChatUnreadPolling();
 
@@ -609,6 +614,11 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
         <i data-lucide="shield" class="nav-icon"></i>
         <span class="nav-label">Security</span>
         <span class="security-nav-dot unknown" id="securityNavDot" aria-label="Security status"></span>
+      </a>
+      <a href="/watcher.html" class="nav-item${isActive('watcher')}">
+        <i data-lucide="radar" class="nav-icon"></i>
+        <span class="nav-label">WATCHER</span>
+        <span class="security-nav-dot unknown" id="watcherNavDot" aria-label="WATCHER status"></span>
       </a>
 
       <div class="sidebar-section">Agents</div>
@@ -883,6 +893,35 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
     securityBadgeTimer = setInterval(() => refreshSecurityBadge(), 60000);
   }
 
+  function mapWatcherStatus(status, stale) {
+    if (stale) return 'yellow';
+    const token = String(status || '').toLowerCase();
+    if (token === 'green' || token === 'healthy' || token === 'ok' || token === 'success') return 'green';
+    if (token === 'yellow' || token === 'warning' || token === 'warn' || token === 'stale') return 'yellow';
+    if (token === 'red' || token === 'critical' || token === 'error' || token === 'failed') return 'red';
+    return 'unknown';
+  }
+
+  async function refreshWatcherBadge() {
+    const dot = document.getElementById('watcherNavDot');
+    if (!dot) return;
+    try {
+      const res = await fetch('/api/watcher/health', { cache: 'no-store', credentials: 'same-origin' });
+      if (!res.ok) throw new Error('health fetch failed');
+      const data = await res.json();
+      const status = data?.results?.overall_status || (data?.available ? 'unknown' : 'red');
+      dot.className = `security-nav-dot ${mapWatcherStatus(status, data?.stale)}`;
+    } catch {
+      dot.className = 'security-nav-dot unknown';
+    }
+  }
+
+  function initWatcherBadgePolling() {
+    if (watcherBadgeTimer) clearInterval(watcherBadgeTimer);
+    refreshWatcherBadge();
+    watcherBadgeTimer = setInterval(() => refreshWatcherBadge(), 60000);
+  }
+
   function getChatLastSeen() {
     const value = localStorage.getItem('clawd-chat-lastSeen');
     if (!value) return new Date(0);
@@ -966,6 +1005,7 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
   }
 
   window.refreshSecurityBadge = refreshSecurityBadge;
+  window.refreshWatcherBadge = refreshWatcherBadge;
 
   async function refreshCliUsage(withSpin = false) {
     const refreshBtn = document.getElementById('cliUsageRefreshBtn');
@@ -1434,6 +1474,9 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
       const currentPath = window.location.pathname;
       if (currentPath === '/security.html' && typeof window.cleanupSecurityTab === 'function') {
         window.cleanupSecurityTab();
+      }
+      if (currentPath === '/watcher.html' && typeof window.cleanupWatcherTab === 'function') {
+        window.cleanupWatcherTab();
       }
 
       const res = await fetch(href, { credentials: 'same-origin' });

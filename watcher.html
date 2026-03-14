@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WATCHER — Clawd Control</title>
+  <style>
+    .watcher-page { display: grid; gap: 14px; }
+    .mono { font-family: var(--font-mono); }
+    .watcher-summary {
+      width: calc(100% + 32px);
+      margin: 0 -16px;
+      padding: 10px 16px;
+      border-left: 4px solid #3b82f6;
+      border-top: 1px solid var(--border-subtle);
+      border-bottom: 1px solid var(--border-subtle);
+      background: var(--bg-surface);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 12px;
+      align-items: center;
+    }
+    .watcher-title { font-size: 1.25rem; font-weight: 800; color: #dbeafe; text-shadow: 0 0 8px rgba(59,130,246,0.6); }
+    .watcher-subtitle { width: 100%; color: var(--text-secondary); font-size: 0.8rem; margin-top: -3px; }
+    .summary-item { font-size: 0.8rem; color: var(--text-secondary); display: inline-flex; align-items: center; gap: 7px; }
+    .chip { padding: 2px 8px; border-radius: 999px; font-size: 0.68rem; font-weight: 700; color: #fff; }
+    .chip.green { background: #22c55e; }
+    .chip.amber { background: #f59e0b; }
+    .chip.red { background: #ef4444; }
+    .chip.gray { background: #475569; }
+    .alert-banner { border: 1px solid #f59e0b; background: rgba(245,158,11,0.12); color: #fbbf24; border-radius: 10px; padding: 8px 10px; font-size: 0.78rem; }
+
+    .panel { border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--bg-surface); padding: 10px; }
+    .panel-title { font-size: 0.95rem; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+    .panel-subtitle { color: var(--text-secondary); font-size: 0.74rem; margin-top: 2px; }
+
+    .card-grid { margin-top: 8px; display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; }
+    @media (max-width: 1280px) { .card-grid { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+    @media (max-width: 1024px) { .card-grid { grid-template-columns: 1fr; } }
+
+    .watcher-card { border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--bg-elevated); overflow: hidden; cursor: pointer; }
+    .watcher-row { display: flex; align-items: flex-start; gap: 10px; }
+    .accent { width: 3px; align-self: stretch; background: #475569; }
+    .accent.green { background: #22c55e; }
+    .accent.amber { background: #f59e0b; }
+    .accent.red { background: #ef4444; }
+    .content { flex: 1; padding: 9px 10px 10px 0; min-width: 0; }
+    .title-row { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
+    .name { font-size: 0.84rem; font-weight: 700; color: var(--text-primary); }
+    .subtitle { font-size: 0.7rem; color: var(--text-secondary); margin-top: 2px; }
+    .meta { margin-top: 8px; font-size: 0.7rem; color: var(--text-secondary); display: grid; gap: 3px; }
+    .tiny { color: var(--text-tertiary); font-size: 11px; }
+    .tag { border: 1px solid #8b5cf6; color: #c4b5fd; border-radius: 4px; padding: 1px 6px; font-size: 0.66rem; }
+    .details { max-height: 0; overflow: hidden; transition: max-height .25s ease; border-top: 1px solid transparent; }
+    .watcher-card.open .details { max-height: 220px; border-top-color: var(--border-subtle); }
+    .details-inner { padding: 8px 10px; font-size: 0.7rem; color: var(--text-secondary); display: grid; gap: 3px; font-family: var(--font-mono); }
+
+    .actions { margin-top: 8px; display: flex; gap: 6px; }
+    .btn { font-size: 0.68rem; border-radius: 8px; padding: 5px 8px; border: 1px solid var(--border-subtle); background: transparent; color: var(--text-primary); cursor: pointer; }
+    .btn.blue { border-color: #3b82f6; color: #93c5fd; }
+    .btn.blue:disabled { opacity: 0.6; cursor: wait; }
+    .btn.toggle.enabled { border-color: #22c55e; color: #86efac; }
+    .btn.toggle.disabled { border-color: #475569; color: #cbd5e1; }
+
+    .warn-list { margin-top: 8px; display: grid; gap: 7px; }
+    .warn-item { border-left: 3px solid #f59e0b; background: rgba(245,158,11,0.08); padding: 7px 8px; border-radius: 8px; font-size: 0.72rem; color: var(--text-secondary); }
+    .toast { position: fixed; right: 12px; bottom: 12px; background: var(--bg-elevated); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 8px 10px; font-size: 0.74rem; z-index: 1000; }
+  </style>
+</head>
+<body>
+  <main class="main">
+    <div class="watcher-page">
+      <section class="watcher-summary" id="summary"></section>
+      <div id="dataWarning" class="alert-banner" style="display:none">WATCHER data unavailable - check if check-cron-health.sh is running</div>
+
+      <section class="panel">
+        <div class="panel-title">System Crons <span class="chip gray" id="systemCount">0</span></div>
+        <div class="panel-subtitle">Scheduled jobs monitored by output file age or cron log activity</div>
+        <div class="card-grid" id="systemGrid"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">Gateway Crons <span class="chip gray" id="gatewayCount">0</span></div>
+        <div class="panel-subtitle">OpenClaw scheduler jobs - LLM-powered, token cost on each run</div>
+        <div class="card-grid" id="gatewayGrid"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title" id="warnHeader" style="cursor:pointer">Convention Warnings <span class="chip amber" id="warningCount" style="display:none">0</span></div>
+        <div class="panel-subtitle">Cron entries missing # Description: comments</div>
+        <div id="warnBody" style="display:none"><div class="warn-list" id="warnList"></div></div>
+      </section>
+    </div>
+  </main>
+  <script src="/layout.js"></script>
+  <script>
+    (() => {
+      const state = { health: null, config: null, timer: null, actionPending: new Set() };
+      const $ = (id) => document.getElementById(id);
+      const rel = (sec) => {
+        if (sec == null || !Number.isFinite(sec)) return 'unknown';
+        if (sec < 60) return `${Math.max(1, Math.floor(sec))}s ago`;
+        if (sec < 3600) return `${Math.floor(sec / 60)} min ago`;
+        if (sec < 86400) return `${Math.floor(sec / 3600)}h ago`;
+        return `${Math.floor(sec / 86400)} days ago`;
+      };
+      const abs = (ts) => {
+        const d = new Date(ts);
+        if (Number.isNaN(d.getTime())) return 'unknown';
+        return d.toISOString();
+      };
+      const chipClass = (status) => {
+        const s = String(status || '').toLowerCase();
+        if (s.includes('healthy')) return 'green';
+        if (s.includes('stale') || s.includes('warn')) return 'amber';
+        if (s.includes('critical') || s.includes('error')) return 'red';
+        return 'gray';
+      };
+      const accentClass = (status) => {
+        const c = chipClass(status);
+        return c === 'amber' ? 'amber' : c === 'green' ? 'green' : c === 'red' ? 'red' : '';
+      };
+      const api = async (url, opts) => {
+        const res = await fetch(url, { cache: 'no-store', credentials: 'same-origin', ...(opts || {}) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'request failed');
+        return data;
+      };
+      const toast = (msg) => {
+        const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg;
+        document.body.appendChild(t); setTimeout(() => t.remove(), 3000);
+      };
+
+      function renderSummary(results, ageSeconds, stale, available) {
+        const systems = results?.system_crons || [];
+        const gateways = results?.gateway_crons || [];
+        const sysHealthy = systems.filter(c => /healthy/i.test(c.status)).length;
+        const sysStale = systems.filter(c => /stale|warn/i.test(c.status)).length;
+        const gateHealthy = gateways.filter(c => /healthy/i.test(c.status)).length;
+        $('summary').innerHTML = `
+          <div class="watcher-title">WATCHER</div>
+          <div class="summary-item"><span class="mono">${systems.length}</span> system crons <span class="chip ${sysHealthy ? 'green':'gray'}">${sysHealthy} healthy</span> ${sysStale ? `<span class="chip amber">${sysStale} stale</span>` : ''}</div>
+          <div class="summary-item"><span class="mono">${gateways.length}</span> gateway crons <span class="chip ${gateHealthy ? 'green':'gray'}">${gateHealthy} healthy</span></div>
+          <div class="summary-item tiny">Last check: <span class="mono">${rel(ageSeconds)}</span></div>
+          <div class="watcher-subtitle">Watch, Alert, Track Cron Health, Evaluate Runs</div>
+        `;
+        $('dataWarning').style.display = (!available || stale) ? '' : 'none';
+      }
+
+      function renderSystem(results) {
+        const list = [...(results?.system_crons || [])];
+        const rank = (s) => /critical|error|stale|warn/i.test(s) ? 0 : /unknown/i.test(s) ? 1 : 2;
+        list.sort((a,b) => rank(a.status)-rank(b.status));
+        $('systemCount').textContent = String(list.length);
+        $('systemGrid').innerHTML = list.map((c, i) => {
+          const ageMin = Number(c.age_minutes ?? c.age_min ?? 0);
+          return `<article class="watcher-card" data-sys="${i}">
+            <div class="watcher-row"><div class="accent ${accentClass(c.status)}"></div><div class="content">
+              <div class="title-row"><div><div class="name">${c.description || c.id || 'System cron'}</div><div class="subtitle">System cron health check</div></div><span class="chip ${chipClass(c.status)}">${c.status || 'Unknown'}</span></div>
+              <div class="meta"><div>Last seen: <span class="mono">${rel(ageMin * 60)}</span></div><div>${c.cadence || 'cadence unknown'} · stale after ${c.threshold_minutes ?? '?'} min</div><div class="tiny"><span class="tag">${c.check_method || 'unknown'}</span></div></div>
+            </div></div>
+            <div class="details"><div class="details-inner">
+              <div>output_file: ${c.path || c.output_file || 'n/a'}</div>
+              <div>last_seen: ${abs(c.last_seen)}</div>
+              <div>age_minutes: ${ageMin}</div>
+              <div>threshold_minutes: ${c.threshold_minutes ?? 'n/a'}</div>
+              <div>check_method: ${c.check_method || 'unknown'}</div>
+            </div></div>
+          </article>`;
+        }).join('') || '<div class="tiny">No system cron data available.</div>';
+      }
+
+      function gatewayStatus(c) { return c.enabled === false ? 'Disabled' : (c.consecutive_errors > 0 ? 'Erroring' : 'Healthy'); }
+
+      function renderGateway(results) {
+        const list = [...(results?.gateway_crons || [])];
+        $('gatewayCount').textContent = String(list.length);
+        $('gatewayGrid').innerHTML = list.map((c) => {
+          const status = gatewayStatus(c);
+          const id = c.id;
+          const pending = state.actionPending.has(id);
+          return `<article class="watcher-card">
+            <div class="watcher-row"><div class="accent ${accentClass(status)}"></div><div class="content">
+              <div class="title-row"><div><div class="name">${c.name || id}</div><div class="subtitle">Gateway scheduler cron</div></div><span class="chip ${chipClass(status)}">${status}</span></div>
+              <div class="meta">
+                <div><span class="tag">${c.model || 'unknown-model'}</span></div>
+                <div>Schedule: ${c.schedule_human || c.schedule || 'n/a'}</div>
+                <div>Last run: <span class="mono">${rel((Date.now()-Date.parse(c.last_run_at||0))/1000)}</span>${c.last_duration_seconds ? `, took <span class="mono">${c.last_duration_seconds}s</span>` : ''}</div>
+                ${c.consecutive_errors > 0 ? `<div><span class="chip red">${c.consecutive_errors} errors</span> ${c.last_error || ''}</div>` : ''}
+              </div>
+              <div class="actions">
+                <button class="btn blue" data-action="run" data-id="${id}" ${pending ? 'disabled' : ''}>${pending ? 'Running…' : 'Run Now'}</button>
+                <button class="btn toggle ${c.enabled === false ? 'disabled':'enabled'}" data-action="toggle" data-enabled="${c.enabled === false ? '0':'1'}" data-name="${c.name || id}" data-id="${id}" ${pending ? 'disabled' : ''}>${c.enabled === false ? 'Enable' : 'Disable'}</button>
+              </div>
+            </div></div>
+          </article>`;
+        }).join('') || '<div class="tiny">No gateway cron data available.</div>';
+      }
+
+      function renderWarnings(results) {
+        const warnings = results?.convention_warnings || [];
+        const count = warnings.length;
+        $('warningCount').textContent = String(count);
+        $('warningCount').style.display = count ? '' : 'none';
+        $('warnList').innerHTML = warnings.map(w => `<div class="warn-item"><div class="mono">${w.file || 'unknown file'}</div><div>${w.line || w.cron_line || ''}</div></div>`).join('') || '<div class="tiny">No warnings.</div>';
+      }
+
+      async function refresh() {
+        const [health, config] = await Promise.all([
+          api('/api/watcher/health').catch(() => ({ available: false, stale: true, age_seconds: null, results: null })),
+          api('/api/watcher/config').catch(() => null),
+        ]);
+        state.health = health;
+        state.config = config;
+        renderSummary(health.results || {}, health.age_seconds, !!health.stale, !!health.available);
+        renderSystem(health.results || {});
+        renderGateway(health.results || {});
+        renderWarnings(health.results || {});
+        if (window.refreshWatcherBadge) window.refreshWatcherBadge();
+      }
+
+      async function act(id, action) {
+        state.actionPending.add(id); await refresh();
+        try {
+          const data = await api(`/api/watcher/gateway/${id}/${action}`, { method: 'POST', body: '{}' });
+          toast(data.success ? `${action} succeeded` : `${action} failed`);
+        } catch (e) {
+          toast(`${action} failed: ${e.message}`);
+        } finally {
+          state.actionPending.delete(id);
+          await refresh();
+        }
+      }
+
+      function bind() {
+        $('systemGrid').addEventListener('click', (e) => {
+          const card = e.target.closest('.watcher-card'); if (!card) return;
+          card.classList.toggle('open');
+        });
+        $('gatewayGrid').addEventListener('click', async (e) => {
+          const btn = e.target.closest('button[data-action]'); if (!btn) return;
+          const id = btn.dataset.id; const action = btn.dataset.action;
+          if (action === 'run') {
+            const start = Date.now();
+            const timer = setTimeout(() => toast('Gateway run is taking longer than 30s…'), 30000);
+            await act(id, 'run');
+            clearTimeout(timer);
+            if (Date.now() - start > 30000) toast('Gateway run finished after extended duration');
+            return;
+          }
+          const enabled = btn.dataset.enabled === '1';
+          const name = btn.dataset.name || id;
+          if (enabled && !window.confirm(`Disable ${name}? It will not run until re-enabled.`)) return;
+          await act(id, enabled ? 'disable' : 'enable');
+        });
+        $('warnHeader').addEventListener('click', () => {
+          const body = $('warnBody');
+          body.style.display = body.style.display === 'none' ? '' : 'none';
+        });
+      }
+
+      function cleanupWatcherTab() {
+        if (state.timer) clearInterval(state.timer);
+        state.timer = null;
+        window.__watcherInitRoot = null;
+      }
+
+      async function initWatcherTab() {
+        const root = $('summary');
+        if (!root) return;
+        if (window.__watcherInitRoot === root && state.timer) return;
+        window.__watcherInitRoot = root;
+        bind();
+        await refresh();
+        if (state.timer) clearInterval(state.timer);
+        state.timer = setInterval(refresh, 30000);
+      }
+
+      window.cleanupWatcherTab = cleanupWatcherTab;
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => initWatcherTab());
+      } else {
+        initWatcherTab();
+      }
+    })();
+  </script>
+</body>
+</html>
