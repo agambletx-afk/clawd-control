@@ -177,9 +177,9 @@ CHECK3_THRESHOLD="> 0 errors on enabled job"
 # openclaw cron list requires gateway RPC - may fail if gateway is down
 CRON_JSON=""
 if [[ "$(whoami)" == "openclaw" ]]; then
-    CRON_JSON=$(openclaw cron list --all --json 2>/dev/null | grep -v '^\[') || true
+    CRON_JSON=$(timeout 15 openclaw cron list --all --json 2>/dev/null | grep -v '^\[') || true
 else
-    CRON_JSON=$(sudo -u openclaw openclaw cron list --all --json 2>/dev/null | grep -v '^\[') || true
+    CRON_JSON=$(timeout 15 sudo -u openclaw openclaw cron list --all --json 2>/dev/null | grep -v '^\[') || true
 fi
 
 if [[ -n "$CRON_JSON" ]]; then
