@@ -6,6 +6,11 @@
   <title>WATCHER — Clawd Control</title>
   <style>
     .watcher-page { display: grid; gap: 14px; }
+    .watcher-header { padding: 12px 0 0; }
+    .watcher-header-name { font-size: 2.2rem; font-weight: 900; letter-spacing: 0.08em; color: #dbeafe; text-shadow: 0 0 12px rgba(59,130,246,0.7), 0 0 24px rgba(59,130,246,0.3); display: inline-flex; align-items: center; gap: 12px; }
+    .watcher-header-name svg { filter: drop-shadow(0 0 6px rgba(59,130,246,0.6)); }
+    .watcher-header-expand { font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px; letter-spacing: 0.02em; }
+    .watcher-header-expand b { color: #93c5fd; font-weight: 700; }
     .mono { font-family: var(--font-mono); }
     .watcher-summary {
       width: calc(100% + 32px);
@@ -70,6 +75,10 @@
 <body>
   <main class="main">
     <div class="watcher-page">
+      <div class="watcher-header">
+        <div class="watcher-header-name"><svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/></svg>W.A.T.C.H.E.R</div>
+        <div class="watcher-header-expand"><b>W</b>atch, <b>A</b>lert, <b>T</b>rack <b>C</b>ron <b>H</b>ealth, <b>E</b>valuate <b>R</b>uns</div>
+      </div>
       <section class="watcher-summary" id="summary"></section>
       <div id="dataWarning" class="alert-banner" style="display:none">WATCHER data unavailable - check if check-cron-health.sh is running</div>
 
@@ -138,11 +147,11 @@
         const sysStale = systems.filter(c => /stale|warn/i.test(c.status)).length;
         const gateHealthy = gateways.filter(c => /healthy/i.test(c.status)).length;
         $('summary').innerHTML = `
-          <div class="watcher-title">WATCHER</div>
+          
           <div class="summary-item"><span class="mono">${systems.length}</span> system crons <span class="chip ${sysHealthy ? 'green':'gray'}">${sysHealthy} healthy</span> ${sysStale ? `<span class="chip amber">${sysStale} stale</span>` : ''}</div>
           <div class="summary-item"><span class="mono">${gateways.length}</span> gateway crons <span class="chip ${gateHealthy ? 'green':'gray'}">${gateHealthy} healthy</span></div>
           <div class="summary-item tiny">Last check: <span class="mono">${rel(ageSeconds)}</span></div>
-          <div class="watcher-subtitle">Watch, Alert, Track Cron Health, Evaluate Runs</div>
+          
         `;
         $('dataWarning').style.display = (!available || stale) ? '' : 'none';
       }
