@@ -1,0 +1,102 @@
+{
+  "version": 1,
+  "staleness_multiplier": 2.5,
+  "system_crons": [
+    {
+      "id": "claude-token-refresh",
+      "description": "Claude/Anthropic token refresh",
+      "cadence_minutes": 240,
+      "output_path": null,
+      "check_method": "cron_log"
+    },
+    {
+      "id": "cli-usage-tracker",
+      "description": "CLI usage tracker",
+      "cadence_minutes": 30,
+      "output_path": "/tmp/cli-usage.json",
+      "check_method": "mtime"
+    },
+    {
+      "id": "bootstrap-audit",
+      "description": "Weekly bootstrap audit",
+      "cadence_minutes": 10080,
+      "output_path": "/home/openclaw/.openclaw/workspace/bootstrap-audit.log",
+      "check_method": "mtime"
+    },
+    {
+      "id": "cost-sentinel",
+      "description": "Daily cost sentinel",
+      "cadence_minutes": 1440,
+      "output_path": "/home/openclaw/.openclaw/workspace/cost-sentinel-status.json",
+      "check_method": "mtime"
+    },
+    {
+      "id": "gemini-rate-tracker",
+      "description": "Gemini API rate limit tracker",
+      "cadence_minutes": 5,
+      "output_path": "/home/openclaw/.openclaw/workspace/gemini-rate-status.json",
+      "check_method": "mtime"
+    },
+    {
+      "id": "system-health",
+      "description": "System health check",
+      "cadence_minutes": 5,
+      "output_path": "/home/openclaw/.openclaw/workspace/health-status.json",
+      "check_method": "mtime"
+    },
+    {
+      "id": "memory-ingest",
+      "description": "Daily memory fact extraction",
+      "cadence_minutes": 1440,
+      "output_path": "/home/openclaw/.openclaw/memory/ingest.log",
+      "check_method": "mtime"
+    },
+    {
+      "id": "memory-prune",
+      "description": "Hourly memory decay pruning",
+      "cadence_minutes": 60,
+      "output_path": "/home/openclaw/.openclaw/memory/prune.log",
+      "check_method": "mtime"
+    },
+    {
+      "id": "watchdog",
+      "description": "Consolidated restart watchdog",
+      "cadence_minutes": 2,
+      "output_path": "/tmp/openclaw-api-liveness.json",
+      "check_method": "mtime"
+    },
+    {
+      "id": "session-ops",
+      "description": "Unified session operations",
+      "cadence_minutes": 5,
+      "output_path": null,
+      "check_method": "cron_log"
+    },
+    {
+      "id": "security-health",
+      "description": "Security health audit (38 checks)",
+      "cadence_minutes": 15,
+      "output_path": "/tmp/security-health-results.json",
+      "check_method": "mtime"
+    },
+    {
+      "id": "security-hook-alert",
+      "description": "Security hook alert monitor",
+      "cadence_minutes": 5,
+      "output_path": null,
+      "check_method": "cron_log"
+    },
+    {
+      "id": "version-check",
+      "description": "OpenClaw version check",
+      "cadence_minutes": 60,
+      "output_path": "/tmp/openclaw-version-check.json",
+      "check_method": "mtime"
+    }
+  ],
+  "gateway_crons": {
+    "jobs_file": "/home/openclaw/.openclaw/cron/jobs.json",
+    "alert_on_consecutive_errors": 1,
+    "alert_on_disabled_with_errors": true
+  }
+}
