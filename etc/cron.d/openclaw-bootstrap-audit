@@ -1,0 +1,2 @@
+# Description: Weekly bootstrap audit (validates deployment config integrity)
+0 4 * * 0 root /usr/local/bin/bootstrap-audit-wrapper.sh 2>/dev/null

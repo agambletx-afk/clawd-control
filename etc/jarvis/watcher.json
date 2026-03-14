@@ -15,56 +15,64 @@
       "description": "CLI usage tracker",
       "cadence_minutes": 30,
       "output_path": "/tmp/cli-usage.json",
-      "check_method": "mtime"
+      "check_method": "heartbeat_v2",
+      "heartbeat_path": "/tmp/cli-usage-tracker-heartbeat.json"
     },
     {
       "id": "bootstrap-audit",
       "description": "Weekly bootstrap audit",
       "cadence_minutes": 10080,
       "output_path": "/home/openclaw/.openclaw/workspace/bootstrap-audit.log",
-      "check_method": "mtime"
+      "check_method": "heartbeat_v2",
+      "heartbeat_path": "/tmp/bootstrap-audit-heartbeat.json"
     },
     {
       "id": "cost-sentinel",
       "description": "Daily cost sentinel",
       "cadence_minutes": 1440,
       "output_path": "/home/openclaw/.openclaw/workspace/cost-sentinel-status.json",
-      "check_method": "mtime"
+      "check_method": "heartbeat_v2",
+      "heartbeat_path": "/tmp/cost-sentinel-heartbeat.json"
     },
     {
       "id": "gemini-rate-tracker",
       "description": "Gemini API rate limit tracker",
       "cadence_minutes": 5,
       "output_path": "/home/openclaw/.openclaw/workspace/gemini-rate-status.json",
-      "check_method": "mtime"
+      "check_method": "heartbeat_v2",
+      "heartbeat_path": "/tmp/gemini-rate-tracker-heartbeat.json"
     },
     {
       "id": "system-health",
       "description": "System health check",
       "cadence_minutes": 5,
       "output_path": "/home/openclaw/.openclaw/workspace/health-status.json",
-      "check_method": "mtime"
+      "check_method": "heartbeat_v2",
+      "heartbeat_path": "/tmp/system-health-heartbeat.json"
     },
     {
       "id": "memory-ingest",
       "description": "Daily memory fact extraction",
       "cadence_minutes": 1440,
       "output_path": "/home/openclaw/.openclaw/memory/ingest.log",
-      "check_method": "mtime"
+      "check_method": "heartbeat_v2",
+      "heartbeat_path": "/tmp/memory-ingest-heartbeat.json"
     },
     {
       "id": "memory-prune",
       "description": "Hourly memory decay pruning",
       "cadence_minutes": 60,
       "output_path": "/home/openclaw/.openclaw/memory/prune.log",
-      "check_method": "mtime"
+      "check_method": "heartbeat_v2",
+      "heartbeat_path": "/tmp/memory-prune-heartbeat.json"
     },
     {
       "id": "watchdog",
       "description": "Consolidated restart watchdog",
       "cadence_minutes": 2,
       "output_path": "/tmp/openclaw-api-liveness.json",
-      "check_method": "mtime"
+      "check_method": "heartbeat_v2",
+      "heartbeat_path": "/tmp/watchdog-heartbeat.json"
     },
     {
       "id": "session-ops",
@@ -79,7 +87,8 @@
       "description": "Security health audit (38 checks)",
       "cadence_minutes": 15,
       "output_path": "/tmp/security-health-results.json",
-      "check_method": "mtime"
+      "check_method": "heartbeat_v2",
+      "heartbeat_path": "/tmp/security-health-heartbeat.json"
     },
     {
       "id": "security-hook-alert",
@@ -94,7 +103,8 @@
       "description": "OpenClaw version check",
       "cadence_minutes": 60,
       "output_path": "/tmp/openclaw-version-check.json",
-      "check_method": "mtime"
+      "check_method": "heartbeat_v2",
+      "heartbeat_path": "/tmp/version-check-heartbeat.json"
     }
   ],
   "gateway_crons": {

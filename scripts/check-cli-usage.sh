@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -u
 
+HEARTBEAT_ID="cli-usage-tracker"
+source /usr/local/bin/heartbeat-lib.sh
+
 OUT_PATH="/tmp/cli-usage.json"
 NOW_UTC="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
@@ -105,3 +108,4 @@ mv "$tmp_out" "$OUT_PATH"
 chmod 644 "$OUT_PATH" 2>/dev/null || true
 
 printf 'Updated %s\n' "$OUT_PATH"
+heartbeat_finish

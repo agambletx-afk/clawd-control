@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -u
 
+HEARTBEAT_ID="version-check"
+source /usr/local/bin/heartbeat-lib.sh
+
 OUT_PATH="/tmp/openclaw-version-check.json"
 NPM_URL="https://registry.npmjs.org/openclaw"
 GITHUB_URL="https://api.github.com/repos/openclaw/openclaw/releases"
@@ -160,4 +163,5 @@ rm -f "$headers_file" "$github_body_file"
 has_security_patch="$(jq -r 'any(.[]; .has_security == true)' <<< "$releases_between_json")"
 has_breaking_changes="$(jq -r 'any(.[]; .has_breaking == true)' <<< "$releases_between_json")"
 
+heartbeat_finish
 json_out "$timestamp" "$installed_version" "\"$latest_version\"" "update_available" "$versions_behind" "$has_security_patch" "$has_breaking_changes" "$releases_between_json" 'null'

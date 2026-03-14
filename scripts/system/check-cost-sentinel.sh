@@ -17,6 +17,9 @@
 
 set -euo pipefail
 
+HEARTBEAT_ID="cost-sentinel"
+source /usr/local/bin/heartbeat-lib.sh
+
 # ---------------------------------------------------------------------------
 # Thresholds - tune after 2 weeks of data
 # ---------------------------------------------------------------------------
@@ -379,4 +382,5 @@ jq -n \
 
 mv -f "$STATUS_TMP" "$STATUS_FILE"
 
+heartbeat_finish
 exit 0

@@ -1,0 +1,2 @@
+# Description: Hourly memory decay pruning (removes expired facts by TTL)
+0 * * * * openclaw /usr/local/bin/memory-prune-wrapper.sh 2>/dev/null
