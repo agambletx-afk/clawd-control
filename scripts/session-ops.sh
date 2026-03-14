@@ -220,6 +220,7 @@ main() {
   cleanup_processes
   cleanup_temp_files
   rotate_and_prune_sessions
+  echo "{\"last_success_at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"exit_code\":0}" > /tmp/session-ops-heartbeat.json
   log "completed"
 }
 

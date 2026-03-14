@@ -88,3 +88,4 @@ mv "$tmp_file" "$CREDENTIALS_FILE"
 chmod 600 "$CREDENTIALS_FILE"
 
 echo "OK: Token refreshed successfully (new expiresAt=${new_expires_at})"
+echo "{\"last_success_at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"exit_code\":0}" > /tmp/claude-token-heartbeat.json
