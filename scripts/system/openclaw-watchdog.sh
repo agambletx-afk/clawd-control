@@ -8,6 +8,7 @@ MEMORY_RESTART_PERCENT="${MEMORY_RESTART_PERCENT:-80}"
 API_URL="${API_URL:-http://127.0.0.1:3000/}"
 API_TIMEOUT_SECONDS="${API_TIMEOUT_SECONDS:-5}"
 RESTART_STATE_FILE="${RESTART_STATE_FILE:-/tmp/openclaw-watchdog.last_restart}"
+JSON_STATUS_FILE="${JSON_STATUS_FILE:-/tmp/openclaw-api-liveness.json}"
 
 TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-}"
 TELEGRAM_CHAT_ID="${TELEGRAM_CHAT_ID:-}"
@@ -135,20 +136,107 @@ restart_service() {
   fi
 }
 
+write_liveness_json() {
+  local now code time_total response_ms api_alive_bool api_status
+  local max_bytes current_bytes threshold_bytes
+  local rss_mb threshold_mb memorymax_mb memory_status
+  local tmp_file
+
+  now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+  read -r code time_total < <(
+    curl -sS -o /dev/null -w '%{http_code} %{time_total}' --max-time "$API_TIMEOUT_SECONDS" "$API_URL" 2>/dev/null || echo "000 0"
+  )
+
+  if [[ "$code" == "200" || "$code" == "401" ]]; then
+    api_alive_bool=true
+    api_status="healthy"
+  else
+    api_alive_bool=false
+    api_status="unhealthy"
+  fi
+
+  response_ms="$(awk -v t="$time_total" 'BEGIN { printf "%d", (t * 1000) }')"
+
+  max_bytes="$(get_memory_max_bytes)"
+  current_bytes="$(get_memory_current_bytes)"
+
+  threshold_bytes=0
+  threshold_mb=0
+  rss_mb=0
+  memorymax_mb=0
+  memory_status="warning"
+
+  if [[ -n "$max_bytes" && -n "$current_bytes" ]]; then
+    threshold_bytes=$(( max_bytes * MEMORY_RESTART_PERCENT / 100 ))
+    threshold_mb=$(( threshold_bytes / 1024 / 1024 ))
+    rss_mb=$(( current_bytes / 1024 / 1024 ))
+    memorymax_mb=$(( max_bytes / 1024 / 1024 ))
+
+    if (( current_bytes >= max_bytes )); then
+      memory_status="critical"
+    elif (( current_bytes >= threshold_bytes )); then
+      memory_status="warning"
+    else
+      memory_status="ok"
+    fi
+  fi
+
+  tmp_file="${JSON_STATUS_FILE}.tmp.$$"
+
+  jq -n \
+    --arg timestamp "$now" \
+    --argjson api_alive "$api_alive_bool" \
+    --argjson response_ms "$response_ms" \
+    --argjson rss_mb "$rss_mb" \
+    --argjson threshold_mb "$threshold_mb" \
+    --arg memory_status "$memory_status" \
+    --arg api_status "$api_status" \
+    '{
+      timestamp: $timestamp,
+      api_alive: $api_alive,
+      response_ms: $response_ms,
+      memory_status: {
+        rss_mb: $rss_mb,
+        threshold_mb: $threshold_mb,
+        status: $memory_status
+      },
+      api_liveness: {
+        status: $api_status,
+        response_ms: $response_ms,
+        last_check: $timestamp
+      }
+    }' >"$tmp_file"
+
+  mv "$tmp_file" "$JSON_STATUS_FILE"
+
+  log_line "INFO" "status json updated (api_alive=${api_alive_bool} response_ms=${response_ms} rss_mb=${rss_mb} threshold_mb=${threshold_mb} memorymax_mb=${memorymax_mb} memory_status=${memory_status} file=${JSON_STATUS_FILE})"
+}
+
 main() {
   local reason
+  local had_action=0
+  local exit_code=0
 
   if reason="$(memory_reason)"; then
-    restart_service "$reason"
-    exit 0
+    had_action=1
+    if ! restart_service "$reason"; then
+      exit_code=1
+    fi
+  elif reason="$(api_reason)"; then
+    had_action=1
+    if ! restart_service "$reason"; then
+      exit_code=1
+    fi
   fi
 
-  if reason="$(api_reason)"; then
-    restart_service "$reason"
-    exit 0
+  if (( had_action == 0 )); then
+    log_line "INFO" "no action required"
   fi
 
-  log_line "INFO" "no action required"
+  write_liveness_json
+
+  return "$exit_code"
 }
 
 main "$@"
