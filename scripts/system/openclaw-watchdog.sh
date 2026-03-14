@@ -145,7 +145,7 @@ write_liveness_json() {
   now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
   read -r code time_total < <(
-    curl -sS -o /dev/null -w '%{http_code} %{time_total}' --max-time "$API_TIMEOUT_SECONDS" "$API_URL" 2>/dev/null || echo "000 0"
+    curl -sS -o /dev/null -w '%{http_code} %{time_total}\n' --max-time "$API_TIMEOUT_SECONDS" "$API_URL" 2>/dev/null || echo "000 0"
   )
 
   if [[ "$code" == "200" || "$code" == "401" ]]; then
