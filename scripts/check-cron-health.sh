@@ -50,6 +50,115 @@ duration_seconds_from_ms() {
   awk -v ms="$duration_ms" 'BEGIN { printf "%.1f", ms/1000 }'
 }
 
+validate_system_cron() {
+  local validation_json="$1"
+  local output_path="$2"
+  local threshold_seconds="$3"
+  local now_epoch="$4"
+
+  local validation_tier validation_status validation_message
+  validation_tier="$(jq -r '.type // empty' <<<"$validation_json" 2>/dev/null || true)"
+  validation_status="valid"
+  validation_message="null"
+
+  if [[ -z "$validation_tier" ]]; then
+    echo -e "null\tnull\tnull"
+    return 0
+  fi
+
+  if [[ "$validation_tier" == "json" ]]; then
+    if [[ -z "$output_path" || "$output_path" == "null" || ! -f "$output_path" ]]; then
+      validation_status="invalid"
+      validation_message='"Output file not found for JSON validation"'
+      echo -e "${validation_tier}\t${validation_status}\t${validation_message}"
+      return 0
+    fi
+
+    if ! jq empty "$output_path" >/dev/null 2>&1; then
+      validation_status="invalid"
+      validation_message='"Output file is not valid JSON"'
+      echo -e "${validation_tier}\t${validation_status}\t${validation_message}"
+      return 0
+    fi
+
+    local key
+    while IFS= read -r key; do
+      [[ -n "$key" ]] || continue
+      if ! jq -e --arg k "$key" 'has($k)' "$output_path" >/dev/null 2>&1; then
+        validation_status="invalid"
+        validation_message="\"Missing required key: $key\""
+        break
+      fi
+    done < <(jq -r '.required_keys[]? // empty' <<<"$validation_json" 2>/dev/null || true)
+
+    if [[ "$validation_status" == "valid" ]]; then
+      local timestamp_field timestamp_max_age timestamp_value ts_epoch ts_age_minutes
+      timestamp_field="$(jq -r '.timestamp_field // empty' <<<"$validation_json" 2>/dev/null || true)"
+      timestamp_max_age="$(jq -r '.timestamp_max_age_minutes // empty' <<<"$validation_json" 2>/dev/null || true)"
+      if [[ -n "$timestamp_field" && "$timestamp_field" != "null" && "$timestamp_max_age" =~ ^[0-9]+$ ]]; then
+        timestamp_value="$(jq -r --arg f "$timestamp_field" '.[$f] // empty' "$output_path" 2>/dev/null || true)"
+        ts_epoch="$(date -u -d "$timestamp_value" +%s 2>/dev/null || true)"
+        if [[ -z "$timestamp_value" || -z "$ts_epoch" ]]; then
+          validation_status="invalid"
+          validation_message="\"Invalid timestamp in field: $timestamp_field\""
+        else
+          ts_age_minutes=$(( (now_epoch - ts_epoch) / 60 ))
+          if (( ts_age_minutes > timestamp_max_age )); then
+            validation_status="stale_content"
+            validation_message="\"Timestamp in output is ${ts_age_minutes}m old (threshold: ${timestamp_max_age}m)\""
+          fi
+        fi
+      fi
+    fi
+
+    if [[ "$validation_status" == "valid" ]]; then
+      local field
+      while IFS= read -r field; do
+        [[ -n "$field" ]] || continue
+        if jq -e --arg f "$field" '.[$f] == null or .[$f] == "" or ((.[$f] | type == "array") and (.[$f] | length == 0))' "$output_path" >/dev/null 2>&1; then
+          validation_status="invalid"
+          validation_message="\"Field '$field' is null or empty\""
+          break
+        fi
+      done < <(jq -r '.non_empty_fields[]? // empty' <<<"$validation_json" 2>/dev/null || true)
+    fi
+  elif [[ "$validation_tier" == "log_no_errors" ]]; then
+    local log_file last_error
+    log_file="$(jq -r '.file // empty' <<<"$validation_json" 2>/dev/null || true)"
+    if [[ -z "$log_file" || "$log_file" == "null" || ! -s "$log_file" ]]; then
+      validation_status="invalid"
+      validation_message='"Log file is empty"'
+    elif tail -5 "$log_file" | grep -Eqi "error|failed|traceback|exception|errno|can't open file|permission denied"; then
+      last_error="$(tail -5 "$log_file" | grep -Ei "error|failed|traceback|exception|errno|can't open file|permission denied" | tail -1 || true)"
+      validation_status="content_error"
+      validation_message="\"Recent log errors detected: ${last_error:0:120}\""
+    fi
+  elif [[ "$validation_tier" == "exists_and_recent" ]]; then
+    if [[ -z "$output_path" || "$output_path" == "null" || ! -e "$output_path" ]]; then
+      validation_status="invalid"
+      validation_message='"Output file not found"'
+    else
+      local validation_mtime validation_age_seconds
+      validation_mtime="$(stat -c %Y "$output_path" 2>/dev/null || true)"
+      if [[ -n "$validation_mtime" && "$validation_mtime" =~ ^[0-9]+$ ]]; then
+        validation_age_seconds=$((now_epoch - validation_mtime))
+        if (( validation_age_seconds > threshold_seconds )); then
+          validation_status="stale_content"
+          validation_message="\"Output file mtime exceeds threshold (${threshold_seconds}s)\""
+        fi
+      else
+        validation_status="invalid"
+        validation_message='"Unable to read output mtime"'
+      fi
+    fi
+  else
+    validation_status="invalid"
+    validation_message="\"Unsupported validation type: ${validation_tier}\""
+  fi
+
+  echo -e "${validation_tier}\t${validation_status}\t${validation_message}"
+}
+
 find_last_syslog_match_epoch() {
   local needle="$1"
   local cutoff_epoch="$2"
@@ -186,6 +295,7 @@ main() {
   warnings_tmp="$(mktemp)"
 
   local system_stale=0 system_missing=0 system_unknown=0 system_healthy=0 system_total=0 system_failed=0 system_stuck=0
+  local system_validated=0 system_valid=0 system_invalid=0 system_no_validation=0
 
   while IFS=$'	' read -r id description cadence output_path check_method heartbeat_path; do
     [[ -n "$id" ]] || continue
@@ -193,6 +303,7 @@ main() {
 
     local threshold_minutes threshold_seconds status last_seen age_minutes message
     local started_at finished_at duration_ms exit_code heartbeat_version check_method_used
+    local validation_json validation_tier validation_status validation_message
     threshold_minutes="$(awk -v c="$cadence" -v m="$staleness_multiplier" 'BEGIN { printf "%.2f", c*m }')"
     threshold_seconds="$(awk -v t="$threshold_minutes" 'BEGIN { printf "%d", t*60 }')"
     status="healthy"
@@ -205,6 +316,11 @@ main() {
     exit_code="null"
     heartbeat_version="null"
     check_method_used="$check_method"
+    validation_tier="null"
+    validation_status="null"
+    validation_message="null"
+
+    validation_json="$(jq -c --arg id "$id" '.system_crons[] | select(.id == $id) | .validation // empty' "$CONFIG_FILE" 2>/dev/null || true)"
 
     local heartbeat_file
     heartbeat_file="/tmp/${id}-heartbeat.json"
@@ -317,12 +433,38 @@ main() {
       fi
     fi
 
+    if [[ -n "$validation_json" ]]; then
+      validation_tier="$(jq -r '.type // null' <<<"$validation_json" 2>/dev/null || echo "null")"
+      if [[ "$status" == "healthy" ]]; then
+        local validation_result
+        validation_result="$(validate_system_cron "$validation_json" "$output_path" "$threshold_seconds" "$now_epoch")"
+        validation_tier="$(cut -f1 <<<"$validation_result")"
+        validation_status="$(cut -f2 <<<"$validation_result")"
+        validation_message="$(cut -f3- <<<"$validation_result")"
+
+        system_validated=$((system_validated + 1))
+        if [[ "$validation_status" == "valid" ]]; then
+          system_valid=$((system_valid + 1))
+        else
+          system_invalid=$((system_invalid + 1))
+          status="$validation_status"
+          message="$validation_message"
+        fi
+      else
+        validation_status="null"
+        validation_message="null"
+      fi
+    else
+      system_no_validation=$((system_no_validation + 1))
+    fi
+
     case "$status" in
       healthy|running) system_healthy=$((system_healthy + 1)) ;;
       stale) system_stale=$((system_stale + 1)) ;;
       missing) system_missing=$((system_missing + 1)) ;;
       failed) system_failed=$((system_failed + 1)) ;;
       stuck) system_stuck=$((system_stuck + 1)) ;;
+      invalid|stale_content|content_error) ;;
       unknown) system_unknown=$((system_unknown + 1)) ;;
     esac
 
@@ -341,6 +483,9 @@ main() {
       --argjson duration_ms "$duration_ms" \
       --argjson exit_code "$exit_code" \
       --argjson heartbeat_version "$heartbeat_version" \
+      --argjson validation_tier "$validation_tier" \
+      --argjson validation_status "$validation_status" \
+      --argjson validation_message "$validation_message" \
       '{
         id: $id,
         description: $description,
@@ -355,7 +500,10 @@ main() {
         finished_at: $finished_at,
         duration_ms: $duration_ms,
         exit_code: $exit_code,
-        heartbeat_version: $heartbeat_version
+        heartbeat_version: $heartbeat_version,
+        validation_tier: $validation_tier,
+        validation_status: $validation_status,
+        validation_message: $validation_message
       }' >>"$system_tmp"
   done < <(jq -r '.system_crons[] | [.id, .description, .cadence_minutes, (.output_path // "null"), .check_method, (.heartbeat_path // "null")] | @tsv' "$CONFIG_FILE")
 
@@ -430,7 +578,7 @@ main() {
   local overall_status="healthy"
   if (( system_missing > 0 || gateway_erroring > 0 || system_stale >= 3 || system_failed > 0 || system_stuck > 0 )); then
     overall_status="critical"
-  elif (( system_stale > 0 || description_warning_count > 0 || gateway_disabled_with_errors > 0 )); then
+  elif (( system_stale > 0 || system_invalid > 0 || description_warning_count > 0 || gateway_disabled_with_errors > 0 )); then
     overall_status="warning"
   fi
 
@@ -462,6 +610,10 @@ main() {
     --argjson system_unknown "$system_unknown" \
     --argjson system_failed "$system_failed" \
     --argjson system_stuck "$system_stuck" \
+    --argjson system_validated "$system_validated" \
+    --argjson system_valid "$system_valid" \
+    --argjson system_invalid "$system_invalid" \
+    --argjson system_no_validation "$system_no_validation" \
     --argjson gateway_total "$gateway_total" \
     --argjson gateway_healthy "$gateway_healthy" \
     --argjson gateway_erroring "$gateway_erroring" \
@@ -481,6 +633,10 @@ main() {
         system_unknown: $system_unknown,
         system_failed: $system_failed,
         system_stuck: $system_stuck,
+        system_validated: $system_validated,
+        system_valid: $system_valid,
+        system_invalid: $system_invalid,
+        system_no_validation: $system_no_validation,
         gateway_total: $gateway_total,
         gateway_healthy: $gateway_healthy,
         gateway_erroring: $gateway_erroring,
@@ -492,7 +648,7 @@ main() {
   local -a alert_lines=()
   local -a recovery_lines=()
 
-  while IFS=$'\t' read -r id description status age threshold exit_code duration_ms; do
+  while IFS=$'\t' read -r id description status age threshold exit_code duration_ms validation_message; do
     local prev="${prev_system_status[$id]:-}"
     if [[ "$status" == "unknown" ]]; then
       continue
@@ -512,11 +668,17 @@ main() {
         alert_lines+=("[FAILED] ${description} - exit code ${exit_code} after ${failed_duration_seconds}")
       elif [[ "$status" == "stuck" ]]; then
         alert_lines+=("[STUCK] ${description} - running for ${age}m (threshold: ${threshold}m)")
+      elif [[ "$status" == "invalid" ]]; then
+        alert_lines+=("[INVALID] ${description} - ${validation_message}")
+      elif [[ "$status" == "stale_content" ]]; then
+        alert_lines+=("[STALE_CONTENT] ${description} - ${validation_message}")
+      elif [[ "$status" == "content_error" ]]; then
+        alert_lines+=("[CONTENT_ERROR] ${description} - ${validation_message}")
       fi
-    elif [[ "$prev" =~ ^(stale|missing|failed|stuck)$ && ( "$status" == "healthy" || "$status" == "running" ) ]]; then
+    elif [[ "$prev" =~ ^(stale|missing|failed|stuck|invalid|stale_content|content_error)$ && ( "$status" == "healthy" || "$status" == "running" ) ]]; then
       recovery_lines+=("[OK] ${description} - back to healthy")
     fi
-  done < <(jq -r '.system_crons[] | [.id, .description, .status, (.age_minutes // 0), .threshold_minutes, (.exit_code // ""), (.duration_ms // "")] | @tsv' "$status_tmp")
+  done < <(jq -r '.system_crons[] | [.id, .description, .status, (.age_minutes // 0), .threshold_minutes, (.exit_code // ""), (.duration_ms // ""), (.validation_message // "")] | @tsv' "$status_tmp")
 
   while IFS=$'\t' read -r id name status consecutive_errors last_error; do
     local prev="${prev_gateway_status[$id]:-}"
@@ -539,7 +701,7 @@ main() {
       echo
       printf '%s\n' "${alert_lines[@]}"
       echo
-      printf '%s system crons: %s healthy, %s stale, %s failed, %s stuck\n' "$system_total" "$system_healthy" "$system_stale" "$system_failed" "$system_stuck"
+      printf '%s system crons: %s healthy, %s stale, %s failed, %s stuck, %s invalid\n' "$system_total" "$system_healthy" "$system_stale" "$system_failed" "$system_stuck" "$system_invalid"
       printf '%s gateway crons: %s erroring\n' "$gateway_total" "$gateway_erroring"
     })"
     send_telegram_alert "$alert_message"

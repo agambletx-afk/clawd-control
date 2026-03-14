@@ -57,6 +57,11 @@
     .meta { margin-top: 8px; font-size: 0.7rem; color: var(--text-secondary); display: grid; gap: 3px; }
     .tiny { color: var(--text-tertiary); font-size: 11px; }
     .tag { border: 1px solid #8b5cf6; color: #c4b5fd; border-radius: 4px; padding: 1px 6px; font-size: 0.66rem; }
+    .validation-pill { display: inline-flex; align-items: center; border-radius: 999px; padding: 1px 8px; font-size: 0.64rem; font-weight: 700; width: fit-content; }
+    .validation-pill.outline-green { border: 1px solid #22c55e; color: #86efac; }
+    .validation-pill.outline-gray { border: 1px solid #475569; color: #cbd5e1; }
+    .validation-pill.fill-red { background: #b91c1c; color: #fee2e2; }
+    .validation-pill.fill-amber { background: #b45309; color: #fef3c7; }
     .details { max-height: 0; overflow: hidden; transition: max-height .25s ease; border-top: 1px solid transparent; }
     .watcher-card.open .details { max-height: 360px; border-top-color: var(--border-subtle); }
     .details-inner { padding: 8px 10px; font-size: 0.7rem; color: var(--text-secondary); display: grid; gap: 3px; font-family: var(--font-mono); }
@@ -76,6 +81,7 @@
 
     .warn-list { margin-top: 8px; display: grid; gap: 7px; }
     .warn-item { border-left: 3px solid #f59e0b; background: rgba(245,158,11,0.08); padding: 7px 8px; border-radius: 8px; font-size: 0.72rem; color: var(--text-secondary); }
+    .validation-callout { border-left: 3px solid #f59e0b; background: rgba(245,158,11,0.08); color: #fbbf24; border-radius: 8px; padding: 7px 8px; font-size: 0.72rem; }
     .toast { position: fixed; right: 12px; bottom: 12px; background: var(--bg-elevated); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 8px 10px; font-size: 0.74rem; z-index: 1000; }
   </style>
 </head>
@@ -142,6 +148,31 @@
         const c = chipClass(status);
         return c === 'amber' ? 'amber' : c === 'green' ? 'green' : c === 'red' ? 'red' : '';
       };
+      const validationBadge = (cron) => {
+        const tier = String(cron?.validation_tier || '').toLowerCase();
+        const status = String(cron?.validation_status || '').toLowerCase();
+        if (!tier) return '<span class="validation-pill outline-gray">no validation</span>';
+        if (tier === 'json') {
+          if (status === 'invalid') return '<span class="validation-pill fill-red">schema: invalid</span>';
+          if (status === 'stale_content') return '<span class="validation-pill fill-amber">stale content</span>';
+          if (status === 'content_error') return '<span class="validation-pill fill-amber">schema: content error</span>';
+          if (status === 'valid') return '<span class="validation-pill outline-green">schema: valid</span>';
+          return '<span class="validation-pill outline-gray">schema: pending</span>';
+        }
+        if (tier === 'log_no_errors') {
+          if (status === 'content_error') return '<span class="validation-pill fill-amber">log: errors</span>';
+          if (status === 'stale_content') return '<span class="validation-pill fill-amber">stale content</span>';
+          if (status === 'invalid') return '<span class="validation-pill fill-red">log: invalid</span>';
+          if (status === 'valid') return '<span class="validation-pill outline-green">log: clean</span>';
+          return '<span class="validation-pill outline-gray">log: pending</span>';
+        }
+        if (tier === 'exists_and_recent') {
+          if (status === 'stale_content') return '<span class="validation-pill fill-amber">stale content</span>';
+          if (status === 'invalid') return '<span class="validation-pill fill-red">validation: invalid</span>';
+          if (status === 'valid') return '<span class="validation-pill outline-green">validation: recent</span>';
+        }
+        return `<span class="validation-pill outline-gray">${esc(tier)}</span>`;
+      };
       const api = async (url, opts) => {
         const res = await fetch(url, { cache: 'no-store', credentials: 'same-origin', ...(opts || {}) });
         const data = await res.json().catch(() => ({}));
@@ -197,10 +228,11 @@
         const gateways = results?.gateway_crons || [];
         const sysHealthy = systems.filter(c => /healthy/i.test(c.status)).length;
         const sysStale = systems.filter(c => /stale|warn/i.test(c.status)).length;
+        const sysInvalid = systems.filter(c => /invalid|stale_content|content_error/i.test(c.status)).length;
         const gateHealthy = gateways.filter(c => /healthy/i.test(c.status)).length;
         $('summary').innerHTML = `
           
-          <div class="summary-item"><span class="mono">${systems.length}</span> system crons <span class="chip ${sysHealthy ? 'green':'gray'}">${sysHealthy} healthy</span> ${sysStale ? `<span class="chip amber">${sysStale} stale</span>` : ''}</div>
+          <div class="summary-item"><span class="mono">${systems.length}</span> system crons <span class="chip ${sysHealthy ? 'green':'gray'}">${sysHealthy} healthy</span> ${sysInvalid ? `<span class="chip amber">${sysInvalid} invalid</span>` : ''} ${sysStale ? `<span class="chip amber">${sysStale} stale</span>` : ''}</div>
           <div class="summary-item"><span class="mono">${gateways.length}</span> gateway crons <span class="chip ${gateHealthy ? 'green':'gray'}">${gateHealthy} healthy</span></div>
           <div class="summary-item tiny">Last check: <span class="mono">${rel(ageSeconds)}</span></div>
           
@@ -219,7 +251,7 @@
           return `<article class="watcher-card ${state.expandedCards.has(jobId) ? 'open' : ''}" data-job-id="${jobId}">
             <div class="watcher-row"><div class="accent ${accentClass(c.status)}"></div><div class="content">
               <div class="title-row"><div><div class="name">${c.description || c.id || 'System cron'}</div><div class="subtitle">System cron health check</div></div><span class="status-wrap"><span class="chip ${chipClass(c.status)}">${c.status || 'Unknown'}</span><span class="chip amber" data-role="flapping" style="display:none">Flapping</span></span></div>
-              <div class="meta"><div>Last seen: <span class="mono">${rel(ageMin * 60)}</span></div><div>every ${c.threshold_minutes ? hmn(c.threshold_minutes / 2.5) : 'unknown'} · stale after ${c.threshold_minutes ? hmn(c.threshold_minutes) : '?'}</div><div>Duration: <span class="mono">${msToDuration(Number(c.duration_ms))}</span><span class="sparkline" data-role="sparkline"></span></div><div class="tiny"><span class="tag">${c.check_method || 'unknown'}</span></div></div>
+              <div class="meta"><div>Last seen: <span class="mono">${rel(ageMin * 60)}</span></div><div>every ${c.threshold_minutes ? hmn(c.threshold_minutes / 2.5) : 'unknown'} · stale after ${c.threshold_minutes ? hmn(c.threshold_minutes) : '?'}</div><div>Duration: <span class="mono">${msToDuration(Number(c.duration_ms))}</span><span class="sparkline" data-role="sparkline"></span></div><div class="tiny"><span class="tag">${c.check_method || 'unknown'}</span></div><div class="tiny">${validationBadge(c)}</div></div>
             </div></div>
             <div class="details"><div class="details-inner">
               <div>output_file: ${c.path || c.output_file || 'n/a'}</div>
@@ -227,6 +259,9 @@
               <div>age_minutes: ${ageMin}</div>
               <div>threshold_minutes: ${c.threshold_minutes ?? 'n/a'}</div>
               <div>check_method: ${c.check_method || 'unknown'}</div>
+              <div>validation_tier: ${c.validation_tier ?? 'n/a'}</div>
+              <div>validation_status: ${c.validation_status ?? 'n/a'}</div>
+              ${(c.validation_status && c.validation_status !== 'valid' && c.validation_message) ? `<div class="validation-callout">⚠ Validation: ${esc(c.validation_message)}</div>` : ''}
               <div data-role="history"><div class="tiny">Loading run history…</div></div>
               <div data-role="stats" class="tiny">Loading stats…</div>
             </div></div>

@@ -16,7 +16,19 @@
       "cadence_minutes": 30,
       "output_path": "/tmp/cli-usage.json",
       "check_method": "heartbeat_v2",
-      "heartbeat_path": "/tmp/cli-usage-tracker-heartbeat.json"
+      "heartbeat_path": "/tmp/cli-usage-tracker-heartbeat.json",
+      "validation": {
+        "type": "json",
+        "required_keys": [
+          "checked_at",
+          "providers"
+        ],
+        "timestamp_field": "checked_at",
+        "timestamp_max_age_minutes": 35,
+        "non_empty_fields": [
+          "providers"
+        ]
+      }
     },
     {
       "id": "bootstrap-audit",
@@ -32,7 +44,17 @@
       "cadence_minutes": 1440,
       "output_path": "/home/openclaw/.openclaw/workspace/cost-sentinel-status.json",
       "check_method": "heartbeat_v2",
-      "heartbeat_path": "/tmp/cost-sentinel-heartbeat.json"
+      "heartbeat_path": "/tmp/cost-sentinel-heartbeat.json",
+      "validation": {
+        "type": "json",
+        "required_keys": [
+          "generated_at",
+          "overall_status",
+          "checks"
+        ],
+        "timestamp_field": "generated_at",
+        "timestamp_max_age_minutes": 1500
+      }
     },
     {
       "id": "gemini-rate-tracker",
@@ -40,7 +62,16 @@
       "cadence_minutes": 5,
       "output_path": "/home/openclaw/.openclaw/workspace/gemini-rate-status.json",
       "check_method": "heartbeat_v2",
-      "heartbeat_path": "/tmp/gemini-rate-tracker-heartbeat.json"
+      "heartbeat_path": "/tmp/gemini-rate-tracker-heartbeat.json",
+      "validation": {
+        "type": "json",
+        "required_keys": [
+          "timestamp",
+          "status"
+        ],
+        "timestamp_field": "timestamp",
+        "timestamp_max_age_minutes": 8
+      }
     },
     {
       "id": "system-health",
@@ -48,7 +79,12 @@
       "cadence_minutes": 5,
       "output_path": "/home/openclaw/.openclaw/workspace/health-status.json",
       "check_method": "heartbeat_v2",
-      "heartbeat_path": "/tmp/system-health-heartbeat.json"
+      "heartbeat_path": "/tmp/system-health-heartbeat.json",
+      "validation": {
+        "type": "json",
+        "required_keys": [],
+        "non_empty_fields": []
+      }
     },
     {
       "id": "memory-ingest",
@@ -56,7 +92,11 @@
       "cadence_minutes": 1440,
       "output_path": "/home/openclaw/.openclaw/memory/ingest.log",
       "check_method": "heartbeat_v2",
-      "heartbeat_path": "/tmp/memory-ingest-heartbeat.json"
+      "heartbeat_path": "/tmp/memory-ingest-heartbeat.json",
+      "validation": {
+        "type": "log_no_errors",
+        "file": "/home/openclaw/.openclaw/memory/ingest.log"
+      }
     },
     {
       "id": "memory-prune",
@@ -64,7 +104,11 @@
       "cadence_minutes": 60,
       "output_path": "/home/openclaw/.openclaw/memory/prune.log",
       "check_method": "heartbeat_v2",
-      "heartbeat_path": "/tmp/memory-prune-heartbeat.json"
+      "heartbeat_path": "/tmp/memory-prune-heartbeat.json",
+      "validation": {
+        "type": "log_no_errors",
+        "file": "/home/openclaw/.openclaw/memory/prune.log"
+      }
     },
     {
       "id": "watchdog",
@@ -72,7 +116,17 @@
       "cadence_minutes": 2,
       "output_path": "/tmp/openclaw-api-liveness.json",
       "check_method": "heartbeat_v2",
-      "heartbeat_path": "/tmp/watchdog-heartbeat.json"
+      "heartbeat_path": "/tmp/watchdog-heartbeat.json",
+      "validation": {
+        "type": "json",
+        "required_keys": [
+          "timestamp",
+          "api_alive",
+          "memory_status"
+        ],
+        "timestamp_field": "timestamp",
+        "timestamp_max_age_minutes": 5
+      }
     },
     {
       "id": "session-ops",
@@ -88,7 +142,17 @@
       "cadence_minutes": 15,
       "output_path": "/tmp/security-health-results.json",
       "check_method": "heartbeat_v2",
-      "heartbeat_path": "/tmp/security-health-heartbeat.json"
+      "heartbeat_path": "/tmp/security-health-heartbeat.json",
+      "validation": {
+        "type": "json",
+        "required_keys": [
+          "generated_at",
+          "overall_status",
+          "checks"
+        ],
+        "timestamp_field": "generated_at",
+        "timestamp_max_age_minutes": 20
+      }
     },
     {
       "id": "security-hook-alert",
@@ -104,7 +168,16 @@
       "cadence_minutes": 60,
       "output_path": "/tmp/openclaw-version-check.json",
       "check_method": "heartbeat_v2",
-      "heartbeat_path": "/tmp/version-check-heartbeat.json"
+      "heartbeat_path": "/tmp/version-check-heartbeat.json",
+      "validation": {
+        "type": "json",
+        "required_keys": [
+          "checked_at",
+          "status"
+        ],
+        "timestamp_field": "checked_at",
+        "timestamp_max_age_minutes": 65
+      }
     }
   ],
   "gateway_crons": {
