@@ -137,6 +137,15 @@
         if (m < 1440) return Math.round(m / 60) + 'h';
         return (m / 1440).toFixed(1).replace(/\.0$/, '') + ' days';
       };
+      const overlapBadge = (durationMs, thresholdMin) => {
+        if (durationMs == null || !Number.isFinite(durationMs) || !thresholdMin) return '';
+        const cadenceMs = (thresholdMin / 2.5) * 60000;
+        if (cadenceMs <= 0) return '';
+        const ratio = durationMs / cadenceMs;
+        if (ratio >= 1.0) return '<span class="chip red" title="Runtime exceeds cadence">overlap</span>';
+        if (ratio >= 0.8) return '<span class="chip amber" title="Runtime approaching cadence">overlap risk</span>';
+        return '';
+      };
       const chipClass = (status) => {
         const s = String(status || '').toLowerCase();
         if (s.includes('healthy')) return 'green';
@@ -172,6 +181,24 @@
           if (status === 'valid') return '<span class="validation-pill outline-green">validation: recent</span>';
         }
         return `<span class="validation-pill outline-gray">${esc(tier)}</span>`;
+      };
+      const diagnoseHint = (status, message) => {
+        const m = String(message || '').toLowerCase();
+        if (m.includes('permission denied')) return '🔒 Permission denied';
+        if (m.includes("can't open file") || m.includes('no such file') || m.includes('not found')) return '📁 Missing file or wrong path';
+        if (m.includes('not valid json') || m.includes('parse')) return '🧩 Bad JSON output';
+        if (m.includes('missing required key')) return '🔑 Missing required key';
+        if (m.includes('null or empty')) return '📭 Empty required field';
+        if (m.includes('timestamp') && m.includes('old')) return '⏰ Stale content timestamp';
+        if (m.includes('timeout') || m.includes('hung')) return '⏳ Timeout or hung dependency';
+        if (m.includes('token') || m.includes('auth') || m.includes('credential')) return '🔐 Auth/token issue';
+        if (m.includes('lock')) return '🔄 Lock contention';
+        if (m.includes('log error') || m.includes('recent log')) return '📋 Errors in log output';
+        if (/exit code [^0]/.test(m)) return '💥 Non-zero exit';
+        if (status === 'stuck') return '🔁 Job stuck (running past threshold)';
+        if (status === 'stale') return '📅 Output file stale';
+        if (status === 'missing') return '❌ Output file missing';
+        return '';
       };
       const api = async (url, opts) => {
         const res = await fetch(url, { cache: 'no-store', credentials: 'same-origin', ...(opts || {}) });
@@ -261,7 +288,7 @@
               <div>check_method: ${c.check_method || 'unknown'}</div>
               <div>validation_tier: ${c.validation_tier ?? 'n/a'}</div>
               <div>validation_status: ${c.validation_status ?? 'n/a'}</div>
-              ${(c.validation_status && c.validation_status !== 'valid' && c.validation_message) ? `<div class="validation-callout">⚠ Validation: ${esc(c.validation_message)}</div>` : ''}
+              ${(c.validation_status && c.validation_status !== 'valid' && c.validation_message) ? `<div class="validation-callout">${diagnoseHint(c.status, c.validation_message) || '⚠'} ${esc(c.validation_message)}</div>` : (c.status !== 'healthy' && c.status !== 'running' && c.message) ? `<div class="validation-callout">${diagnoseHint(c.status, c.message) || '⚠'} ${esc(c.message)}</div>` : ''}
               <div data-role="history"><div class="tiny">Loading run history…</div></div>
               <div data-role="stats" class="tiny">Loading stats…</div>
             </div></div>
