@@ -125,7 +125,7 @@ export function getFlapping(jobId, hours = 24) {
 
   for (const row of trends) {
     const status = String(row.status || '');
-    if (prevStatus != null && status !== prevStatus) transitions += 1;
+    if (prevStatus != null && status !== prevStatus && status !== 'running' && prevStatus !== 'running') transitions += 1;
     prevStatus = status;
   }
 

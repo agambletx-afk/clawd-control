@@ -320,6 +320,13 @@
         for (const jobId of state.expandedCards) {
           loadCardInsights(jobId);
         }
+        // Load sparklines + flapping for all visible cards
+        document.querySelectorAll('.watcher-card[data-job-id]').forEach(card => {
+          const jobId = card.dataset.jobId;
+          if (!state.expandedCards.has(jobId)) {
+            loadCardInsights(jobId);
+          }
+        });
         if (window.refreshWatcherBadge) window.refreshWatcherBadge();
       }
 
