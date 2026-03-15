@@ -197,12 +197,34 @@ cleanup_orphan_jsonl() {
     ] | map(select(type == "string" and endswith(".jsonl"))) | unique[]?
   ' "$index_file" 2>/dev/null || true)
 
-  local jsonl_file base
+  local jsonl_file base file_age_seconds
+  local summary_archive="/home/openclaw/.openclaw/workspace/session-summaries.jsonl"
+  local min_orphan_age_seconds=7200  # 2 hours: don't delete young files
   while IFS= read -r jsonl_file; do
     base="$(basename "$jsonl_file")"
     if [[ -z "${referenced[$jsonl_file]+x}" && -z "${referenced[$base]+x}" ]]; then
+      file_age_seconds=$(( $(date +%s) - $(stat -c %Y "$jsonl_file" 2>/dev/null || echo 0) ))
+      if (( file_age_seconds < min_orphan_age_seconds )); then
+        continue  # too young to delete
+      fi
+      # Extract summary before deletion
+      local session_id="${base%.jsonl}"
+      local total_input=0 total_output=0 total_cache=0 msg_count=0 model="" source="unknown" file_size
+      file_size="$(stat -c %s "$jsonl_file" 2>/dev/null || echo 0)"
+      if (( file_size > 0 && file_size < 5242880 )); then
+        eval "$(awk -F'"' '
+          /"input":/ { for(i=1;i<=NF;i++) if($i=="input") { gsub(/[^0-9]/,"",$((i+1))); inp+=$((i+1)) } }
+          /"output":/ { for(i=1;i<=NF;i++) if($i=="output") { gsub(/[^0-9]/,"",$((i+1))); out+=$((i+1)) } }
+          /"cacheRead":/ { for(i=1;i<=NF;i++) if($i=="cacheRead") { gsub(/[^0-9]/,"",$((i+1))); cache+=$((i+1)) } }
+          /"role":"user"/ { msgs++ }
+          /"modelId":/ { for(i=1;i<=NF;i++) if($i=="modelId") { mdl=$((i+1)); gsub(/^ *: */,"",mdl) } }
+          /"conversation_label"/ { if(tolower($0) ~ /heartbeat|cron/) src="Cron" }
+          END { printf "total_input=%d total_output=%d total_cache=%d msg_count=%d model="%s" source="%s"", inp, out, cache, msgs, mdl, (src ? src : "Direct") }
+        ' "$jsonl_file" 2>/dev/null || echo "")"
+        jq -cn           --arg agent "$agent_id"           --arg session "$session_id"           --argjson tokens_in "$total_input"           --argjson tokens_out "$total_output"           --argjson tokens_cache "$total_cache"           --argjson messages "$msg_count"           --arg model "$model"           --arg source "$source"           --argjson file_size "$file_size"           --arg deleted_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"           '{agent:$agent,session:$session,tokens_in:$tokens_in,tokens_out:$tokens_out,tokens_cache:$tokens_cache,messages:$messages,model:$model,source:$source,file_size:$file_size,deleted_at:$deleted_at}'           >> "$summary_archive" 2>/dev/null || true
+      fi
       rm -f -- "$jsonl_file"
-      log "removed orphan jsonl agent=$agent_id file=$jsonl_file"
+      log "removed orphan jsonl agent=$agent_id file=$jsonl_file (age=${file_age_seconds}s, summary archived)"
     fi
   done < <(find "$sessions_dir" -mindepth 1 -maxdepth 1 -type f -name '*.jsonl' -print)
 }
