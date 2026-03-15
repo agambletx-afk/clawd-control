@@ -31,6 +31,7 @@ import {
   getTaskFailures,
   resetTaskRetries,
   getStaleTasks,
+  getOverdueTasks,
   validateTransition,
   createGoal,
   getGoalById,
@@ -5047,6 +5048,19 @@ const server = createServer((req, res) => {
   }
 
 
+  if (path === '/api/tasks/overdue' && req.method === 'GET') {
+    try {
+      const overdue = getOverdueTasks();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ tasks: overdue }));
+    } catch (e) {
+      console.error('[API] /api/tasks/overdue error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Internal server error' }));
+    }
+    return;
+  }
+
   if (path === '/api/tasks/stale' && req.method === 'GET') {
     try {
       getDb();
@@ -5130,6 +5144,12 @@ const server = createServer((req, res) => {
           'max_retries',
           'source',
           'goal_id',
+          'due_at',
+          'delivery_channel',
+          'execution_mode',
+          'requested_via',
+          'accepted_at',
+          'user_notified_at',
         ]);
         const requestedKeys = Object.keys(body);
         const hasInvalidField = requestedKeys.some((key) => !allowedFields.has(key));

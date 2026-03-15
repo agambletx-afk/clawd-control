@@ -113,6 +113,24 @@ function sanitizeCreateData(data = {}) {
     const goalId = data.goal_id == null ? null : Number.parseInt(data.goal_id, 10);
     out.goal_id = Number.isInteger(goalId) && goalId > 0 ? goalId : null;
   }
+  if (Object.hasOwn(data, 'due_at')) {
+    out.due_at = data.due_at == null ? null : String(data.due_at);
+  }
+  if (Object.hasOwn(data, 'delivery_channel')) {
+    out.delivery_channel = data.delivery_channel == null ? null : String(data.delivery_channel).trim() || null;
+  }
+  if (Object.hasOwn(data, 'execution_mode')) {
+    out.execution_mode = data.execution_mode == null ? null : String(data.execution_mode).trim() || null;
+  }
+  if (Object.hasOwn(data, 'requested_via')) {
+    out.requested_via = data.requested_via == null ? null : String(data.requested_via).trim() || null;
+  }
+  if (Object.hasOwn(data, 'accepted_at')) {
+    out.accepted_at = data.accepted_at == null ? null : String(data.accepted_at);
+  }
+  if (Object.hasOwn(data, 'user_notified_at')) {
+    out.user_notified_at = data.user_notified_at == null ? null : String(data.user_notified_at);
+  }
   return out;
 }
 
@@ -130,6 +148,12 @@ function sanitizeUpdateData(data = {}) {
     'max_retries',
     'transitioned_by',
     'goal_id',
+    'due_at',
+    'delivery_channel',
+    'execution_mode',
+    'requested_via',
+    'accepted_at',
+    'user_notified_at',
   ];
   const out = {};
   for (const key of allowed) {
@@ -159,6 +183,18 @@ function sanitizeUpdateData(data = {}) {
     } else if (key === 'goal_id') {
       const goalId = data.goal_id == null ? null : Number.parseInt(data.goal_id, 10);
       out.goal_id = Number.isInteger(goalId) && goalId > 0 ? goalId : null;
+    } else if (key === 'due_at') {
+      out.due_at = data.due_at == null ? null : String(data.due_at);
+    } else if (key === 'delivery_channel') {
+      out.delivery_channel = data.delivery_channel == null ? null : String(data.delivery_channel).trim() || null;
+    } else if (key === 'execution_mode') {
+      out.execution_mode = data.execution_mode == null ? null : String(data.execution_mode).trim() || null;
+    } else if (key === 'requested_via') {
+      out.requested_via = data.requested_via == null ? null : String(data.requested_via).trim() || null;
+    } else if (key === 'accepted_at') {
+      out.accepted_at = data.accepted_at == null ? null : String(data.accepted_at);
+    } else if (key === 'user_notified_at') {
+      out.user_notified_at = data.user_notified_at == null ? null : String(data.user_notified_at);
     }
   }
   return out;
@@ -281,10 +317,29 @@ export function getDb() {
   if (!taskColumns.has('goal_id')) {
     db.exec('ALTER TABLE tasks ADD COLUMN goal_id INTEGER');
   }
+  if (!taskColumns.has('due_at')) {
+    db.exec('ALTER TABLE tasks ADD COLUMN due_at DATETIME');
+  }
+  if (!taskColumns.has('delivery_channel')) {
+    db.exec('ALTER TABLE tasks ADD COLUMN delivery_channel TEXT');
+  }
+  if (!taskColumns.has('execution_mode')) {
+    db.exec('ALTER TABLE tasks ADD COLUMN execution_mode TEXT');
+  }
+  if (!taskColumns.has('requested_via')) {
+    db.exec('ALTER TABLE tasks ADD COLUMN requested_via TEXT');
+  }
+  if (!taskColumns.has('accepted_at')) {
+    db.exec('ALTER TABLE tasks ADD COLUMN accepted_at DATETIME');
+  }
+  if (!taskColumns.has('user_notified_at')) {
+    db.exec('ALTER TABLE tasks ADD COLUMN user_notified_at DATETIME');
+  }
 
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_tasks_last_activity ON tasks(last_activity_at);
     CREATE INDEX IF NOT EXISTS idx_tasks_goal_id ON tasks(goal_id);
+    CREATE INDEX IF NOT EXISTS idx_tasks_due_at ON tasks(due_at);
 
     UPDATE tasks
     SET last_activity_at = COALESCE(
@@ -441,7 +496,8 @@ export function createTask(data) {
     const stmt = conn.prepare(`
       INSERT INTO tasks (
         title, description, status, priority, assigned_agent, depends_on,
-        handoff_payload, created_by, source, token_estimate, token_actual, max_retries, last_activity_at, goal_id
+        handoff_payload, created_by, source, token_estimate, token_actual, max_retries, last_activity_at, goal_id,
+        due_at, delivery_channel, execution_mode, requested_via, accepted_at, user_notified_at
       ) VALUES (
         @title,
         @description,
@@ -456,7 +512,13 @@ export function createTask(data) {
         @token_actual,
         @max_retries,
         @last_activity_at,
-        @goal_id
+        @goal_id,
+        @due_at,
+        @delivery_channel,
+        @execution_mode,
+        @requested_via,
+        @accepted_at,
+        @user_notified_at
       )
     `);
 
@@ -475,6 +537,12 @@ export function createTask(data) {
       max_retries: Number.isInteger(payload.max_retries) && payload.max_retries >= 0 ? payload.max_retries : 2,
       last_activity_at: nowEpochSeconds(),
       goal_id: Number.isInteger(payload.goal_id) && payload.goal_id > 0 ? payload.goal_id : null,
+      due_at: payload.due_at ?? null,
+      delivery_channel: payload.delivery_channel ?? null,
+      execution_mode: payload.execution_mode ?? null,
+      requested_via: payload.requested_via ?? null,
+      accepted_at: payload.accepted_at ?? null,
+      user_notified_at: payload.user_notified_at ?? null,
     });
 
     addHistory(result.lastInsertRowid, payload.created_by ?? 'adam', 'created', '');
@@ -483,6 +551,25 @@ export function createTask(data) {
 
   const id = tx();
   return getTaskById(id);
+}
+
+export function getOverdueTasks() {
+  const conn = getDb();
+  return conn.prepare(`
+    SELECT
+      id,
+      title,
+      assigned_agent,
+      due_at,
+      CAST((strftime('%s', 'now') - strftime('%s', due_at)) / 60 AS INTEGER) AS minutes_overdue,
+      delivery_channel,
+      user_notified_at
+    FROM tasks
+    WHERE due_at IS NOT NULL
+      AND datetime(due_at) < datetime('now')
+      AND status NOT IN ('done', 'archive', 'failed')
+    ORDER BY datetime(due_at) ASC, id ASC
+  `).all();
 }
 
 export function updateTask(id, data) {
