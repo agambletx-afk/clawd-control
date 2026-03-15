@@ -2641,7 +2641,7 @@ function buildIntelligenceStrip() {
           freshnessTier: 'batch',
         };
       } else {
-        const checks = Array.isArray(sentinelPayload.checks) ? sentinelPayload.checks : [];
+        const checks = Object.values(sentinelPayload.checks && typeof sentinelPayload.checks === 'object' ? sentinelPayload.checks : {});
         const rank = { info: 0, ok: 0, normal: 0, watch: 1, warn: 1, warning: 1, critical: 2 };
         const highest = checks.reduce((best, check) => {
           const severity = String(check?.status || check?.severity || 'ok').toLowerCase();
@@ -2720,11 +2720,8 @@ function buildIntelligenceStrip() {
     if (existsSync(CORTEX_QUOTA_STATE_PATH)) {
       const quotaState = JSON.parse(readFileSync(CORTEX_QUOTA_STATE_PATH, 'utf8'));
       if (quotaState && typeof quotaState === 'object') {
-        for (const [, providerData] of Object.entries(quotaState)) {
-          if (!providerData || typeof providerData !== 'object') continue;
-
-          const modelUsage = providerData.modelUsage;
-          if (modelUsage && typeof modelUsage === 'object') {
+        const modelUsage = quotaState.modelUsage;
+        if (modelUsage && typeof modelUsage === 'object') {
             for (const [modelName, usage] of Object.entries(modelUsage)) {
               if (!usage || typeof usage !== 'object') continue;
 
@@ -2737,7 +2734,7 @@ function buildIntelligenceStrip() {
                     severity,
                     label: `${stripModelProviderPrefix(modelName)} RPD`,
                     utilization,
-                    asOf: parseIsoOrNull(providerData.updatedAt),
+                    asOf: parseIsoOrNull((quotaState[modelName.split('/')[0]] || {}).updatedAt),
                     freshnessTier: 'realtime',
                   });
                 }
@@ -2752,14 +2749,13 @@ function buildIntelligenceStrip() {
                     severity,
                     label: `${stripModelProviderPrefix(modelName)} RPM`,
                     utilization,
-                    asOf: parseIsoOrNull(providerData.updatedAt),
+                    asOf: parseIsoOrNull((quotaState[modelName.split('/')[0]] || {}).updatedAt),
                     freshnessTier: 'realtime',
                   });
                 }
               }
             }
           }
-        }
 
         const anthropic = quotaState.anthropic;
         if (anthropic && anthropic.updatedAt) {
