@@ -56,6 +56,7 @@ const APIS_CONFIG_PATH = join(DIR, 'apis-config.json');
 const HEALTH_RESULTS_PATH = '/tmp/api-health-results.json';
 const CLI_USAGE_PATH = '/tmp/cli-usage.json';
 const COST_SENTINEL_STATUS_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', 'cost-sentinel-status.json');
+const CORTEX_QUOTA_STATE_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', 'cortex', 'quota-state.json');
 const BUDGET_CONFIG_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', 'budget.json');
 const SENTINEL_CONFIG_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', 'sentinel-config.json');
 const RATE_LIMITS_CONFIG_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', 'rate-limits.json');
@@ -1682,6 +1683,30 @@ function getAnalytics(rangeStr, agentFilter) {
     .sort((a, b) => (b.cost ?? -1) - (a.cost ?? -1))
     .slice(0, 20);
 
+  const topSessionsByTokens = [...sessions]
+    .sort((a, b) => (b.tokens ?? 0) - (a.tokens ?? 0))
+    .slice(0, 20);
+
+  const topAgentByTokens = byAgentArray.reduce((max, current) => (
+    (current.tokens ?? 0) > (max.tokens ?? 0) ? current : max
+  ), { agentId: null, tokens: 0 });
+
+  const tokenConcentration = totalTokens > 0
+    ? {
+      agent: topAgentByTokens.agentId,
+      tokens: topAgentByTokens.tokens ?? 0,
+      share: (topAgentByTokens.tokens ?? 0) / totalTokens,
+      totalTokens,
+      suppressed: totalTokens < 50000,
+    }
+    : {
+      agent: null,
+      tokens: 0,
+      share: 0,
+      totalTokens: 0,
+      suppressed: true,
+    };
+
   const pricingCoverage = pricedModelsUsed.size === 0
     ? 'none'
     : missingModelsUsed.size > 0
@@ -1713,6 +1738,8 @@ function getAnalytics(rangeStr, agentFilter) {
     overTime: byDateArray,
     byModel: byModelArray,
     topSessions,
+    topSessionsByTokens,
+    tokenConcentration,
     pricingCoverage,
   };
 }
@@ -2564,6 +2591,224 @@ function buildCortexUsageFromLogs() {
   };
 }
 
+
+function parseIsoOrNull(value) {
+  if (!value) return null;
+  const ts = Date.parse(value);
+  return Number.isNaN(ts) ? null : new Date(ts).toISOString();
+}
+
+function getSeverityForUtilization(utilization, mode) {
+  const value = Number(utilization);
+  if (!Number.isFinite(value) || value < 0) return null;
+  if (mode === 'subscription') {
+    if (value > 0.9) return 'critical';
+    if (value >= 0.6) return 'pressure';
+    return 'normal';
+  }
+  if (value >= 1) return 'blocked';
+  if (value >= 0.95) return 'critical';
+  if (value >= 0.6) return 'pressure';
+  return 'normal';
+}
+
+function stripModelProviderPrefix(modelName) {
+  if (typeof modelName !== 'string' || !modelName) return 'unknown';
+  const parts = modelName.split('/').filter(Boolean);
+  return parts.length > 1 ? parts.slice(1).join('/') : parts[0];
+}
+
+function buildIntelligenceStrip() {
+  const nowIso = new Date().toISOString();
+
+  let sentinelStatus = {
+    value: 'unknown',
+    alertCount: 0,
+    latestFinding: null,
+    asOf: null,
+    freshnessTier: 'batch',
+  };
+
+  try {
+    if (existsSync(COST_SENTINEL_STATUS_PATH)) {
+      const sentinelPayload = JSON.parse(readFileSync(COST_SENTINEL_STATUS_PATH, 'utf8'));
+      if (!sentinelPayload || sentinelPayload.error === 'no_data') {
+        sentinelStatus = {
+          value: 'unknown',
+          alertCount: 0,
+          latestFinding: null,
+          asOf: null,
+          freshnessTier: 'batch',
+        };
+      } else {
+        const checks = Array.isArray(sentinelPayload.checks) ? sentinelPayload.checks : [];
+        const rank = { info: 0, ok: 0, normal: 0, watch: 1, warn: 1, warning: 1, critical: 2 };
+        const highest = checks.reduce((best, check) => {
+          const severity = String(check?.status || check?.severity || 'ok').toLowerCase();
+          const score = rank[severity] ?? 0;
+          if (!best || score > best.score) {
+            return { score, severity, detail: check?.detail || check?.message || null };
+          }
+          return best;
+        }, null);
+        const alertCount = checks.filter((check) => {
+          const severity = String(check?.status || check?.severity || 'ok').toLowerCase();
+          return severity === 'warn' || severity === 'warning' || severity === 'critical';
+        }).length;
+        sentinelStatus = {
+          value: highest?.severity === 'warning' ? 'warn' : (highest?.severity || 'unknown'),
+          alertCount,
+          latestFinding: highest?.detail || null,
+          asOf: parseIsoOrNull(sentinelPayload.timestamp),
+          freshnessTier: 'batch',
+        };
+      }
+    }
+  } catch {
+    sentinelStatus = {
+      value: 'unknown',
+      alertCount: 0,
+      latestFinding: null,
+      asOf: null,
+      freshnessTier: 'batch',
+    };
+  }
+
+  const analytics1d = getAnalytics('1', 'all');
+  const analytics7d = getAnalytics('7', 'all');
+  const latestOverTime = Array.isArray(analytics1d.overTime) && analytics1d.overTime.length > 0
+    ? analytics1d.overTime[analytics1d.overTime.length - 1]
+    : null;
+  const tokenBurnValue = latestOverTime?.tokens ?? 0;
+  const overTime7d = Array.isArray(analytics7d.overTime) ? analytics7d.overTime : [];
+  const total7d = overTime7d.reduce((sum, row) => sum + (Number(row?.tokens) || 0), 0);
+  const average7d = overTime7d.length > 0 ? (total7d / overTime7d.length) : 0;
+
+  const tokenBurn1h = {
+    value: tokenBurnValue,
+    delta: average7d > 0 ? tokenBurnValue / average7d : null,
+    asOf: nowIso,
+    freshnessTier: 'polled',
+  };
+
+  const byAgent = Array.isArray(analytics1d.byAgent) ? analytics1d.byAgent : [];
+  const topConsumer = byAgent.reduce((best, agent) => (
+    (agent?.tokens ?? 0) > (best?.tokens ?? 0) ? agent : best
+  ), null);
+  const totalTokens = Number(analytics1d.totalTokens) || 0;
+
+  const topConsumer1h = totalTokens > 0 && topConsumer
+    ? {
+      agent: topConsumer.agentId || null,
+      share: (topConsumer.tokens ?? 0) / totalTokens,
+      tokens: topConsumer.tokens ?? 0,
+      asOf: nowIso,
+      freshnessTier: 'polled',
+    }
+    : {
+      agent: null,
+      share: 0,
+      tokens: 0,
+      asOf: nowIso,
+      freshnessTier: 'polled',
+    };
+
+  const severityRank = { unknown: 0, normal: 1, pressure: 2, critical: 3, blocked: 4 };
+  const pressurePools = [];
+
+  try {
+    if (existsSync(CORTEX_QUOTA_STATE_PATH)) {
+      const quotaState = JSON.parse(readFileSync(CORTEX_QUOTA_STATE_PATH, 'utf8'));
+      if (quotaState && typeof quotaState === 'object') {
+        for (const [, providerData] of Object.entries(quotaState)) {
+          if (!providerData || typeof providerData !== 'object') continue;
+
+          const modelUsage = providerData.modelUsage;
+          if (modelUsage && typeof modelUsage === 'object') {
+            for (const [modelName, usage] of Object.entries(modelUsage)) {
+              if (!usage || typeof usage !== 'object') continue;
+
+              const rpdLimit = Number(usage.rpdLimit);
+              if (Number.isFinite(rpdLimit) && rpdLimit > 0) {
+                const utilization = (Number(usage.rpd) || 0) / rpdLimit;
+                const severity = getSeverityForUtilization(utilization, 'model');
+                if (severity) {
+                  pressurePools.push({
+                    severity,
+                    label: `${stripModelProviderPrefix(modelName)} RPD`,
+                    utilization,
+                    asOf: parseIsoOrNull(providerData.updatedAt),
+                    freshnessTier: 'realtime',
+                  });
+                }
+              }
+
+              const rpmLimit = Number(usage.rpmLimit);
+              if (Number.isFinite(rpmLimit) && rpmLimit > 0) {
+                const utilization = (Number(usage.rpm) || 0) / rpmLimit;
+                const severity = getSeverityForUtilization(utilization, 'model');
+                if (severity) {
+                  pressurePools.push({
+                    severity,
+                    label: `${stripModelProviderPrefix(modelName)} RPM`,
+                    utilization,
+                    asOf: parseIsoOrNull(providerData.updatedAt),
+                    freshnessTier: 'realtime',
+                  });
+                }
+              }
+            }
+          }
+        }
+
+        const anthropic = quotaState.anthropic;
+        if (anthropic && anthropic.updatedAt) {
+          const entries = [
+            { label: 'Anthropic 5h', utilization: Number(anthropic.utilization5h) },
+            { label: 'Anthropic 7d', utilization: Number(anthropic.utilization7d) },
+            { label: 'Anthropic Sonnet 7d', utilization: Number(anthropic.sonnetUtilization) },
+          ];
+          for (const entry of entries) {
+            if (!Number.isFinite(entry.utilization)) continue;
+            const severity = getSeverityForUtilization(entry.utilization, 'subscription');
+            if (!severity) continue;
+            pressurePools.push({
+              severity,
+              label: entry.label,
+              utilization: entry.utilization,
+              asOf: parseIsoOrNull(anthropic.updatedAt),
+              freshnessTier: 'polled',
+            });
+          }
+        }
+      }
+    }
+  } catch {
+    // ignore quota-state parse/read issues; fall back to unknown payload below
+  }
+
+  const worstPressure = pressurePools.length > 0
+    ? pressurePools.sort((a, b) => {
+      const sevDiff = (severityRank[b.severity] || 0) - (severityRank[a.severity] || 0);
+      if (sevDiff !== 0) return sevDiff;
+      return (b.utilization ?? 0) - (a.utilization ?? 0);
+    })[0]
+    : {
+      severity: 'unknown',
+      label: 'No quota data',
+      utilization: 0,
+      asOf: null,
+      freshnessTier: 'realtime',
+    };
+
+  return {
+    sentinelStatus,
+    tokenBurn1h,
+    topConsumer1h,
+    worstPressure,
+  };
+}
+
 const server = createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const path = url.pathname;
@@ -2726,6 +2971,19 @@ const server = createServer((req, res) => {
       console.error('[API] /api/costs/sentinel error:', e.message);
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'parse_error' }));
+    }
+    return;
+  }
+
+  if (path === '/api/intelligence/strip' && req.method === 'GET') {
+    try {
+      const payload = buildIntelligenceStrip();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(payload));
+    } catch (e) {
+      console.error('[API] /api/intelligence/strip error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to load intelligence strip' }));
     }
     return;
   }
