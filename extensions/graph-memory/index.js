@@ -589,10 +589,10 @@ module.exports = {
                     },
                 },
                 async execute(_toolCallId, params = {}) {
-                    if (!db) return { success: false, message: 'Memory database is unavailable.' };
+                    if (!db) return { content: [{ type: 'text', text: 'Memory database is unavailable.' }], details: { success: false } };
 
                     const text = String(params.text || '').trim();
-                    if (!text) return { success: false, message: 'text is required.' };
+                    if (!text) return { content: [{ type: 'text', text: 'text parameter is required.' }], details: { success: false } };
 
                     const parsed = extractStructuredFields(text);
                     const entity = String(params.entity || parsed.entity || 'Adam').trim() || 'Adam';
@@ -615,9 +615,8 @@ module.exports = {
 
                     api.logger?.info?.(`[graph-memory] memory_store saved: ${entity}.${key} (${decayClass})`);
                     return {
-                        success: true,
-                        message: `Stored memory: ${entity}.${key} = ${value.slice(0, 100)} (${decayClass})`,
-                        fact: { entity, key, value: value.slice(0, 100), decayClass, category, importance },
+                        content: [{ type: 'text', text: `Stored memory: ${entity}.${key} = ${value.slice(0, 100)} (${decayClass})` }],
+                        details: { success: true, fact: { entity, key, decayClass, category, importance } },
                     };
                 },
             }));
@@ -633,14 +632,14 @@ module.exports = {
                     },
                 },
                 async execute(_toolCallId, params = {}) {
-                    if (!db) return { success: false, message: 'Memory database is unavailable.' };
+                    if (!db) return { content: [{ type: 'text', text: 'Memory database is unavailable.' }], details: { success: false } };
 
                     const parsedFactId = Number(params.factId);
                     const factId = Number.isFinite(parsedFactId) ? parsedFactId : null;
                     const query = String(params.query || '').trim();
 
                     if (!factId && !query) {
-                        return { success: false, message: 'Provide either factId or query.' };
+                        return { content: [{ type: 'text', text: 'Provide either factId or query.' }], details: { success: false } };
                     }
 
                     if (!factId) {
@@ -666,19 +665,19 @@ module.exports = {
                         }
 
                         if (rows.length === 0) {
-                            return { success: false, message: 'No matching memories found.' };
+                            return { content: [{ type: 'text', text: 'No matching memories found.' }], details: { success: false } };
                         }
 
+                        const matchList = rows.map(r => `#${r.id}: ${r.entity}.${r.key} = ${String(r.value || '').slice(0, 60)}`).join('\n');
                         return {
-                            success: true,
-                            message: 'Found matching memories. Call memory_forget again with factId to confirm deletion.',
-                            matches: rows,
+                            content: [{ type: 'text', text: 'Found matching memories. Call memory_forget again with factId to confirm deletion:\n' + matchList }],
+                            details: { success: true, matches: rows },
                         };
                     }
 
                     const fact = db.prepare('SELECT id, entity, key, value FROM facts WHERE id = ?').get(factId);
                     if (!fact) {
-                        return { success: false, message: `No fact found for id ${factId}.` };
+                        return { content: [{ type: 'text', text: `No fact found for id ${factId}.` }], details: { success: false } };
                     }
 
                     const tx = db.transaction((id) => {
@@ -689,9 +688,8 @@ module.exports = {
 
                     api.logger?.info?.(`[graph-memory] memory_forget deleted: ${fact.entity}.${fact.key} (id=${fact.id})`);
                     return {
-                        success: true,
-                        message: `Deleted memory #${fact.id}: ${fact.entity}.${fact.key} = ${String(fact.value || '').slice(0, 100)}`,
-                        deleted: fact,
+                        content: [{ type: 'text', text: `Deleted memory #${fact.id}: ${fact.entity}.${fact.key} = ${String(fact.value || '').slice(0, 100)}` }],
+                        details: { success: true, deleted: fact },
                     };
                 },
             }));
