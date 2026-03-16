@@ -6683,11 +6683,11 @@ const server = createServer(async (req, res) => {
         const tsMatch = joined.match(/(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z)?)/g);
         const lastRunTimestamp = tsMatch?.length ? tsMatch[tsMatch.length - 1].replace(' ', 'T') : null;
         const lastErrorLine = [...lines].reverse().find((line) => /error|failed|exception/i.test(line));
-        const sourceDate = m(/(?:source\s*(?:date|file)|processing\s+file)[^\d]*(\d{4}-\d{2}-\d{2})/i);
-        const linesScanned = parseNumberOrNull(m(/(?:lines\s*scanned|scanned\s*lines|total\s*lines)[^\d]*(\d+)/i));
-        const candidatesExtracted = parseNumberOrNull(m(/(?:candidates\s*extracted|candidate\s*lines|eligible\s*lines)[^\d]*(\d+)/i));
-        const factsInserted = parseNumberOrNull(m(/(?:facts\s*inserted|inserted\s*facts|new\s*facts)[^\d]*(\d+)/i));
-        const duplicatesSkipped = parseNumberOrNull(m(/(?:duplicates\s*skipped|skipped\s*duplicates)[^\d]*(\d+)/i));
+        const sourceDate = m(/(?:source\s*(?:date|file)|processing\s+file|Scanning\s+)[^\d]*(\d{4}-\d{2}-\d{2})/i);
+        const linesScanned = parseNumberOrNull(m(/(?:lines\s*scanned|scanned\s*lines|total\s*lines|files_scanned)[=:\s]*(\d+)/i));
+        const candidatesExtracted = parseNumberOrNull(m(/(?:candidates\s*extracted|candidate\s*lines|eligible\s*lines|candidates)[=:\s]*(\d+)/i));
+        const factsInserted = parseNumberOrNull(m(/(?:facts\s*inserted|inserted\s*facts|new\s*facts|new_facts_stored)[=:\s]*(\d+)/i));
+        const duplicatesSkipped = parseNumberOrNull(m(/(?:duplicates\s*skipped|skipped\s*duplicates|duplicates_skipped)[=:\s]*(\d+)/i));
         const hasSuccess = /success|completed/i.test(lastErrorLine || '') ? false : /success|completed/i.test(joined);
         return {
           available: true,
