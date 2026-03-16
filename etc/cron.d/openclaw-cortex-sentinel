@@ -1,0 +1,2 @@
+# Description: CORTEX routing health sentinel (workType drift, score clustering, rule silence)
+0 7 * * * openclaw /usr/local/bin/check-cortex-sentinel.sh 2>/dev/null
