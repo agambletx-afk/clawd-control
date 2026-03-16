@@ -7,6 +7,7 @@ import re
 import sqlite3
 import sys
 import time
+import uuid
 from datetime import date, timedelta
 
 WORKSPACE = os.environ.get("OPENCLAW_WORKSPACE", os.path.expanduser("~/.openclaw"))
@@ -19,24 +20,19 @@ SENSITIVE_RE = re.compile(
 )
 EMOJI_RE = re.compile(
     "["
-    "\U0001F300-\U0001F5FF"
-    "\U0001F600-\U0001F64F"
-    "\U0001F680-\U0001F6FF"
-    "\U0001F700-\U0001F77F"
-    "\U0001F900-\U0001F9FF"
-    "\U0001FA70-\U0001FAFF"
+    "\\U0001F300-\\U0001F5FF"
+    "\\U0001F600-\\U0001F64F"
+    "\\U0001F680-\\U0001F6FF"
+    "\\U0001F700-\\U0001F77F"
+    "\\U0001F900-\\U0001F9FF"
+    "\\U0001FA70-\\U0001FAFF"
     "]"
 )
-
-# Schema: id (INTEGER PK auto), entity, key, value, category, source,
-#         created_at (TEXT datetime), last_accessed, access_count, permanent,
-#         decay_score, activation, importance, decay_class, expires_at,
-#         last_confirmed_at, confidence
 INSERT_SQL = """
 INSERT INTO facts (
-    entity, key, value, category, source, created_at,
-    importance, decay_class, expires_at, last_confirmed_at, confidence
-) VALUES (?, ?, ?, ?, ?, datetime('now'), ?, ?, ?, ?, ?)
+    category, importance, entity, key, value,
+    source, created_at, decay_class, expires_at, last_confirmed_at, confidence
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """.strip()
 
 TTL_SECONDS = {
@@ -140,8 +136,7 @@ def extract_structured(line):
         }
         return "Adam", key_map.get(verb, verb), actor_match.group(3).strip()
 
-    fallback_entity = "Jarvis" if detect_category(s) == "system" else "Adam"
-    return fallback_entity, 'note', s
+    return None, None, s
 
 
 def classify_fact(entity, key, value):
@@ -184,13 +179,13 @@ def validate_schema(cursor):
     cursor.execute("PRAGMA table_info(facts)")
     cols = {row[1] for row in cursor.fetchall()}
     required = {
+        "category",
+        "importance",
         "entity",
         "key",
         "value",
-        "category",
         "source",
         "created_at",
-        "importance",
         "decay_class",
         "expires_at",
         "last_confirmed_at",
@@ -255,8 +250,7 @@ def main():
                 category = detect_category(line)
                 entity, key, value = extract_structured(line)
 
-                # Dedup on value column (no text column in this schema)
-                cur.execute("SELECT 1 FROM facts WHERE value = ? LIMIT 1", (value,))
+                cur.execute("SELECT 1 FROM facts WHERE value = ? LIMIT 1", (line,))
                 if cur.fetchone() is not None:
                     duplicates += 1
                     continue
@@ -266,12 +260,13 @@ def main():
                 ttl_seconds = TTL_SECONDS[decay_class]
                 expires_at = None if ttl_seconds is None else created_at + ttl_seconds
                 row = (
+                    category,
+                    0.7,
                     entity,
                     key,
                     value,
-                    category,
                     source,
-                    0.7,
+                    created_at,
                     decay_class,
                     expires_at,
                     created_at,
@@ -281,21 +276,38 @@ def main():
                 if args.dry_run:
                     print(
                         f"[DRY-RUN] source={source} category={category} "
-                        f"entity={entity!r} key={key!r} value={value!r}"
+                        f"entity={entity!r} key={key!r} value={value!r} text={line!r}"
                     )
                 else:
                     cur.execute(INSERT_SQL, row)
                     inserted += 1
 
+    fts_optimized = False
+    vacuumed = False
+
     if not args.dry_run:
         conn.commit()
+
+        try:
+            cur.execute("INSERT INTO facts_fts(facts_fts) VALUES('optimize')")
+            fts_optimized = True
+        except Exception as err:
+            print(f"WARN: facts_fts optimize failed: {err}")
+
+        try:
+            cur.execute("VACUUM")
+            vacuumed = True
+        except Exception as err:
+            print(f"WARN: VACUUM failed: {err}")
 
     print(
         "SUMMARY "
         f"files_scanned={files_scanned} "
         f"candidates={candidates} "
         f"new_facts_stored={inserted if not args.dry_run else 0} "
-        f"duplicates_skipped={duplicates}"
+        f"duplicates_skipped={duplicates} "
+        f"fts_optimized={str(fts_optimized).lower()} "
+        f"vacuumed={str(vacuumed).lower()}"
     )
 
     conn.close()
