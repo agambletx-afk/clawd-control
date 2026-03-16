@@ -70,6 +70,11 @@ const PROXY_STATS_CACHE_MS = 5 * 60 * 1000;
 const PROXY_HISTORY_CACHE_MS = 15 * 60 * 1000;
 const PROXY_ERRORS_CACHE_MS = 15 * 60 * 1000;
 const PROXY_TOP_HOSTS_CACHE_MS = 15 * 60 * 1000;
+const MEMORY_FACTS_DB_PATH = '/home/openclaw/.openclaw/memory/facts.db';
+const MEMORY_TELEMETRY_PATH = '/tmp/openclaw/memory-telemetry.jsonl';
+const MEMORY_INGEST_LOG_PATH = '/home/openclaw/.openclaw/memory/ingest.log';
+const MEMORY_FILES_DIR_PATH = '/home/openclaw/.openclaw/workspace/memory';
+const OPENCLAW_CONFIG_PATH = '/home/openclaw/.openclaw/openclaw.json';
 const OPENCLAW_DIR = join(homedir(), '.openclaw');
 const OPENCLAW_WORKSPACE = join(OPENCLAW_DIR, 'workspace');
 const CORTEX_CONFIG_PATH = join(OPENCLAW_WORKSPACE, 'cortex/cortex.json');
@@ -104,6 +109,58 @@ const proxyApiCache = {
   errors: new Map(),
   topHosts: new Map(),
 };
+
+const memoryApiCache = new Map();
+
+function getMemoryCached(cacheKey, ttlMs, computeFn) {
+  const now = Date.now();
+  const cached = memoryApiCache.get(cacheKey);
+  if (cached && (now - cached.ts) < ttlMs) {
+    return cached.data;
+  }
+  const data = computeFn();
+  memoryApiCache.set(cacheKey, { ts: now, data });
+  return data;
+}
+
+function readOpenClawConfig() {
+  try {
+    if (!existsSync(OPENCLAW_CONFIG_PATH)) return null;
+    return JSON.parse(readFileSync(OPENCLAW_CONFIG_PATH, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function getByPath(obj, path) {
+  return path.reduce((acc, key) => (acc && typeof acc === 'object') ? acc[key] : undefined, obj);
+}
+
+function openFactsDb() {
+  return openSqlite(MEMORY_FACTS_DB_PATH, { readonly: true, fileMustExist: true });
+}
+
+function safeReadLines(filePath, maxLines = 4000) {
+  if (!existsSync(filePath)) return [];
+  try {
+    const lines = readFileSync(filePath, 'utf8').split('\n').filter(Boolean);
+    return lines.slice(Math.max(0, lines.length - maxLines));
+  } catch {
+    return [];
+  }
+}
+
+function parseIsoSafe(value) {
+  if (!value) return null;
+  const t = Date.parse(value);
+  return Number.isFinite(t) ? t : null;
+}
+
+function statusLevel(ok, warn) {
+  if (ok) return 'green';
+  if (warn) return 'yellow';
+  return 'red';
+}
 
 // ── Security constants ──
 const MAX_BODY_SIZE = 1024 * 1024; // 1MB max POST body
@@ -5727,6 +5784,20 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (path === '/memory') {
+    const fullPath = join(DIR, 'memory.html');
+    if (existsSync(fullPath)) {
+      res.writeHead(200, {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+      });
+      res.end(readFileSync(fullPath));
+    } else {
+      res.writeHead(404); res.end('Not found');
+    }
+    return;
+  }
+
   // ── Agent Actions (stop/start/reset) ──
   if (path.startsWith('/api/agents/') && path.endsWith('/action') && req.method === 'POST') {
     const agentId = path.split('/')[3];
@@ -6234,6 +6305,304 @@ const server = createServer(async (req, res) => {
     } catch (error) {
       console.error('[API] /api/proxy/top-hosts error:', error.message);
       res.end(JSON.stringify({ available: false, error: error.message }));
+    }
+    return;
+  }
+
+  if (path === '/api/memory/health' && req.method === 'GET') {
+    try {
+      const payload = getMemoryCached('health', 60000, () => {
+        const checks = [];
+        const now = Date.now();
+        const todayIso = new Date().toISOString().slice(0, 10);
+
+        let dbAccessible = false;
+        let lastFactMs = null;
+        let todayCaptures = 0;
+        try {
+          const db = openFactsDb();
+          const latest = db.prepare('SELECT created_at FROM facts ORDER BY datetime(created_at) DESC LIMIT 1').get();
+          lastFactMs = parseIsoSafe(latest?.created_at);
+          const captures = db.prepare("SELECT COUNT(*) AS count FROM facts WHERE source = 'auto-capture:session' AND created_at >= ? LIMIT 1").get(`${todayIso}T00:00:00`);
+          todayCaptures = Number(captures?.count || 0);
+          db.close();
+          dbAccessible = true;
+        } catch {
+          dbAccessible = false;
+        }
+
+        const cfg = readOpenClawConfig();
+        const memorySearchEnabled = Boolean(getByPath(cfg, ['agents', 'defaults', 'memorySearch', 'enabled']));
+
+        const gatewayLogPath = `/tmp/openclaw/openclaw-${todayIso}.log`;
+        const gatewayLogLines = safeReadLines(gatewayLogPath, 5000);
+        const graphMemoryPluginSeen = gatewayLogLines.some((line) => line.toLowerCase().includes('graph-memory'));
+
+        const lastFactAgeHours = lastFactMs ? ((now - lastFactMs) / 3600000) : null;
+
+        const ingestLines = safeReadLines(MEMORY_INGEST_LOG_PATH, 5000);
+        let lastIngestMs = null;
+        for (let i = ingestLines.length - 1; i >= 0; i--) {
+          const line = ingestLines[i];
+          const match = line.match(/\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}/);
+          const parsed = parseIsoSafe(match ? match[0].replace(' ', 'T') : null);
+          if (parsed) {
+            lastIngestMs = parsed;
+            break;
+          }
+        }
+        const ingestAgeHours = lastIngestMs ? ((now - lastIngestMs) / 3600000) : null;
+
+        checks.push({ key: 'factsDbAccessible', label: 'facts.db accessible', status: dbAccessible ? 'green' : 'red' });
+        checks.push({ key: 'memorySearchEnabled', label: 'memorySearch enabled', status: memorySearchEnabled ? 'green' : 'red' });
+        checks.push({ key: 'graphMemoryPlugin', label: 'graph-memory plugin', status: graphMemoryPluginSeen ? 'green' : 'red' });
+        checks.push({
+          key: 'lastFactWritten',
+          label: 'Last fact written',
+          status: statusLevel(lastFactAgeHours !== null && lastFactAgeHours < 4, lastFactAgeHours !== null && lastFactAgeHours <= 24),
+          ageHours: lastFactAgeHours,
+        });
+        checks.push({
+          key: 'nightlyIngest',
+          label: 'Nightly ingest',
+          status: statusLevel(ingestAgeHours !== null && ingestAgeHours < 26, ingestAgeHours !== null && ingestAgeHours <= 48),
+          ageHours: ingestAgeHours,
+        });
+        checks.push({ key: 'perTurnCapture', label: 'Per-turn capture', status: todayCaptures > 0 ? 'green' : 'red', todayCaptures });
+
+        return {
+          checks,
+          memoryToolsDisabled: !memorySearchEnabled,
+          generatedAt: new Date().toISOString(),
+        };
+      });
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(payload));
+    } catch (e) {
+      console.error('[API] /api/memory/health error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to load memory health' }));
+    }
+    return;
+  }
+
+  if (path === '/api/memory/stats' && req.method === 'GET') {
+    try {
+      const payload = getMemoryCached('stats', 60000, () => {
+        const todayIso = new Date().toISOString().slice(0, 10);
+        const db = openFactsDb();
+        const totalFacts = Number(db.prepare('SELECT COUNT(*) AS count FROM facts LIMIT 1').get()?.count || 0);
+        const relations = Number(db.prepare('SELECT COUNT(*) AS count FROM relations LIMIT 1').get()?.count || 0);
+        const decayRows = db.prepare('SELECT decay_class, COUNT(*) AS count FROM facts GROUP BY decay_class LIMIT 10').all();
+        const todayCaptures = Number(db.prepare("SELECT COUNT(*) AS count FROM facts WHERE source = 'auto-capture:session' AND created_at >= ? LIMIT 1").get(`${todayIso}T00:00:00`)?.count || 0);
+        db.close();
+        return {
+          totalFacts,
+          relations,
+          todayCaptures,
+          decay: decayRows.map((row) => ({ decayClass: row.decay_class || 'unknown', count: Number(row.count || 0) })),
+          generatedAt: new Date().toISOString(),
+        };
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(payload));
+    } catch (e) {
+      console.error('[API] /api/memory/stats error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to load memory stats' }));
+    }
+    return;
+  }
+
+  if (path === '/api/memory/facts' && req.method === 'GET') {
+    try {
+      const requestedLimit = parseInt(url.searchParams.get('limit') || '50', 10);
+      const requestedOffset = parseInt(url.searchParams.get('offset') || '0', 10);
+      const limit = Math.max(1, Math.min(100, Number.isFinite(requestedLimit) ? requestedLimit : 50));
+      const offset = Math.max(0, Number.isFinite(requestedOffset) ? requestedOffset : 0);
+      const decay = String(url.searchParams.get('decay') || 'all').toLowerCase();
+      const period = String(url.searchParams.get('period') || 'all').toLowerCase();
+      const cacheKey = `facts:${limit}:${offset}:${decay}:${period}`;
+
+      const payload = getMemoryCached(cacheKey, 30000, () => {
+        const conditions = [];
+        const params = [];
+        if (['permanent', 'stable', 'active', 'session'].includes(decay)) {
+          conditions.push('decay_class = ?');
+          params.push(decay);
+        }
+        if (period === 'today') {
+          conditions.push('created_at >= ?');
+          params.push(`${new Date().toISOString().slice(0, 10)}T00:00:00`);
+        }
+        const whereSql = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+        const db = openFactsDb();
+        const total = Number(db.prepare(`SELECT COUNT(*) AS count FROM facts ${whereSql} LIMIT 1`).get(...params)?.count || 0);
+        const rows = db
+          .prepare(`SELECT id, entity, key, value, category, source, decay_class, confidence, activation, expires_at, created_at FROM facts ${whereSql} ORDER BY datetime(created_at) DESC LIMIT ? OFFSET ?`)
+          .all(...params, limit, offset);
+        db.close();
+
+        return {
+          limit,
+          offset,
+          total,
+          items: rows,
+        };
+      });
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(payload));
+    } catch (e) {
+      console.error('[API] /api/memory/facts error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to load memory facts' }));
+    }
+    return;
+  }
+
+  if (path.startsWith('/api/memory/fact/') && req.method === 'GET') {
+    try {
+      const id = parseInt(path.split('/').pop() || '', 10);
+      if (!Number.isFinite(id) || id <= 0) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid fact id' }));
+        return;
+      }
+
+      const db = openFactsDb();
+      const fact = db.prepare('SELECT * FROM facts WHERE id = ? LIMIT 1').get(id);
+      db.close();
+      if (!fact) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Fact not found' }));
+        return;
+      }
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(fact));
+    } catch (e) {
+      console.error('[API] /api/memory/fact/:id error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to load memory fact' }));
+    }
+    return;
+  }
+
+  if (path === '/api/memory/telemetry' && req.method === 'GET') {
+    try {
+      const payload = getMemoryCached('telemetry', 120000, () => {
+        if (!existsSync(MEMORY_TELEMETRY_PATH)) {
+          return { available: false, message: 'No telemetry data' };
+        }
+        const lines = safeReadLines(MEMORY_TELEMETRY_PATH, 5000);
+        if (!lines.length) {
+          return { available: false, message: 'No telemetry data' };
+        }
+        const cutoff = Date.now() - (24 * 3600000);
+        const rows = [];
+        for (const line of lines) {
+          try {
+            const entry = JSON.parse(line);
+            const ts = parseIsoSafe(entry.timestamp || entry.ts || entry.time);
+            if (!ts || ts < cutoff) continue;
+            rows.push(entry);
+          } catch {
+            // ignore malformed line
+          }
+        }
+        if (!rows.length) {
+          return { available: false, message: 'No telemetry data' };
+        }
+        const recalls = rows.length;
+        const hits = rows.filter((row) => Number(row.result_count || row.results || 0) > 0).length;
+        const avgFactsPerRecall = rows.reduce((acc, row) => acc + Number(row.result_count || row.results || 0), 0) / Math.max(1, recalls);
+        const avgLatencyMs = rows.reduce((acc, row) => acc + Number(row.latency || row.latency_ms || 0), 0) / Math.max(1, recalls);
+        const cacheHits = rows.filter((row) => {
+          const hit = row.cache_hit;
+          if (typeof hit === 'boolean') return hit;
+          return String(row.cache || '').toLowerCase() === 'hit';
+        }).length;
+        const timeoutCount = rows.filter((row) => String(row.error || '').toLowerCase().includes('timeout')).length;
+        return {
+          available: true,
+          windowHours: 24,
+          recalls,
+          recallHitRate: (hits / Math.max(1, recalls)) * 100,
+          avgFactsPerRecall,
+          avgLatencyMs,
+          cacheHitRate: (cacheHits / Math.max(1, recalls)) * 100,
+          timeoutCount,
+        };
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(payload));
+    } catch (e) {
+      console.error('[API] /api/memory/telemetry error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to load memory telemetry' }));
+    }
+    return;
+  }
+
+  if (path === '/api/memory/daily-files' && req.method === 'GET') {
+    try {
+      const payload = getMemoryCached('daily-files', 300000, () => {
+        const today = new Date();
+        const expected = [];
+        for (let i = 0; i < 14; i++) {
+          const d = new Date(today.getTime() - (i * 86400000));
+          expected.push(d.toISOString().slice(0, 10));
+        }
+        const files = [];
+        const availableSet = new Set();
+        if (existsSync(MEMORY_FILES_DIR_PATH)) {
+          const names = readdirSync(MEMORY_FILES_DIR_PATH).filter((name) => /^\d{4}-\d{2}-\d{2}\.md$/.test(name));
+          for (const day of expected) {
+            const fileName = `${day}.md`;
+            if (!names.includes(fileName)) continue;
+            const fullPath = join(MEMORY_FILES_DIR_PATH, fileName);
+            const content = readFileSync(fullPath, 'utf8');
+            const words = content.trim() ? content.trim().split(/\s+/).length : 0;
+            const size = statSync(fullPath).size;
+            files.push({ date: day, fileName, sizeBytes: size, estimatedWords: words });
+            availableSet.add(day);
+          }
+        }
+        const missingDays = expected.filter((day) => !availableSet.has(day));
+        return {
+          windowDays: 14,
+          files,
+          missingDays,
+        };
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(payload));
+    } catch (e) {
+      console.error('[API] /api/memory/daily-files error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to load memory daily files' }));
+    }
+    return;
+  }
+
+  if (path === '/api/memory/tools-status' && req.method === 'GET') {
+    try {
+      const payload = getMemoryCached('tools-status', 60000, () => {
+        const cfg = readOpenClawConfig();
+        return {
+          memorySearchEnabled: Boolean(getByPath(cfg, ['agents', 'defaults', 'memorySearch', 'enabled'])),
+          graphMemoryPluginEnabled: Boolean(getByPath(cfg, ['plugins', 'entries', 'graph-memory', 'enabled'])),
+        };
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(payload));
+    } catch (e) {
+      console.error('[API] /api/memory/tools-status error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to load memory tools status' }));
     }
     return;
   }

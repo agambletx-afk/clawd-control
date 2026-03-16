@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Memory — Clawd Control</title>
+<style>
+:root { --bg-base:#0f1419; --bg-surface:#161b26; --bg-elevated:#1e2535; --border:#243044; --text:#e2e8f0; --muted:#94a3b8; --dim:#64748b; --emerald:#10b981; --red:#ef4444; --amber:#f59e0b; --blue:#3b82f6; --teal:#14b8a6; --indigo:#6366f1; }
+*{box-sizing:border-box} body{margin:0;background:var(--bg-base);color:var(--text);font-family:Inter,system-ui,sans-serif}
+main{padding:20px;max-width:1500px;margin:0 auto}
+.page-title{font-size:2rem;font-weight:800;color:var(--emerald);text-shadow:0 0 10px rgba(16,185,129,.5)}
+.subtitle{color:var(--muted);margin:6px 0 16px}
+.mono{font-family:'JetBrains Mono','Fira Code','Consolas',monospace}
+.card{background:var(--bg-surface);border:1px solid var(--border);border-radius:12px;padding:12px}
+.health-banner{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.pill{padding:4px 10px;border-radius:9999px;font-size:.72rem;font-weight:700;text-transform:uppercase;border:1px solid transparent}
+.pill.green{background:rgba(34,197,94,.15);color:#86efac}.pill.yellow{background:rgba(245,158,11,.18);color:#fcd34d}.pill.red{background:rgba(239,68,68,.16);color:#fca5a5}
+.alert{margin-top:10px;border:1px solid rgba(239,68,68,.5);background:rgba(127,29,29,.35);padding:10px;border-radius:10px;color:#fca5a5;font-weight:700}
+.grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.stat-label{font-size:.7rem;color:var(--dim);text-transform:uppercase}.stat-value{font-size:1.3rem;font-weight:800}.stat-sub{font-size:.8rem;color:var(--muted)}
+.zone{display:grid;grid-template-columns:1.35fr .65fr;gap:12px;margin-top:12px}
+.filters{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.filter-pill{border:1px solid var(--border);border-radius:9999px;padding:3px 9px;background:transparent;color:var(--muted);cursor:pointer;font-size:.72rem}
+.filter-pill.active{background:var(--bg-elevated);color:var(--text)}
+.fact-list{border:1px solid var(--border);border-radius:8px;max-height:460px;overflow:auto}
+.fact-row{padding:8px;border-bottom:1px solid var(--border);cursor:pointer}
+.fact-row:hover{background:var(--bg-elevated)}
+.fact-top{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:7px;align-items:center}
+.badge{padding:2px 7px;border-radius:9999px;font-size:.68rem;font-weight:700}
+.badge.decay-permanent{background:rgba(59,130,246,.18);color:#93c5fd}.badge.decay-stable{background:rgba(34,197,94,.18);color:#86efac}.badge.decay-active{background:rgba(245,158,11,.18);color:#fcd34d}.badge.decay-session{background:rgba(148,163,184,.18);color:#cbd5e1}
+.badge.source-auto{background:rgba(20,184,166,.18);color:#99f6e4}.badge.source-ingest{background:rgba(99,102,241,.18);color:#c7d2fe}.badge.source-manual{background:rgba(245,158,11,.16);color:#fcd34d}.badge.source-seed{background:rgba(148,163,184,.18);color:#cbd5e1}
+.fact-main{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fact-detail{margin-top:6px;padding-top:6px;border-top:1px dashed #334155;display:none;color:var(--muted);font-size:.82rem}
+.fact-row.expanded .fact-detail{display:block}
+.panel-title{font-size:1rem;font-weight:800;margin-bottom:8px}
+.row{display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)}
+.row:last-child{border-bottom:none}
+.dim{color:var(--muted)}
+.collapsible summary{cursor:pointer;font-weight:700;color:var(--text)}
+.empty{padding:14px;color:var(--muted);font-style:italic}
+@media (max-width:1100px){.grid4{grid-template-columns:repeat(2,minmax(0,1fr))}.zone{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main>
+  <h1 class="page-title">Memory Dashboard</h1>
+  <p class="subtitle">Knowledge graph health, recall behavior, and daily memory coverage.</p>
+
+  <section class="card">
+    <div class="panel-title">Memory Health</div>
+    <div id="healthPills" class="health-banner"></div>
+    <div id="memoryDisabledAlert" class="alert" style="display:none">Memory tools disabled. Agent cannot store or recall on demand.</div>
+  </section>
+
+  <section id="statsGrid" class="grid4" style="margin-top:12px"></section>
+
+  <section class="zone">
+    <div class="card">
+      <div class="panel-title">Recent facts</div>
+      <div id="factFilters" class="filters"></div>
+      <div id="factsList" class="fact-list"></div>
+    </div>
+
+    <div style="display:grid;gap:12px">
+      <div class="card">
+        <div class="panel-title">Recall performance (24h)</div>
+        <div id="telemetryPanel" class="dim">Loading…</div>
+      </div>
+
+      <div class="card">
+        <div class="panel-title">Memory tools status</div>
+        <div id="toolsPanel" class="dim">Loading…</div>
+      </div>
+
+      <details class="card collapsible" open>
+        <summary>Daily files (last 14 days)</summary>
+        <div id="dailyFilesPanel" style="margin-top:8px"></div>
+      </details>
+    </div>
+  </section>
+</main>
+<script src="/layout.js"></script>
+<script>
+  const filters = [
+    { label: 'All', decay: 'all', period: 'all' },
+    { label: 'Permanent', decay: 'permanent', period: 'all' },
+    { label: 'Stable', decay: 'stable', period: 'all' },
+    { label: 'Active', decay: 'active', period: 'all' },
+    { label: 'Session', decay: 'session', period: 'all' },
+    { label: 'Today', decay: 'all', period: 'today' },
+  ];
+  let activeFilter = filters[0];
+
+  const fmtRel = (iso) => {
+    if (!iso) return '—';
+    const ms = Date.now() - new Date(iso).getTime();
+    const min = Math.floor(ms / 60000);
+    if (min < 1) return 'just now';
+    if (min < 60) return `${min}m ago`;
+    const hr = Math.floor(min / 60);
+    if (hr < 48) return `${hr}h ago`;
+    return `${Math.floor(hr / 24)}d ago`;
+  };
+
+  function sourceClass(source) {
+    if (!source) return 'source-seed';
+    if (source.startsWith('auto-capture')) return 'source-auto';
+    if (source.startsWith('daily-ingest')) return 'source-ingest';
+    if (source.startsWith('manual')) return 'source-manual';
+    return 'source-seed';
+  }
+
+  function renderFilters() {
+    const wrap = document.getElementById('factFilters');
+    wrap.innerHTML = filters.map(f => `<button class="filter-pill ${activeFilter.label===f.label?'active':''}" data-label="${f.label}">${f.label}</button>`).join('');
+    wrap.querySelectorAll('button').forEach((btn) => btn.onclick = () => {
+      activeFilter = filters.find((f) => f.label === btn.dataset.label) || filters[0];
+      renderFilters();
+      loadFacts();
+    });
+  }
+
+  function renderHealth(data) {
+    const pills = document.getElementById('healthPills');
+    pills.innerHTML = (data.checks || []).map((c) => `<span class="pill ${c.status}">${c.label}: ${c.status}</span>`).join('');
+    document.getElementById('memoryDisabledAlert').style.display = data.memoryToolsDisabled ? 'block' : 'none';
+  }
+
+  function renderStats(data) {
+    const totalDecay = (data.decay || []).reduce((acc, row) => acc + row.count, 0) || 1;
+    const decayBreakdown = (data.decay || []).map((row) => `${row.decayClass}:${Math.round((row.count/totalDecay)*100)}%`).join(' • ');
+    document.getElementById('statsGrid').innerHTML = [
+      ['Total facts', Number(data.totalFacts || 0).toLocaleString(), 'Rows in facts.db'],
+      ["Today's captures", Number(data.todayCaptures || 0).toLocaleString(), 'Auto-capture facts today'],
+      ['Decay distribution', decayBreakdown || 'No data', 'Class mix across fact graph'],
+      ['Relations', Number(data.relations || 0).toLocaleString(), 'Knowledge graph edge count'],
+    ].map(([label,val,sub]) => `<div class="card"><div class="stat-label">${label}</div><div class="stat-value mono">${val}</div><div class="stat-sub">${sub}</div></div>`).join('');
+  }
+
+  async function loadFacts() {
+    const list = document.getElementById('factsList');
+    list.innerHTML = '<div class="empty">Loading…</div>';
+    try {
+      const url = `/api/memory/facts?limit=50&offset=0&decay=${activeFilter.decay}&period=${activeFilter.period}`;
+      const data = await fetch(url).then(r => r.json());
+      const items = data.items || [];
+      if (!items.length) {
+        list.innerHTML = '<div class="empty">No facts match this filter.</div>';
+        return;
+      }
+      list.innerHTML = items.map((f) => `
+        <div class="fact-row" data-id="${f.id}">
+          <div class="fact-top">
+            <span class="badge decay-${f.decay_class || 'session'}">${f.decay_class || 'unknown'}</span>
+            <div class="fact-main"><strong>${f.entity || '—'}</strong> • ${f.key || 'key'}=${String(f.value || '').slice(0,120)}</div>
+            <span class="badge ${sourceClass(f.source)}">${f.source || 'unknown'}</span>
+            <span class="dim">${fmtRel(f.created_at)}</span>
+          </div>
+          <div class="fact-detail">confidence: ${f.confidence ?? '—'} • activation: ${f.activation ?? '—'} • expires: ${f.expires_at || '—'}<br>${String(f.value || '')}</div>
+        </div>
+      `).join('');
+      list.querySelectorAll('.fact-row').forEach((row) => row.onclick = () => row.classList.toggle('expanded'));
+    } catch {
+      list.innerHTML = '<div class="empty">Unable to load facts right now.</div>';
+    }
+  }
+
+  function renderTelemetry(data) {
+    const panel = document.getElementById('telemetryPanel');
+    if (!data.available) {
+      panel.innerHTML = '<div class="empty" style="padding:0">No telemetry data</div>';
+      return;
+    }
+    panel.innerHTML = `
+      <div class="row"><span>Recall hit rate</span><strong class="mono">${Number(data.recallHitRate||0).toFixed(1)}%</strong></div>
+      <div class="row"><span>Avg facts / recall</span><strong class="mono">${Number(data.avgFactsPerRecall||0).toFixed(2)}</strong></div>
+      <div class="row"><span>Avg latency</span><strong class="mono">${Math.round(Number(data.avgLatencyMs||0))} ms</strong></div>
+      <div class="row"><span>Cache hit rate</span><strong class="mono">${Number(data.cacheHitRate||0).toFixed(1)}%</strong></div>
+      <div class="row"><span>Timeouts</span><strong class="mono">${Number(data.timeoutCount||0)}</strong></div>`;
+  }
+
+  function renderDailyFiles(data) {
+    const panel = document.getElementById('dailyFilesPanel');
+    const files = data.files || [];
+    const missing = new Set(data.missingDays || []);
+    if (!files.length && !missing.size) {
+      panel.innerHTML = '<div class="empty">No daily memory files found.</div>';
+      return;
+    }
+    const rows = [];
+    for (const file of files) {
+      rows.push(`<div class="row"><span>${file.date}</span><span class="mono">${(file.sizeBytes/1024).toFixed(1)} KB • ~${file.estimatedWords} words</span></div>`);
+    }
+    for (const day of [...missing].sort().reverse()) {
+      rows.push(`<div class="row"><span>${day}</span><span style="color:#fcd34d">Missing</span></div>`);
+    }
+    panel.innerHTML = rows.join('');
+  }
+
+  function renderToolsStatus(data) {
+    const panel = document.getElementById('toolsPanel');
+    const state = data.memorySearchEnabled ? '<span style="color:#86efac">Enabled</span>' : '<span style="color:#fca5a5">Disabled</span>';
+    panel.innerHTML = `<div class="row"><span>memorySearch</span><strong>${state}</strong></div><div class="row"><span>graph-memory plugin</span><strong>${data.graphMemoryPluginEnabled ? 'Enabled' : 'Disabled'}</strong></div>`;
+  }
+
+  async function refresh() {
+    const requests = [
+      fetch('/api/memory/health').then(r=>r.json()).catch(() => ({ checks: [] })),
+      fetch('/api/memory/stats').then(r=>r.json()).catch(() => ({})),
+      fetch('/api/memory/telemetry').then(r=>r.json()).catch(() => ({ available:false })),
+      fetch('/api/memory/daily-files').then(r=>r.json()).catch(() => ({ files:[], missingDays:[] })),
+      fetch('/api/memory/tools-status').then(r=>r.json()).catch(() => ({ memorySearchEnabled:false, graphMemoryPluginEnabled:false })),
+    ];
+    const [health, stats, telemetry, daily, tools] = await Promise.all(requests);
+    renderHealth(health);
+    renderStats(stats);
+    renderTelemetry(telemetry);
+    renderDailyFiles(daily);
+    renderToolsStatus(tools);
+    await loadFacts();
+  }
+
+  renderFilters();
+  refresh();
+  setInterval(refresh, 120000);
+</script>
+</body>
+</html>

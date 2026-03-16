@@ -44,6 +44,8 @@
     '/proxy.html': 'proxy',
     '/cortex.html': 'cortex',
     '/cortex': 'cortex',
+    '/memory.html': 'memory',
+    '/memory': 'memory',
     '/tokens.html': 'tokens',
     '/waterfall.html': 'waterfall',
     '/traces.html': 'traces',
@@ -646,6 +648,10 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
       <a href="/proxy.html" class="nav-item${isActive('proxy')}">
         <i data-lucide="globe" class="nav-icon" style="color:#2dd4bf;opacity:1"></i>
         <span class="nav-label">Web Proxy</span>
+      </a>
+      <a href="/memory" class="nav-item${isActive('memory')}">
+        <i data-lucide="database" class="nav-icon" style="color:#10b981;opacity:1"></i>
+        <span class="nav-label">Memory</span>
       </a>
       <a href="/tokens.html" class="nav-item${isActive('tokens')}">
         <i data-lucide="target" class="nav-icon"></i>
