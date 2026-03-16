@@ -72,9 +72,13 @@ const PROXY_ERRORS_CACHE_MS = 15 * 60 * 1000;
 const PROXY_TOP_HOSTS_CACHE_MS = 15 * 60 * 1000;
 const MEMORY_FACTS_DB_PATH = '/home/openclaw/.openclaw/memory/facts.db';
 const MEMORY_TELEMETRY_PATH = '/tmp/openclaw/memory-telemetry.jsonl';
+const MEMORY_CAPTURE_TELEMETRY_PATH = '/tmp/openclaw/capture-telemetry.jsonl';
 const MEMORY_INGEST_LOG_PATH = '/home/openclaw/.openclaw/memory/ingest.log';
+const MEMORY_PRUNE_LOG_PATH = '/home/openclaw/.openclaw/memory/prune.log';
 const MEMORY_FILES_DIR_PATH = '/home/openclaw/.openclaw/workspace/memory';
 const OPENCLAW_CONFIG_PATH = '/home/openclaw/.openclaw/openclaw.json';
+const MEMORY_CAPTURE_REPO_PATH = join(DIR, 'extensions/graph-memory/capture.js');
+const MEMORY_CAPTURE_RUNTIME_PATH = '/home/openclaw/.openclaw/extensions/graph-memory/capture.js';
 const OPENCLAW_DIR = join(homedir(), '.openclaw');
 const OPENCLAW_WORKSPACE = join(OPENCLAW_DIR, 'workspace');
 const CORTEX_CONFIG_PATH = join(OPENCLAW_WORKSPACE, 'cortex/cortex.json');
@@ -160,6 +164,78 @@ function statusLevel(ok, warn) {
   if (ok) return 'green';
   if (warn) return 'yellow';
   return 'red';
+}
+
+function readJsonlWindow(filePath, cutoffMs, maxLines = 8000) {
+  const lines = safeReadLines(filePath, maxLines);
+  const rows = [];
+  for (const line of lines) {
+    try {
+      const entry = JSON.parse(line);
+      const ts = parseIsoSafe(entry.timestamp || entry.ts || entry.time);
+      if (!ts || ts < cutoffMs) continue;
+      rows.push(entry);
+    } catch {
+      // ignore malformed lines
+    }
+  }
+  return rows;
+}
+
+function getLastLogTimestampMs(lines) {
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const match = lines[i].match(/\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}/);
+    const parsed = parseIsoSafe(match ? match[0].replace(' ', 'T') : null);
+    if (parsed) return parsed;
+  }
+  return null;
+}
+
+function getFileHash(path) {
+  if (!existsSync(path)) return null;
+  try {
+    return createHash('md5').update(readFileSync(path)).digest('hex');
+  } catch {
+    return null;
+  }
+}
+
+function getCaptureDriftDetails() {
+  const repoExists = existsSync(MEMORY_CAPTURE_REPO_PATH);
+  const runtimeExists = existsSync(MEMORY_CAPTURE_RUNTIME_PATH);
+  const repoStat = repoExists ? statSync(MEMORY_CAPTURE_REPO_PATH) : null;
+  const runtimeStat = runtimeExists ? statSync(MEMORY_CAPTURE_RUNTIME_PATH) : null;
+  const repoHash = getFileHash(MEMORY_CAPTURE_REPO_PATH);
+  const runtimeHash = getFileHash(MEMORY_CAPTURE_RUNTIME_PATH);
+  const drifted = Boolean(repoHash && runtimeHash && repoHash !== runtimeHash);
+  return {
+    drifted,
+    filePairs: [{
+      key: 'capture.js',
+      repoPath: MEMORY_CAPTURE_REPO_PATH,
+      runtimePath: MEMORY_CAPTURE_RUNTIME_PATH,
+      repoHash,
+      runtimeHash,
+      repoSize: repoStat?.size ?? null,
+      runtimeSize: runtimeStat?.size ?? null,
+      repoModified: repoStat?.mtime?.toISOString?.() || null,
+      runtimeModified: runtimeStat?.mtime?.toISOString?.() || null,
+    }],
+  };
+}
+
+function queryCountSafe(db, sql, params = []) {
+  try {
+    return Number(db.prepare(sql).get(...params)?.count || 0);
+  } catch {
+    return 0;
+  }
+}
+
+function parseNumberOrNull(value) {
+  if (value == null || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
 }
 
 // ── Security constants ──
@@ -6335,16 +6411,12 @@ const server = createServer(async (req, res) => {
         const checks = [];
         const now = Date.now();
         const todayIso = new Date().toISOString().slice(0, 10);
+        const todayStart = Date.parse(`${todayIso}T00:00:00Z`);
 
         let dbAccessible = false;
-        let lastFactMs = null;
-        let todayCaptures = 0;
         try {
           const db = openFactsDb();
-          const latest = db.prepare('SELECT created_at FROM facts ORDER BY datetime(created_at) DESC LIMIT 1').get();
-          lastFactMs = parseIsoSafe(latest?.created_at);
-          const captures = db.prepare("SELECT COUNT(*) AS count FROM facts WHERE source = 'auto-capture:session' AND created_at >= ? LIMIT 1").get(`${todayIso}T00:00:00`);
-          todayCaptures = Number(captures?.count || 0);
+          db.prepare('SELECT 1 LIMIT 1').get();
           db.close();
           dbAccessible = true;
         } catch {
@@ -6355,44 +6427,36 @@ const server = createServer(async (req, res) => {
         const memorySearchEnabled = Boolean(getByPath(cfg, ['agents', 'defaults', 'memorySearch', 'enabled']));
 
         const gatewayLogPath = `/tmp/openclaw/openclaw-${todayIso}.log`;
-        const gatewayLogLines = safeReadLines(gatewayLogPath, 5000);
-        const graphMemoryPluginSeen = gatewayLogLines.some((line) => line.toLowerCase().includes('graph-memory'));
+        const graphMemoryPluginSeen = safeReadLines(gatewayLogPath, 5000).some((line) => line.toLowerCase().includes('graph-memory'));
 
-        const lastFactAgeHours = lastFactMs ? ((now - lastFactMs) / 3600000) : null;
+        const recallRowsToday = readJsonlWindow(MEMORY_TELEMETRY_PATH, todayStart, 6000);
+        const captureRowsToday = readJsonlWindow(MEMORY_CAPTURE_TELEMETRY_PATH, todayStart, 6000);
 
-        const ingestLines = safeReadLines(MEMORY_INGEST_LOG_PATH, 5000);
-        let lastIngestMs = null;
-        for (let i = ingestLines.length - 1; i >= 0; i--) {
-          const line = ingestLines[i];
-          const match = line.match(/\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}/);
-          const parsed = parseIsoSafe(match ? match[0].replace(' ', 'T') : null);
-          if (parsed) {
-            lastIngestMs = parsed;
-            break;
-          }
-        }
-        const ingestAgeHours = lastIngestMs ? ((now - lastIngestMs) / 3600000) : null;
+        const ingestAgeHours = (() => {
+          const ms = getLastLogTimestampMs(safeReadLines(MEMORY_INGEST_LOG_PATH, 5000));
+          return ms ? ((now - ms) / 3600000) : null;
+        })();
+
+        const pruneAgeHours = (() => {
+          const ms = getLastLogTimestampMs(safeReadLines(MEMORY_PRUNE_LOG_PATH, 5000));
+          return ms ? ((now - ms) / 3600000) : null;
+        })();
+
+        const drift = getCaptureDriftDetails();
 
         checks.push({ key: 'factsDbAccessible', label: 'facts.db accessible', status: dbAccessible ? 'green' : 'red' });
+        checks.push({ key: 'graphMemoryPluginLoaded', label: 'graph-memory plugin loaded', status: graphMemoryPluginSeen ? 'green' : 'red' });
         checks.push({ key: 'memorySearchEnabled', label: 'memorySearch enabled', status: memorySearchEnabled ? 'green' : 'red' });
-        checks.push({ key: 'graphMemoryPlugin', label: 'graph-memory plugin', status: graphMemoryPluginSeen ? 'green' : 'red' });
-        checks.push({
-          key: 'lastFactWritten',
-          label: 'Last fact written',
-          status: statusLevel(lastFactAgeHours !== null && lastFactAgeHours < 4, lastFactAgeHours !== null && lastFactAgeHours <= 24),
-          ageHours: lastFactAgeHours,
-        });
-        checks.push({
-          key: 'nightlyIngest',
-          label: 'Nightly ingest',
-          status: statusLevel(ingestAgeHours !== null && ingestAgeHours < 26, ingestAgeHours !== null && ingestAgeHours <= 48),
-          ageHours: ingestAgeHours,
-        });
-        checks.push({ key: 'perTurnCapture', label: 'Per-turn capture', status: todayCaptures > 0 ? 'green' : 'red', todayCaptures });
+        checks.push({ key: 'recallHookActive', label: 'Recall hook active', status: recallRowsToday.length > 0 ? 'green' : 'red', entriesToday: recallRowsToday.length });
+        checks.push({ key: 'captureHookActive', label: 'Capture hook active', status: captureRowsToday.length > 0 ? 'green' : 'red', entriesToday: captureRowsToday.length });
+        checks.push({ key: 'nightlyIngest', label: 'Nightly ingest', status: statusLevel(ingestAgeHours !== null && ingestAgeHours < 26, ingestAgeHours !== null && ingestAgeHours <= 48), ageHours: ingestAgeHours });
+        checks.push({ key: 'hourlyPrune', label: 'Hourly prune', status: statusLevel(pruneAgeHours !== null && pruneAgeHours < 2, pruneAgeHours !== null && pruneAgeHours <= 4), ageHours: pruneAgeHours });
+        checks.push({ key: 'runtimeDrift', label: 'Runtime drift', status: drift.drifted ? 'red' : 'green', message: drift.drifted ? 'Runtime differs from repo' : 'Runtime matches repo' });
 
         return {
           checks,
           memoryToolsDisabled: !memorySearchEnabled,
+          runtimeDriftDetected: drift.drifted,
           generatedAt: new Date().toISOString(),
         };
       });
@@ -6412,15 +6476,25 @@ const server = createServer(async (req, res) => {
       const payload = getMemoryCached('stats', 60000, () => {
         const todayIso = new Date().toISOString().slice(0, 10);
         const db = openFactsDb();
-        const totalFacts = Number(db.prepare('SELECT COUNT(*) AS count FROM facts LIMIT 1').get()?.count || 0);
-        const relations = Number(db.prepare('SELECT COUNT(*) AS count FROM relations LIMIT 1').get()?.count || 0);
+        const totalFacts = queryCountSafe(db, 'SELECT COUNT(*) AS count FROM facts LIMIT 1');
+        const relations = queryCountSafe(db, 'SELECT COUNT(*) AS count FROM relations LIMIT 1');
+        const aliasCount = queryCountSafe(db, 'SELECT COUNT(*) AS count FROM aliases LIMIT 1');
+        const coOccurrenceCount = queryCountSafe(db, 'SELECT COUNT(*) AS count FROM co_occurrences LIMIT 1');
         const decayRows = db.prepare('SELECT decay_class, COUNT(*) AS count FROM facts GROUP BY decay_class LIMIT 10').all();
-        const todayCaptures = Number(db.prepare("SELECT COUNT(*) AS count FROM facts WHERE source = 'auto-capture:session' AND created_at >= ? LIMIT 1").get(`${todayIso}T00:00:00`)?.count || 0);
+        const todayCaptures = queryCountSafe(db, "SELECT COUNT(*) AS count FROM facts WHERE source = 'auto-capture:session' AND created_at >= ? LIMIT 1", [`${todayIso}T00:00:00`]);
+        const sourceDistribution = db.prepare('SELECT source, COUNT(*) AS count FROM facts GROUP BY source ORDER BY count DESC LIMIT 20').all();
+        const structuredCount = queryCountSafe(db, "SELECT COUNT(*) AS count FROM facts WHERE COALESCE(key, '') != 'note' LIMIT 1");
+        const topEntities = db.prepare("SELECT entity, COUNT(*) AS count FROM facts WHERE COALESCE(entity, '') != '' GROUP BY entity ORDER BY count DESC LIMIT 5").all();
         db.close();
         return {
           totalFacts,
           relations,
           todayCaptures,
+          aliasCount,
+          coOccurrenceCount,
+          structuredRatio: totalFacts > 0 ? (structuredCount / totalFacts) * 100 : 0,
+          sourceDistribution: sourceDistribution.map((row) => ({ source: row.source || 'unknown', count: Number(row.count || 0) })),
+          topEntities: topEntities.map((row) => ({ entity: row.entity, count: Number(row.count || 0) })),
           decay: decayRows.map((row) => ({ decayClass: row.decay_class || 'unknown', count: Number(row.count || 0) })),
           generatedAt: new Date().toISOString(),
         };
@@ -6514,47 +6588,65 @@ const server = createServer(async (req, res) => {
   if (path === '/api/memory/telemetry' && req.method === 'GET') {
     try {
       const payload = getMemoryCached('telemetry', 120000, () => {
-        if (!existsSync(MEMORY_TELEMETRY_PATH)) {
-          return { available: false, message: 'No telemetry data' };
-        }
-        const lines = safeReadLines(MEMORY_TELEMETRY_PATH, 5000);
-        if (!lines.length) {
-          return { available: false, message: 'No telemetry data' };
-        }
         const cutoff = Date.now() - (24 * 3600000);
-        const rows = [];
-        for (const line of lines) {
-          try {
-            const entry = JSON.parse(line);
-            const ts = parseIsoSafe(entry.timestamp || entry.ts || entry.time);
-            if (!ts || ts < cutoff) continue;
-            rows.push(entry);
-          } catch {
-            // ignore malformed line
-          }
-        }
-        if (!rows.length) {
-          return { available: false, message: 'No telemetry data' };
-        }
-        const recalls = rows.length;
-        const hits = rows.filter((row) => Number(row.result_count || row.results || 0) > 0).length;
-        const avgFactsPerRecall = rows.reduce((acc, row) => acc + Number(row.result_count || row.results || 0), 0) / Math.max(1, recalls);
-        const avgLatencyMs = rows.reduce((acc, row) => acc + Number(row.latency || row.latency_ms || 0), 0) / Math.max(1, recalls);
-        const cacheHits = rows.filter((row) => {
+        const recallRows = readJsonlWindow(MEMORY_TELEMETRY_PATH, cutoff, 8000);
+        const captureRows = readJsonlWindow(MEMORY_CAPTURE_TELEMETRY_PATH, cutoff, 8000);
+
+        const recalls = recallRows.length;
+        const recallHits = recallRows.filter((row) => Number(row.result_count || row.results || 0) > 0).length;
+        const avgFactsPerRecall = recallRows.reduce((acc, row) => acc + Number(row.result_count || row.results || 0), 0) / Math.max(1, recalls);
+        const avgLatencyMs = recallRows.reduce((acc, row) => acc + Number(row.latency || row.latency_ms || 0), 0) / Math.max(1, recalls);
+        const cacheHits = recallRows.filter((row) => {
           const hit = row.cache_hit;
           if (typeof hit === 'boolean') return hit;
           return String(row.cache || '').toLowerCase() === 'hit';
         }).length;
-        const timeoutCount = rows.filter((row) => String(row.error || '').toLowerCase().includes('timeout')).length;
+        const timeoutCount = recallRows.filter((row) => String(row.error || '').toLowerCase().includes('timeout')).length;
+        const zeroResultCount = recallRows.filter((row) => Number(row.result_count || row.results || 0) === 0).length;
+
+        const filteredBreakdown = { lengthBounds: 0, xmlHtml: 0, emojiDensity: 0, heavyMarkdown: 0, sensitivePattern: 0, userMessageFilter: 0, duplicate: 0 };
+        let skippedTurns = 0;
+        let captureTurns = 0;
+        let eligibleSentences = 0;
+        let capturedFacts = 0;
+        let structuredCaptures = 0;
+        let noteOnlyCaptures = 0;
+        for (const row of captureRows) {
+          captureTurns += 1;
+          if (row.skippedTurn) skippedTurns += 1;
+          eligibleSentences += Number(row.eligible || 0);
+          capturedFacts += Number(row.captured || 0);
+          structuredCaptures += Number(row.structured || 0);
+          noteOnlyCaptures += Number(row.noteOnly || 0);
+          const fb = row.filtered || {};
+          for (const key of Object.keys(filteredBreakdown)) {
+            filteredBreakdown[key] += Number(fb[key] || 0);
+          }
+        }
+
         return {
-          available: true,
+          available: recalls > 0 || captureTurns > 0,
           windowHours: 24,
-          recalls,
-          recallHitRate: (hits / Math.max(1, recalls)) * 100,
-          avgFactsPerRecall,
-          avgLatencyMs,
-          cacheHitRate: (cacheHits / Math.max(1, recalls)) * 100,
-          timeoutCount,
+          recall: {
+            available: recalls > 0,
+            recalls,
+            recallHitRate: (recallHits / Math.max(1, recalls)) * 100,
+            avgFactsPerRecall,
+            avgLatencyMs,
+            cacheHitRate: (cacheHits / Math.max(1, recalls)) * 100,
+            timeoutCount,
+            zeroResultCount,
+          },
+          capture: {
+            available: captureTurns > 0,
+            captureTurns,
+            skippedTurns,
+            eligibleSentences,
+            filteredBreakdown,
+            capturedFacts,
+            structuredCaptures,
+            noteOnlyCaptures,
+          },
         };
       });
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -6563,6 +6655,81 @@ const server = createServer(async (req, res) => {
       console.error('[API] /api/memory/telemetry error:', e.message);
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Failed to load memory telemetry' }));
+    }
+    return;
+  }
+
+  if (path === '/api/memory/ingest-coverage' && req.method === 'GET') {
+    try {
+      const payload = getMemoryCached('ingest-coverage', 300000, () => {
+        const lines = safeReadLines(MEMORY_INGEST_LOG_PATH, 5000);
+        if (!lines.length) {
+          return {
+            available: false,
+            lastRunTimestamp: null,
+            sourceDate: null,
+            linesScanned: null,
+            candidatesExtracted: null,
+            factsInserted: null,
+            duplicatesSkipped: null,
+            lastStatus: { state: 'error', message: 'No ingest log data' },
+          };
+        }
+        const joined = lines.join('\n');
+        const m = (re) => {
+          const match = joined.match(re);
+          return match ? match[1] : null;
+        };
+        const tsMatch = joined.match(/(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z)?)/g);
+        const lastRunTimestamp = tsMatch?.length ? tsMatch[tsMatch.length - 1].replace(' ', 'T') : null;
+        const lastErrorLine = [...lines].reverse().find((line) => /error|failed|exception/i.test(line));
+        const sourceDate = m(/(?:source\s*(?:date|file)|processing\s+file)[^\d]*(\d{4}-\d{2}-\d{2})/i);
+        const linesScanned = parseNumberOrNull(m(/(?:lines\s*scanned|scanned\s*lines|total\s*lines)[^\d]*(\d+)/i));
+        const candidatesExtracted = parseNumberOrNull(m(/(?:candidates\s*extracted|candidate\s*lines|eligible\s*lines)[^\d]*(\d+)/i));
+        const factsInserted = parseNumberOrNull(m(/(?:facts\s*inserted|inserted\s*facts|new\s*facts)[^\d]*(\d+)/i));
+        const duplicatesSkipped = parseNumberOrNull(m(/(?:duplicates\s*skipped|skipped\s*duplicates)[^\d]*(\d+)/i));
+        const hasSuccess = /success|completed/i.test(lastErrorLine || '') ? false : /success|completed/i.test(joined);
+        return {
+          available: true,
+          lastRunTimestamp,
+          sourceDate,
+          linesScanned,
+          candidatesExtracted,
+          factsInserted,
+          duplicatesSkipped,
+          lastStatus: lastErrorLine ? { state: 'error', message: lastErrorLine } : { state: hasSuccess ? 'success' : 'error', message: hasSuccess ? 'Completed' : 'Unknown status' },
+        };
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(payload));
+    } catch (e) {
+      console.error('[API] /api/memory/ingest-coverage error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to load ingest coverage' }));
+    }
+    return;
+  }
+
+  if (path === '/api/memory/drift' && req.method === 'GET') {
+    try {
+      const payload = getMemoryCached('memory-drift', 60000, () => {
+        const drift = getCaptureDriftDetails();
+        const pair = drift.filePairs[0] || {};
+        return {
+          drifted: drift.drifted,
+          repoSize: pair.repoSize ?? null,
+          runtimeSize: pair.runtimeSize ?? null,
+          repoModified: pair.repoModified ?? null,
+          runtimeModified: pair.runtimeModified ?? null,
+          filePairs: drift.filePairs,
+        };
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(payload));
+    } catch (e) {
+      console.error('[API] /api/memory/drift error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to load memory drift' }));
     }
     return;
   }
