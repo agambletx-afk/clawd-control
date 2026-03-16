@@ -339,6 +339,15 @@
     .mini-btn:hover { background: rgba(10,12,16,0.55); color: #fff; }
     .mini-btn:disabled { opacity: 0.5; cursor: wait; }
 
+    .credential-list { display: grid; gap: 8px; margin-top: 8px; }
+    .credential-item { border: 1px solid var(--border-subtle); border-radius: 10px; padding: 8px; background: rgba(13,17,23,0.45); }
+    .credential-top { display: flex; justify-content: space-between; gap: 8px; font-size: 0.72rem; margin-bottom: 4px; }
+    .credential-key { font-weight: 700; color: var(--text-primary); }
+    .credential-entity { color: var(--text-tertiary); }
+    .credential-val { font-size: 0.72rem; color: var(--text-secondary); margin-bottom: 6px; }
+    .credential-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+
 
     .version-card {
       border: 1px solid var(--border-subtle);
@@ -630,7 +639,7 @@
       'gateway-health': 'L10'
     };
 
-    const state = { health: null, liveness: null, transitions: [], gatewayTrend: [], pollTimer: null, running: false, versionCheck: null, securityTest: null, securityTestRunning: false, securityTestElapsed: 0 };
+    const state = { health: null, liveness: null, transitions: [], gatewayTrend: [], memoryCredentials: [], pollTimer: null, running: false, versionCheck: null, securityTest: null, securityTestRunning: false, securityTestElapsed: 0 };
     const openTiers = new Set();    // track which tiers are expanded
     const openCards = new Set();    // track which card details are expanded
     let timelineOpen = false;
@@ -1003,6 +1012,31 @@
       return order[layer] || 99;
     }
 
+    function renderCredentialReview() {
+      const rows = Array.isArray(state.memoryCredentials) ? state.memoryCredentials : [];
+      if (!rows.length) return '<div class="muted">No credential-like facts detected after filtering.</div>';
+      return `
+        <div class="credential-list">
+          ${rows.map((row) => `
+            <div class="credential-item ${row.is_likely_real ? 'real' : 'review'}">
+              <div class="credential-main">
+                <div class="credential-top">
+                  <span class="credential-key">${esc(row.key || 'note')}</span>
+                  <span class="credential-entity">${esc(row.entity || 'unknown')}</span>
+                </div>
+                <div class="credential-val"><code>${esc(row.masked_value || '')}</code> <span class="muted">(${Number(row.full_value_length || 0)} chars)</span></div>
+              </div>
+              <div class="credential-actions">
+                <button class="mini-btn" data-action="cred-delete" data-fact-id="${row.id}" type="button">Delete</button>
+                <button class="mini-btn" data-action="cred-allow" data-fact-id="${row.id}" type="button">Dismiss (false positive)</button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+
     function buildSummaryBadges(checks, staleAll) {
       const counts = { green: 0, yellow: 0, red: 0 };
       checks.forEach(check => {
@@ -1033,7 +1067,8 @@
             <div class="remediation-text">${esc(rem)}</div>
             <div class="remediation-actions">
               <button class="mini-btn" type="button" data-action="copy" data-text="${esc(rem)}">Copy</button>
-              ${check?.layer === 'reasoning' ? '<button class="mini-btn" data-action="ack" type="button">Acknowledge</button>' : ''}
+              ${check?.name === 'SOUL.md Integrity' && (t === 'yellow' || t === 'red') ? '<button class="mini-btn" data-action="ack-soul" type="button">Accept Current SOUL.md</button>' : ''}
+              ${check?.name === 'Config Drift' && (t === 'yellow' || t === 'red') ? '<button class="mini-btn" data-action="ack-config-drift" type="button">Accept Current Config</button>' : ''}
             </div>
           </div>`
         : '';
@@ -1057,6 +1092,7 @@
           <div id="${expandId}" class="check-expand" ${isOpen ? 'data-open="1"' : ''}>
             <div class="check-expand-inner">
               <div class="check-details-box">${esc(details)}</div>
+              ${check?.name === 'Memory Security' && (t === 'yellow' || t === 'red') ? `<div class="check-remediation ${state.memoryCredentials.length ? 'red' : 'yellow'}"><div class="remediation-text"><strong>Credential Review</strong></div>${renderCredentialReview()}</div>` : ''}
               ${remBlock}
             </div>
           </div>
@@ -1462,7 +1498,17 @@
       renderTimeline();
     }
 
-    async function refresh() { await Promise.all([loadHealth(), loadLiveness(), loadTransitions(), loadGatewayTrend()]); }
+    async function loadMemoryCredentials() {
+      try {
+        const data = await api('/api/security/memory-credentials');
+        state.memoryCredentials = Array.isArray(data?.credentials) ? data.credentials : [];
+      } catch {
+        state.memoryCredentials = [];
+      }
+      renderTiers();
+    }
+
+    async function refresh() { await Promise.all([loadHealth(), loadLiveness(), loadTransitions(), loadGatewayTrend(), loadMemoryCredentials()]); }
 
     async function loadSecurityTestResults() {
       try {
@@ -1512,17 +1558,40 @@
       }
     }
 
-    async function acknowledgeReasoning() {
+
+    async function acknowledgeSoulHash() {
       try {
-        await api('/api/security/acknowledge', {
-          method: 'POST',
-          body: JSON.stringify({ layer: 'reasoning', note: 'Approved from dashboard' })
-        });
+        await api('/api/security/soul-hash/ack', { method: 'POST', body: '{}' });
+        showToast('SOUL.md baseline updated');
         await runCheckNow();
       } catch (e) {
-        showToast(`Acknowledge failed: ${e.message}`);
+        showToast(`SOUL.md acknowledge failed: ${e.message}`);
       }
     }
+
+    async function acknowledgeConfigDrift() {
+      try {
+        await api('/api/security/config-drift/ack', { method: 'POST', body: '{}' });
+        showToast('Baseline updated');
+        await runCheckNow();
+      } catch (e) {
+        showToast(`Config baseline update failed: ${e.message}`);
+      }
+    }
+
+    async function dismissCredentialFact(factId, action) {
+      try {
+        await api('/api/security/memory-credentials/dismiss', {
+          method: 'POST',
+          body: JSON.stringify({ factId, action })
+        });
+        await loadMemoryCredentials();
+        await loadHealth();
+      } catch (e) {
+        showToast(`Credential action failed: ${e.message}`);
+      }
+    }
+
 
     async function copyText(text) {
       if (!text?.trim()) return;
@@ -1685,7 +1754,10 @@
           return;
         }
         if (action === 'copy') { await copyText(btn.dataset.text); return; }
-        if (action === 'ack') { btn.disabled = true; await acknowledgeReasoning(); btn.disabled = false; return; }
+        if (action === 'ack-soul') { btn.disabled = true; await acknowledgeSoulHash(); btn.disabled = false; return; }
+        if (action === 'ack-config-drift') { btn.disabled = true; await acknowledgeConfigDrift(); btn.disabled = false; return; }
+        if (action === 'cred-delete') { btn.disabled = true; await dismissCredentialFact(Number(btn.dataset.factId), 'delete'); btn.disabled = false; return; }
+        if (action === 'cred-allow') { btn.disabled = true; await dismissCredentialFact(Number(btn.dataset.factId), 'allowlist'); btn.disabled = false; return; }
       };
 
       $('version-card').onclick = (e) => {
