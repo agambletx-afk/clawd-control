@@ -29,10 +29,20 @@ main{padding:20px;max-width:1500px;margin:0 auto}
 .quota-row{display:grid;grid-template-columns:120px 1fr auto;gap:6px;align-items:center;margin-top:6px}.quota-val{font-size:.72rem;color:var(--text-secondary)}
 .zone3{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
 .filters{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}.filter-pill{border-radius:9999px;padding:4px 9px;border:1px solid var(--border-subtle);background:transparent;color:var(--text-secondary);cursor:pointer;font-size:.72rem}.filter-pill.active{background:var(--bg-elevated);color:var(--text-primary)}
-.decision-list{max-height:430px;overflow:auto;border:1px solid var(--border-subtle);border-radius:8px}.decision-row{padding:7px 9px;border-bottom:1px solid var(--border-subtle);cursor:pointer}.decision-row:hover,.decision-row.active{background:var(--bg-elevated);transition:150ms}
-.decision-top{display:grid;grid-template-columns:105px 85px 1fr 70px;gap:8px;align-items:center;font-size:.75rem}
-.decision-time{font-size:.68rem;color:var(--text-tertiary)} .score-strip{height:6px;border-radius:999px;background:rgba(148,163,184,.2)} .score-strip>span{display:block;height:100%;border-radius:999px;background:var(--accent-violet)}
+.decision-list{max-height:430px;overflow:auto;border:1px solid var(--border-subtle);border-radius:8px}.decision-row{padding:6px 9px;border-bottom:1px solid var(--border-subtle);cursor:pointer}.decision-row:hover,.decision-row.active{background:var(--bg-elevated);transition:150ms}
+.decision-top{display:grid;grid-template-columns:95px 76px minmax(0,1fr) auto;gap:6px;align-items:center;font-size:.75rem}
+.decision-time{font-size:.68rem;color:var(--text-tertiary)} .score-strip{height:4px;border-radius:999px;background:rgba(148,163,184,.2);margin-top:4px} .score-strip>span{display:block;height:100%;border-radius:999px;background:var(--accent-violet)}
+.decision-model{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.decision-compact-meta{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end;align-items:center}.decision-expand{margin-top:7px;padding-top:7px;border-top:1px dashed rgba(148,163,184,.2)}
 .outcome-signals{display:inline-flex;gap:6px;align-items:center;margin-left:6px}.outcome-icon{font-size:.72rem;font-weight:700}.outcome-icon.correction{color:var(--accent-red)}.outcome-icon.escalated{color:var(--accent-amber)}.outcome-reward{font-size:.68rem;padding:1px 6px;border-radius:9999px;background:rgba(148,163,184,.14)}
+.cortex-sentinel-card{margin-bottom:12px;border:1px solid rgba(139,92,246,.55);box-shadow:0 0 0 1px rgba(139,92,246,.15),0 0 20px rgba(139,92,246,.18)}
+.sentinel-head{display:flex;justify-content:space-between;gap:8px;align-items:flex-start;flex-wrap:wrap}.sentinel-title-wrap{display:flex;flex-direction:column;gap:4px}
+.sentinel-pill{display:inline-flex;align-items:center;gap:6px;padding:2px 9px;border-radius:9999px;font-size:.7rem;font-weight:700;text-transform:uppercase;border:1px solid transparent}
+.sentinel-ok{background:rgba(34,197,94,.18);color:#86efac}.sentinel-warn{background:rgba(245,158,11,.18);color:#fcd34d}.sentinel-critical{background:rgba(239,68,68,.16);color:#fca5a5}.sentinel-neutral{background:rgba(107,114,128,.22);color:#cbd5e1}
+.sentinel-checks{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}.sentinel-check{font-size:.7rem;padding:2px 8px;border-radius:9999px;border:1px solid rgba(148,163,184,.25)}
+.sentinel-detail{margin-top:8px;padding:7px 9px;border-radius:8px;font-size:.74rem}.sentinel-detail.warn{background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.35)}.sentinel-detail.critical{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.35)}
+.sentinel-meta{margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.sentinel-toggle{border:1px solid rgba(139,92,246,.45);background:rgba(139,92,246,.12);color:#ddd6fe;border-radius:9999px;padding:3px 9px;cursor:pointer;font-size:.7rem}
+.sentinel-body.collapsed{display:none}
 .trends-head{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}.period-pills{display:flex;gap:6px;flex-wrap:wrap}.period-pill{border-radius:9999px;padding:2px 8px;font-size:.75rem;border:1px solid var(--border-subtle);background:transparent;color:var(--text-secondary);cursor:pointer}.period-pill.active{background:rgba(124,58,237,.18);border-color:var(--accent-violet);color:#ddd6fe}.trend-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:10px}.trend-cell{border:1px solid var(--border-subtle);border-radius:8px;padding:8px}.trend-cell .label{font-size:.7rem;color:var(--text-tertiary);text-transform:uppercase}.trend-cell .value{font-size:.95rem;font-weight:700}
 .dim-row{display:grid;grid-template-columns:110px 1fr 44px;gap:8px;align-items:center;margin-top:6px;font-size:.75rem}
 .affinity-shell{display:flex;flex-direction:column;gap:10px;margin-top:8px}.radar-wrap{background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:8px;padding:10px}
@@ -86,11 +96,23 @@ main{padding:20px;max-width:1500px;margin:0 auto}
   </section>
 
   <section class="zone3">
-    <div class="card">
-      <div class="panel-title"><i data-lucide="route"></i>Routing Decisions</div>
-      <div class="panel-sub">Recent routes and why each request went to a specific provider.</div>
-      <div class="filters" id="decisionFilters"></div>
-      <div id="decisionList" class="decision-list"></div>
+    <div>
+      <div class="card cortex-sentinel-card" id="cortexSentinelCard">
+        <div class="sentinel-head">
+          <div class="sentinel-title-wrap">
+            <div class="panel-title"><i data-lucide="shield-alert"></i>CORTEX Sentinel</div>
+            <div class="panel-sub">Routing anomaly detection — 5 statistical checks on recent decisions</div>
+          </div>
+          <button class="sentinel-toggle" onclick="toggleSentinelCollapse()" id="cortexSentinelToggle">Collapse</button>
+        </div>
+        <div id="cortexSentinelBody" class="sentinel-body"></div>
+      </div>
+      <div class="card">
+        <div class="panel-title"><i data-lucide="route"></i>Routing Decisions</div>
+        <div class="panel-sub">Recent routes and why each request went to a specific provider.</div>
+        <div class="filters" id="decisionFilters"></div>
+        <div id="decisionList" class="decision-list"></div>
+      </div>
     </div>
     <div class="card">
       <div class="panel-title"><i data-lucide="chart-no-axes-column"></i>Affinity View</div>
@@ -129,7 +151,7 @@ main{padding:20px;max-width:1500px;margin:0 auto}
 const providerColors={google:'#4285f4',openai:'#10a37f','openai-codex':'#10a37f',anthropic:'#d97706',groq:'#f97316',cerebras:'#06b6d4',mistral:'#6366f1',nvidia:'#76b900'};
 const taskDims=['reasoning','coding','conversation','instruction'];
 const dims=['tokenCount','reasoning','simple','system','agentic','domain','code','image','context'];
-let state={status:null,decisions:[],usage:null,modelUsage:{},cliUsage:null,outcomes:[],outcomeStats24h:null,outcomeTrends:null,outcomePeriod:'24h',provider:'all',selected:null,filtered:[],affinityMode:'aggregate'};
+let state={status:null,decisions:[],usage:null,modelUsage:{},cliUsage:null,outcomes:[],outcomeStats24h:null,outcomeTrends:null,outcomePeriod:'24h',provider:'all',selected:null,filtered:[],affinityMode:'aggregate',sentinel:{available:false,stale:false,age_seconds:null,status:null}};
 const $=(s)=>document.querySelector(s); const esc=(s)=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fmtAgo=(iso)=>{if(!iso)return '—'; const d=Math.floor((Date.now()-new Date(iso).getTime())/60000); if(d<1)return 'now'; if(d<60)return `${d}m ago`; const h=Math.floor(d/60); if(h<24)return `${h}h ago`; return `${Math.floor(h/24)}d ago`;};
 const scoreColor=(n)=>n<.3?'var(--accent-green)':(n<=.6?'var(--accent-amber)':'var(--accent-red)');
@@ -143,9 +165,9 @@ const levelColor=(v)=>({trivial:'var(--text-tertiary)',basic:'var(--text-tertiar
 const stakesColor=(v)=>({low:'var(--text-tertiary)',normal:'var(--accent-blue)',elevated:'var(--accent-amber)',critical:'var(--accent-red)'})[String(v||'').toLowerCase()]||'var(--text-secondary)';
 const confidenceColor=(v)=>({high:'var(--accent-green)',moderate:'var(--accent-amber)',low:'var(--accent-red)'})[String(v||'').toLowerCase()]||'var(--text-secondary)';
 const categoryClass=(v)=>({hard:'cat-hard',interaction:'cat-interaction','soft-boost':'cat-soft-boost',continuity:'cat-continuity'})[String(v||'').toLowerCase()]||'cat-interaction';
-const explainVisible=(d)=>{const rules=Array.isArray(d?.firedRules)?d.firedRules:[]; const trace=String(d?.explanationTrace||'').trim().toLowerCase(); return rules.length>0&&trace&&trace!=='rules fired: none';};
-window._decisionRuleOpen=window._decisionRuleOpen||{}; window._cortexModelExpanded=window._cortexModelExpanded||{};
-function toggleDecisionRules(key,e){if(e)e.stopPropagation(); const k=decodeURIComponent(String(key||'')); window._decisionRuleOpen[k]=!window._decisionRuleOpen[k]; renderDecisions();}
+window._decisionExpanded=window._decisionExpanded||{}; window._sentinelCollapsed=false; window._cortexModelExpanded=window._cortexModelExpanded||{};
+function toggleDecisionExpanded(key,e){if(e)e.stopPropagation(); const k=decodeURIComponent(String(key||'')); window._decisionExpanded[k]=!window._decisionExpanded[k]; renderDecisions();}
+function toggleSentinelCollapse(){window._sentinelCollapsed=!window._sentinelCollapsed; renderSentinel();}
 function toggleModelDetails(key,e){if(e)e.stopPropagation(); const k=decodeURIComponent(String(key||'')); window._cortexModelExpanded[k]=!window._cortexModelExpanded[k]; renderLadder();}
 async function toggleRuleEnabled(id,enabled){const s=state.status||{}; const rules=Array.isArray(s?.rules)?s.rules:(Array.isArray(s?.config?.rules)?s.config.rules:[]); const next=rules.map(r=>String(r.id)===String(id)?{...r,enabled}:r); await fetch('/api/cortex/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({rules:next})}); await load();}
 
@@ -163,10 +185,10 @@ const shortDim=(d)=>({conversation:'Conv',coding:'Code',reasoning:'Reason',instr
 const titleDim=(d)=>d.charAt(0).toUpperCase()+d.slice(1);
 
 async function load(){
-  const [s,d,u,cli,outcomes,stats24h]=await Promise.all([fetch('/api/cortex/status').then(r=>r.json()).catch(()=>({})),fetch('/api/cortex/decisions?limit=50').then(r=>r.json()).catch(()=>({decisions:[]})),fetch('/api/cortex/usage').then(r=>r.json()).catch(()=>({providers:{}})),fetch('/api/cli-usage').then(r=>r.json()).catch(()=>({})),fetch('/api/cortex/outcomes?limit=50').then(r=>r.json()).catch(()=>({outcomes:[]})),fetch('/api/cortex/outcomes/stats?period=24h').then(r=>r.json()).catch(()=>({summary:{},byModel:[],byWorkType:[]}))]);
-  state.status=s; state.decisions=Array.isArray(d.decisions)?d.decisions:[]; state.usage=u; state.modelUsage=s?.providerQuota?.modelUsage||{}; state.cliUsage=cli; state.outcomes=Array.isArray(outcomes?.outcomes)?outcomes.outcomes:[]; state.outcomeStats24h=stats24h;
+  const [s,d,u,cli,outcomes,stats24h,sentinel]=await Promise.all([fetch('/api/cortex/status').then(r=>r.json()).catch(()=>({})),fetch('/api/cortex/decisions?limit=50').then(r=>r.json()).catch(()=>({decisions:[]})),fetch('/api/cortex/usage').then(r=>r.json()).catch(()=>({providers:{}})),fetch('/api/cli-usage').then(r=>r.json()).catch(()=>({})),fetch('/api/cortex/outcomes?limit=50').then(r=>r.json()).catch(()=>({outcomes:[]})),fetch('/api/cortex/outcomes/stats?period=24h').then(r=>r.json()).catch(()=>({summary:{},byModel:[],byWorkType:[]})),fetch('/api/cortex/sentinel').then(r=>r.json()).catch(()=>({available:false,stale:false,age_seconds:null,status:null}))]);
+  state.status=s; state.decisions=Array.isArray(d.decisions)?d.decisions:[]; state.usage=u; state.modelUsage=s?.providerQuota?.modelUsage||{}; state.cliUsage=cli; state.outcomes=Array.isArray(outcomes?.outcomes)?outcomes.outcomes:[]; state.outcomeStats24h=stats24h; state.sentinel=sentinel||{available:false,stale:false,age_seconds:null,status:null};
   await loadOutcomeTrends(state.outcomePeriod||'24h');
-  renderStats(); renderLadder(); renderSubscriptionStatus(); renderFilters(); renderDecisions(); renderScore(); renderOutcomeTrends(); renderSettings();
+  renderStats(); renderLadder(); renderSubscriptionStatus(); renderSentinel(); renderFilters(); renderDecisions(); renderScore(); renderOutcomeTrends(); renderSettings();
 }
 function getModelLastUsedMap(){const m={}; for(const r of state.decisions){const model=String(r.modelSelected||r.selectedModel||r.model||''); const t=r.ts||r.timestamp||r.time; if(model&&t&&(!m[model]||new Date(t)>new Date(m[model])))m[model]=t;} return m;}
 function getUsageForModel(model){const usage=state.modelUsage||{}; return usage[model]||usage[model.split('/').slice(1).join('/')]||usage[model.split('/').pop()]||{};}
@@ -203,9 +225,21 @@ function renderSubscriptionStatus(){const anth=state.status?.providerQuota?.anth
  const codexRow=cSession==null?`<span class='panel-sub'>No CLI data</span>`:`<div style='display:grid;grid-template-columns:1fr 1fr;gap:12px'><div><div class='panel-sub' style='margin-bottom:2px'>Session (5h)</div>${pctInline(cSession)}</div><div><div class='panel-sub' style='margin-bottom:2px'>Weekly</div>${pctInline(cWeekly??0)}</div></div>`;
  $('#subscriptionStatus').innerHTML=`<div style='display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px'><div style='padding:8px;border:1px solid var(--border-subtle);border-radius:8px'><div style='display:flex;align-items:center;gap:8px;margin-bottom:8px'><span class='provider-dot' style='background:${providerColors.anthropic}'></span><b style='font-size:.85rem'>Anthropic</b><span class='pill' style='border-color:${anthColor};color:${anthColor}'>${anthStatus}</span></div>${anthRow}</div><div style='padding:8px;border:1px solid var(--border-subtle);border-radius:8px'><div style='display:flex;align-items:center;gap:8px;margin-bottom:8px'><span class='provider-dot' style='background:${providerColors.openai}'></span><b style='font-size:.85rem'>OpenAI (Codex)</b><span class='pill'>${cWeekly>90?'critical':(cWeekly>60?'pressure':'normal')}</span></div>${codexRow}</div></div>`;
 }
+
+const sentinelChecks=[['worktype_concentration','WorkType'],['evidence_invariance','Evidence'],['score_clustering','Score'],['rule_silence','Rules'],['model_concentration','Models']];
+function sentinelClass(v,stale=false){const s=String(v||'unknown').toLowerCase(); if(stale)return 'sentinel-neutral'; if(s==='ok')return 'sentinel-ok'; if(s==='warn'||s==='warning')return 'sentinel-warn'; if(s==='critical')return 'sentinel-critical'; return 'sentinel-neutral';}
+function renderSentinel(){const wrap=$('#cortexSentinelBody'); const toggle=$('#cortexSentinelToggle'); if(!wrap||!toggle)return; wrap.classList.toggle('collapsed',!!window._sentinelCollapsed); toggle.textContent=window._sentinelCollapsed?'Expand':'Collapse'; if(window._sentinelCollapsed)return;
+ const payload=state.sentinel||{}; if(!payload.available){wrap.innerHTML=`<div class='sentinel-meta'><span class='sentinel-pill sentinel-neutral'>Never run</span><span class='panel-sub'>No sentinel status file found yet.</span></div>`; return;}
+ const status=payload.status||{}; const stale=!!payload.stale; const value=String(status.value||'unknown').toLowerCase();
+ const checks=status.checks&&typeof status.checks==='object'?status.checks:{};
+ const checkPills=sentinelChecks.map(([k,label])=>{const c=checks[k]||{}; return `<span class='sentinel-check ${sentinelClass(c.status,stale)}'>${label}: ${esc(String(c.status||'unknown'))}</span>`;}).join('');
+ const details=sentinelChecks.map(([k,label])=>({label,...(checks[k]||{})})).filter(c=>{const st=String(c.status||'').toLowerCase(); return st==='warn'||st==='warning'||st==='critical';}).map(c=>`<div class='sentinel-detail ${String(c.status).toLowerCase()==='critical'?'critical':'warn'}'><strong>${c.label}</strong>: ${esc(c.detail||'No detail provided')}</div>`).join('');
+ wrap.innerHTML=`<div class='sentinel-meta'><span class='sentinel-pill ${sentinelClass(value,stale)}'>${stale?'Stale':esc(value)}</span>${stale?"<span class='sentinel-pill sentinel-warn'>stale</span>":''}<span class='panel-sub mono'>Last run ${fmtAgo(status.asOf||null)}</span><span class='panel-sub mono'>Age: ${Number.isFinite(Number(payload.age_seconds))?`${Math.floor(Number(payload.age_seconds)/60)}m`:'—'}</span><span class='panel-sub mono'>Alerts: ${Number(status.alertCount)||0}</span></div><div class='sentinel-checks'>${checkPills}</div>${details}`;
+}
+
 function renderFilters(){const providers=['all',...new Set(state.decisions.map(d=>String(d.provider||(d.modelSelected||d.selectedModel||d.model||'').split('/')[0]||'unknown')))].sort(); $('#decisionFilters').innerHTML=providers.map(p=>`<button class='filter-pill ${state.provider===p?'active':''}' onclick="state.provider='${p}';renderFilters();renderDecisions()">${p==='all'?'All':`<span class='provider-dot' style='display:inline-block;background:${providerColors[p]||'#64748b'}'></span> ${p}`}</button>`).join('');}
-function renderDecisions(){const list=state.decisions.filter(d=>state.provider==='all'||String(d.provider||(d.modelSelected||d.selectedModel||d.model||'').split('/')[0]||'unknown')===state.provider); $('#decisionList').innerHTML=list.map((d,i)=>{const model=String(d.modelSelected||d.selectedModel||d.model||'unknown'); const s=Number(d.score||0); const t=d.ts||d.timestamp||d.time||''; const provider=String(d.provider||model.split('/')[0]||'unknown'); const reason=String(d.selectionReason||'affinity'); const taskType=getDominantTaskType(d); const fired=Array.isArray(d.firedRules)?d.firedRules:[]; const floor=String(d?.routeConstraints?.routeFloor||'none'); const trace=String(d?.explanationTrace||''); const key=`${model}|${t}|${i}`; const showTrace=explainVisible(d); const open=!!window._decisionRuleOpen[key]; const outcome=findOutcomeForDecision(d); const reward=Number(outcome?.reward_score); const rewardColor=!Number.isFinite(reward)?'var(--text-secondary)':(reward>0?'var(--accent-green)':(reward===0?'var(--accent-amber)':'var(--accent-red)')); const rewardText=Number.isFinite(reward)?reward.toFixed(2):'';
- return `<div class='decision-row ${state.selected===d?'active':''}' onclick='selectDecision(${i})'><div class='decision-top'><div class='decision-time'>${fmtAgo(t)}</div><div><span class='tag'>${provider}</span></div><div>${esc(model)}</div><div class='decision-tags'><span class='mono'>${s.toFixed(2)}</span><span class='tag ${reasonClass(reason)}'>${esc(reason)}</span>${fired.length?`<button class='rule-badge mono' onclick="toggleDecisionRules('${encodeURIComponent(key)}',event)">${fired.length} rules</button>`:''}${floor!=='none'?`<span class='floor-badge mono'>floor: ${esc(floor)}</span>`:''}${outcome?`<span class='outcome-signals'>${outcome?.followup_correction?"<span class='outcome-icon correction' title='Correction detected'>⟲</span>":''}${outcome?.escalated?"<span class='outcome-icon escalated' title='Escalated next turn'>↑</span>":''}${rewardText?`<span class='outcome-reward mono' style='color:${rewardColor}' title='Reward score'>${rewardText}</span>`:''}</span>`:''}</div></div><div class='score-strip'><span style='width:${Math.min(100,s*100)}%;background:${domTypeColor(taskType)}'></span></div>${showTrace?`<div class='explanation-line'>${esc(trace)}</div>`:''}${open&&fired.length?`<div class='rules-inline mono'>${fired.map(r=>esc(r)).join(' · ')}</div>`:''}</div>`;}).join('')||"<div class='panel-sub' style='padding:10px'>No decisions.</div>"; state.filtered=list;}
+function renderDecisions(){const list=state.decisions.filter(d=>state.provider==='all'||String(d.provider||(d.modelSelected||d.selectedModel||d.model||'').split('/')[0]||'unknown')===state.provider); $('#decisionList').innerHTML=list.map((d,i)=>{const model=String(d.modelSelected||d.selectedModel||d.model||'unknown'); const s=Number(d.score||0); const t=d.ts||d.timestamp||d.time||''; const provider=String(d.provider||model.split('/')[0]||'unknown'); const reason=String(d.selectionReason||'affinity'); const taskType=getDominantTaskType(d); const fired=Array.isArray(d.firedRules)?d.firedRules:[]; const floor=String(d?.routeConstraints?.routeFloor||'none'); const trace=String(d?.explanationTrace||'rules fired: none'); const key=`${model}|${t}|${i}`; const expanded=!!window._decisionExpanded[key]; const outcome=findOutcomeForDecision(d); const reward=Number(outcome?.reward_score); const rewardColor=!Number.isFinite(reward)?'var(--text-secondary)':(reward>0?'var(--accent-green)':(reward===0?'var(--accent-amber)':'var(--accent-red)')); const rewardText=Number.isFinite(reward)?reward.toFixed(2):'';
+ return `<div class='decision-row ${state.selected===d?'active':''}' onclick="toggleDecisionExpanded('${encodeURIComponent(key)}',event);selectDecision(${i})"><div class='decision-top'><div class='decision-time'>${fmtAgo(t)}</div><div><span class='tag'>${provider}</span></div><div class='decision-model'>${esc(model)}</div><div class='decision-compact-meta'><span class='mono'>${s.toFixed(2)}</span><span class='tag ${reasonClass(reason)}'>${esc(reason)}</span>${fired.length?`<span class='rule-badge mono'>${fired.length} rules</span>`:''}${floor!=='none'?`<span class='floor-badge mono'>floor: ${esc(floor)}</span>`:''}${outcome?`<span class='outcome-signals'>${outcome?.followup_correction?"<span class='outcome-icon correction' title='Correction detected'>⟲</span>":''}${outcome?.escalated?"<span class='outcome-icon escalated' title='Escalated next turn'>↑</span>":''}${rewardText?`<span class='outcome-reward mono' style='color:${rewardColor}' title='Reward score'>${rewardText}</span>`:''}</span>`:''}</div></div><div class='score-strip'><span style='width:${Math.min(100,s*100)}%;background:${domTypeColor(taskType)}'></span></div>${expanded?`<div class='decision-expand'><div class='explanation-line'>${esc(trace)}</div>${fired.length?`<div class='rules-inline mono'>${fired.map(r=>esc(r)).join(' · ')}</div>`:''}</div>`:''}</div>`;}).join('')||"<div class='panel-sub' style='padding:10px'>No decisions.</div>"; state.filtered=list;}
 
 function toTsMs(v){if(v==null)return NaN; const n=Number(v); if(Number.isFinite(n)&&n>0)return n>1e12?n:n*1000; const d=new Date(v).getTime(); return Number.isFinite(d)?d:NaN;}
 function findOutcomeForDecision(d){const model=String(d?.modelSelected||d?.selectedModel||d?.model||''); const ts=toTsMs(d?.ts||d?.timestamp||d?.time); if(!model||!Number.isFinite(ts))return null; let best=null; let bestDelta=Infinity; for(const row of state.outcomes||[]){if(String(row?.chosen_model||'')!==model)continue; const ots=toTsMs(row?.timestamp); if(!Number.isFinite(ots))continue; const delta=Math.abs(ots-ts); if(delta<=1000&&delta<bestDelta){best=row; bestDelta=delta;}} return best;}
@@ -270,6 +304,7 @@ async function saveLadder(){const rows=[...document.querySelectorAll('[data-clm]
 async function savePins(){for(const el of document.querySelectorAll('[data-cpa]')) await fetch('/api/cortex/pins',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({agentId:el.dataset.cpa,model:el.value||null})}); await load();}
 async function saveSchedule(){const quota=Object.fromEntries([...document.querySelectorAll('[data-cq]')].map(e=>[e.dataset.cq,Number(e.value)||0])); await fetch('/api/cortex/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({schedule:{...(state.status?.schedule||{}),timezone:$('#ctz').value||'UTC',workStart:$('#cws').value||'09:00',workEnd:$('#cwe').value||'17:00'},quotaThresholds:quota})}); await load();}
 load();
+setInterval(load,60000);
 </script>
 <script src="/lucide.min.js"></script>
 <script>lucide.createIcons();</script>
