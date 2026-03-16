@@ -1,6 +1,8 @@
 const crypto = require('crypto');
+const fs = require('fs');
 
 const MAX_FACTS_PER_TURN = 3;
+const CAPTURE_TELEMETRY_PATH = '/tmp/openclaw/capture-telemetry.jsonl';
 
 const TTL_SECONDS = {
     permanent: null,
@@ -55,7 +57,15 @@ function initCapture(api, db, config = {}) {
             if (!lastUserText || lastUserText.length < 5) return;
 
             // Skip heartbeat/cron turns - low value for fact capture
-            if (/^\[STABILITY|^\[GRAPH MEMORY|^\[CONTINUITY|heartbeat|cron|reminder|no tasks|check.?in|maintenance cycle|TASK-WORKER|Read HEARTBEAT|Follow its instructions|health-status|run your|Read.*workspace/i.test(lastUserText)) return;
+            if (/^\[STABILITY|^\[GRAPH MEMORY|^\[CONTINUITY|heartbeat|cron|reminder|no tasks|check.?in|maintenance cycle|TASK-WORKER|Read HEARTBEAT|Follow its instructions|health-status|run your|Read.*workspace/i.test(lastUserText)) {
+                appendCaptureTelemetry({
+                    timestamp: new Date().toISOString(),
+                    agentId: event?.agentId || 'main',
+                    skippedTurn: true,
+                    skipReason: 'heartbeat',
+                });
+                return;
+            }
 
             const assistantTexts = messages
                 .filter((m) => m?.role === 'assistant')
@@ -72,13 +82,21 @@ function initCapture(api, db, config = {}) {
             }
 
             let inserted = 0;
+            let structured = 0;
+            let noteOnly = 0;
+            const filtered = { lengthBounds: 0, xmlHtml: 0, emojiDensity: 0, heavyMarkdown: 0, sensitivePattern: 0, userMessageFilter: 0, duplicate: 0 };
             for (const text of sentences) {
                 if (inserted >= MAX_FACTS_PER_TURN) break;
-                if (!shouldCapture(text)) continue;
+                const failReason = getFilterReason(text);
+                if (failReason) {
+                    filtered[failReason] += 1;
+                    continue;
+                }
 
                 const cleaned = stripMarkdown(text);
                 const category = detectCategory(cleaned);
                 let { entity, key, value } = extractStructuredFields(cleaned);
+                const isStructured = Boolean(entity && key);
 
                 if (!entity || !key || !value) {
                     entity = category === 'system' ? 'Jarvis' : 'Adam';
@@ -86,7 +104,10 @@ function initCapture(api, db, config = {}) {
                     value = text.trim().slice(0, 500);
                 }
 
-                if (hasDuplicate(db, entity, key, value)) continue;
+                if (hasDuplicate(db, entity, key, value)) {
+                    filtered.duplicate += 1;
+                    continue;
+                }
 
                 const decayClass = detectDecayClass(entity, key, value);
                 insertFact(db, {
@@ -99,8 +120,23 @@ function initCapture(api, db, config = {}) {
                 });
 
                 inserted += 1;
+                if (isStructured) structured += 1;
+                else noteOnly += 1;
                 api.logger?.info?.(`[graph-memory] captured fact: ${entity}.${key} (${category}/${decayClass})`);
             }
+
+            appendCaptureTelemetry({
+                timestamp: new Date().toISOString(),
+                agentId: event?.agentId || 'main',
+                totalSentences: sentences.length,
+                eligible: Math.max(0, sentences.length - Object.values(filtered).reduce((a, b) => a + b, 0)),
+                filtered,
+                captured: inserted,
+                structured,
+                noteOnly,
+                skippedTurn: false,
+                skipReason: null,
+            });
         } catch (err) {
             api.logger?.warn?.(`[graph-memory] capture error: ${err.message}`);
         }
@@ -122,15 +158,28 @@ function extractMessageText(message) {
 }
 
 function shouldCapture(text) {
-    if (!text) return false;
+    return !getFilterReason(text);
+}
+
+function getFilterReason(text) {
+    if (!text) return 'lengthBounds';
     const trimmed = text.trim();
 
-    if (trimmed.length < 10 || trimmed.length > 500) return false;
-    if (hasXmlOrHtml(trimmed)) return false;
-    if (hasHeavyMarkdown(trimmed)) return false;
-    if (countEmoji(trimmed) > 3) return false;
+    if (trimmed.length < 10 || trimmed.length > 500) return 'lengthBounds';
+    if (hasXmlOrHtml(trimmed)) return 'xmlHtml';
+    if (hasHeavyMarkdown(trimmed)) return 'heavyMarkdown';
+    if (countEmoji(trimmed) > 3) return 'emojiDensity';
+    if (SENSITIVE_PATTERNS.some((pattern) => pattern.test(trimmed))) return 'sensitivePattern';
+    return null;
+}
 
-    return !SENSITIVE_PATTERNS.some((pattern) => pattern.test(trimmed));
+function appendCaptureTelemetry(entry) {
+    try {
+        fs.mkdirSync('/tmp/openclaw', { recursive: true });
+        fs.appendFile(CAPTURE_TELEMETRY_PATH, `${JSON.stringify(entry)}\n`, () => {});
+    } catch {
+        // best-effort telemetry only
+    }
 }
 
 function hasXmlOrHtml(text) {
