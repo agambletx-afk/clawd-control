@@ -391,4 +391,11 @@ function insertFact(db, fact) {
     );
 }
 
-module.exports = { initCapture };
+module.exports = {
+    initCapture,
+    insertFact,
+    hasDuplicate,
+    detectCategory,
+    extractStructuredFields,
+    detectDecayClass,
+};
