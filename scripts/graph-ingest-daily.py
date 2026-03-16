@@ -286,15 +286,32 @@ def main():
                     cur.execute(INSERT_SQL, row)
                     inserted += 1
 
+    fts_optimized = False
+    vacuumed = False
+
     if not args.dry_run:
         conn.commit()
+
+        try:
+            cur.execute("INSERT INTO facts_fts(facts_fts) VALUES('optimize')")
+            fts_optimized = True
+        except Exception as err:
+            print(f"WARN: facts_fts optimize failed: {err}")
+
+        try:
+            cur.execute("VACUUM")
+            vacuumed = True
+        except Exception as err:
+            print(f"WARN: VACUUM failed: {err}")
 
     print(
         "SUMMARY "
         f"files_scanned={files_scanned} "
         f"candidates={candidates} "
         f"new_facts_stored={inserted if not args.dry_run else 0} "
-        f"duplicates_skipped={duplicates}"
+        f"duplicates_skipped={duplicates} "
+        f"fts_optimized={str(fts_optimized).lower()} "
+        f"vacuumed={str(vacuumed).lower()}"
     )
 
     conn.close()
