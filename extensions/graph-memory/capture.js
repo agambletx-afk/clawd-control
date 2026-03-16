@@ -109,6 +109,16 @@ function initCapture(api, db, config = {}) {
                     continue;
                 }
 
+                const similar = hasSimilarFact(db, entity, key, value);
+                if (similar.isDuplicate) {
+                    const nowSec = Math.floor(Date.now() / 1000);
+                    db.prepare('UPDATE facts SET last_confirmed_at = ?, confidence = 1.0 WHERE id = ?')
+                        .run(nowSec, similar.existingId);
+                    filtered.duplicate += 1;
+                    api.logger?.info?.(`[capture] refreshed similar fact id=${similar.existingId} for entity=${entity}`);
+                    continue;
+                }
+
                 const decayClass = detectDecayClass(entity, key, value);
                 insertFact(db, {
                     text,
@@ -367,6 +377,39 @@ function hasDuplicate(db, entity, key, value) {
     return !!row;
 }
 
+function hasSimilarFact(db, entity, key, value) {
+    const OVERLAP_THRESHOLD = 0.70;
+    const rows = db.prepare(`
+        SELECT id, value
+        FROM facts
+        WHERE COALESCE(entity, '') = ? COLLATE NOCASE
+          AND COALESCE(key, '') = ? COLLATE NOCASE
+        LIMIT 10
+    `).all(entity || '', key || '');
+
+    const newWords = new Set(String(value || '').toLowerCase().split(/\s+/).filter(Boolean));
+    if (newWords.size === 0) {
+        return { isDuplicate: false };
+    }
+
+    for (const row of rows) {
+        const existingWords = new Set(String(row.value || '').toLowerCase().split(/\s+/).filter(Boolean));
+        if (existingWords.size === 0) continue;
+
+        let overlapCount = 0;
+        for (const word of newWords) {
+            if (existingWords.has(word)) overlapCount += 1;
+        }
+
+        const overlap = overlapCount / Math.max(newWords.size, existingWords.size);
+        if (overlap >= OVERLAP_THRESHOLD) {
+            return { isDuplicate: true, existingId: row.id };
+        }
+    }
+
+    return { isDuplicate: false };
+}
+
 function insertFact(db, fact) {
     const nowSec = Math.floor(Date.now() / 1000);
     const nowIso = new Date(nowSec * 1000).toISOString();
@@ -395,6 +438,7 @@ module.exports = {
     initCapture,
     insertFact,
     hasDuplicate,
+    hasSimilarFact,
     detectCategory,
     extractStructuredFields,
     detectDecayClass,
