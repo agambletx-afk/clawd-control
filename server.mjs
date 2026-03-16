@@ -62,6 +62,12 @@ const CORTEX_QUOTA_STATE_PATH = join(process.env.HOME || '/home/openclaw', '.ope
 const BUDGET_CONFIG_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', 'budget.json');
 const SENTINEL_CONFIG_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', 'sentinel-config.json');
 const RATE_LIMITS_CONFIG_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', 'rate-limits.json');
+const PROXY_API_BASE_URL = 'https://gw.dataimpulse.com:777';
+const PROXY_PLAN_TOTAL_BYTES = 25 * 1024 * 1024 * 1024;
+const PROXY_FETCH_TIMEOUT_MS = 10000;
+const PROXY_STATS_CACHE_MS = 5 * 60 * 1000;
+const PROXY_HISTORY_CACHE_MS = 15 * 60 * 1000;
+const PROXY_ERRORS_CACHE_MS = 15 * 60 * 1000;
 const OPENCLAW_DIR = join(homedir(), '.openclaw');
 const OPENCLAW_WORKSPACE = join(OPENCLAW_DIR, 'workspace');
 const CORTEX_CONFIG_PATH = join(OPENCLAW_WORKSPACE, 'cortex/cortex.json');
@@ -90,6 +96,11 @@ const WATCHER_CONFIG_PATH = '/etc/jarvis/watcher.json';
 let lastStoredSecurityGeneratedAt = null;
 let verificationRunning = false;
 let lastWatcherPruneAt = 0;
+const proxyApiCache = {
+  stats: { timestamp: 0, data: null },
+  history: new Map(),
+  errors: new Map(),
+};
 
 // ── Security constants ──
 const MAX_BODY_SIZE = 1024 * 1024; // 1MB max POST body
@@ -226,6 +237,88 @@ function getMergedEnvMap() {
     ...parseEnvFile(PRIMARY_ENV_PATH),
     ...process.env,
   };
+}
+
+
+function getProxyCredentials() {
+  const env = getMergedEnvMap();
+  const username = String(env.PROXY_USERNAME || '').trim();
+  const password = String(env.PROXY_PASSWORD || '').trim();
+  if (!username || !password) {
+    return { available: false, reason: 'proxy credentials not configured' };
+  }
+  return { available: true, username, password };
+}
+
+function bytesToGb(bytes) {
+  return Number(bytes || 0) / (1024 * 1024 * 1024);
+}
+
+function computeProxyStats(raw) {
+  const totalBytes = Number(raw?.total_traffic || PROXY_PLAN_TOTAL_BYTES);
+  const usedBytes = Number(raw?.traffic_used || 0);
+  const leftBytes = Number(raw?.traffic_left ?? Math.max(totalBytes - usedBytes, 0));
+  const totalGb = bytesToGb(totalBytes);
+  const usedGb = bytesToGb(usedBytes);
+  const remainingGb = bytesToGb(leftBytes);
+  const usedPct = totalBytes > 0 ? (usedBytes / totalBytes) * 100 : 0;
+  let status = 'ok';
+  if (remainingGb < 0.25) status = 'critical';
+  else if (remainingGb < 1.0) status = 'warn';
+  return {
+    total_gb: Number(totalGb.toFixed(6)),
+    used_gb: Number(usedGb.toFixed(6)),
+    remaining_gb: Number(remainingGb.toFixed(6)),
+    used_pct: Number(usedPct.toFixed(2)),
+    status,
+  };
+}
+
+async function fetchProxyApi(pathname, credentials, queryParams = null) {
+  const endpoint = new URL(pathname, PROXY_API_BASE_URL);
+  if (queryParams) {
+    for (const [k, v] of Object.entries(queryParams)) {
+      if (v !== undefined && v !== null) endpoint.searchParams.set(k, String(v));
+    }
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), PROXY_FETCH_TIMEOUT_MS);
+  try {
+    const auth = Buffer.from(`${credentials.username}:${credentials.password}`).toString('base64');
+    const response = await fetch(endpoint, {
+      method: 'GET',
+      headers: {
+        Authorization: `Basic ${auth}`,
+        Accept: 'application/json',
+      },
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`HTTP ${response.status}: ${body.slice(0, 200)}`);
+    }
+    return await response.json();
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function getProxyCached(cacheEntry, ttlMs, fetchFn) {
+  const now = Date.now();
+  if (cacheEntry.data && (now - cacheEntry.timestamp) < ttlMs) {
+    return { payload: cacheEntry.data, stale: false };
+  }
+  try {
+    const fresh = await fetchFn();
+    cacheEntry.timestamp = now;
+    cacheEntry.data = fresh;
+    return { payload: fresh, stale: false };
+  } catch (error) {
+    if (cacheEntry.data) {
+      return { payload: cacheEntry.data, stale: true };
+    }
+    throw error;
+  }
 }
 
 function loadApisConfig() {
@@ -2807,7 +2900,7 @@ function buildIntelligenceStrip() {
   };
 }
 
-const server = createServer((req, res) => {
+const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const path = url.pathname;
 
@@ -5922,6 +6015,104 @@ const server = createServer((req, res) => {
     return;
   }
 
+
+
+  if (path === '/api/proxy/stats' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    const credentials = getProxyCredentials();
+    if (!credentials.available) {
+      res.end(JSON.stringify({ available: false, reason: credentials.reason }));
+      return;
+    }
+
+    try {
+      const { payload, stale } = await getProxyCached(proxyApiCache.stats, PROXY_STATS_CACHE_MS, async () => {
+        const raw = await fetchProxyApi('/api/stats', credentials);
+        return {
+          available: true,
+          stale: false,
+          raw,
+          computed: computeProxyStats(raw),
+        };
+      });
+      res.end(JSON.stringify({ ...payload, stale }));
+    } catch (error) {
+      console.error('[API] /api/proxy/stats error:', error.message);
+      res.end(JSON.stringify({ available: false, error: error.message }));
+    }
+    return;
+  }
+
+  if (path === '/api/proxy/history' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    const credentials = getProxyCredentials();
+    if (!credentials.available) {
+      res.end(JSON.stringify({ available: false, reason: credentials.reason }));
+      return;
+    }
+
+    const days = Math.max(1, Math.min(90, parseInt(url.searchParams.get('days') || '30', 10) || 30));
+    const cacheKey = `days:${days}`;
+    const now = new Date();
+    const from = new Date(now.getTime() - (days * 86400000));
+
+    if (!proxyApiCache.history.has(cacheKey)) {
+      proxyApiCache.history.set(cacheKey, { timestamp: 0, data: null });
+    }
+
+    try {
+      const { payload, stale } = await getProxyCached(proxyApiCache.history.get(cacheKey), PROXY_HISTORY_CACHE_MS, async () => {
+        const raw = await fetchProxyApi('/api/stats_with_history', credentials, {
+          group_type: 'day',
+          from: from.toISOString(),
+          to: now.toISOString(),
+        });
+        return { available: true, stale: false, raw, days };
+      });
+      res.end(JSON.stringify({ ...payload, stale }));
+    } catch (error) {
+      console.error('[API] /api/proxy/history error:', error.message);
+      res.end(JSON.stringify({ available: false, error: error.message }));
+    }
+    return;
+  }
+
+  if (path === '/api/proxy/errors' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    const credentials = getProxyCredentials();
+    if (!credentials.available) {
+      res.end(JSON.stringify({ available: false, reason: credentials.reason }));
+      return;
+    }
+
+    const days = Math.max(1, Math.min(90, parseInt(url.searchParams.get('days') || '7', 10) || 7));
+    const cacheKey = `days:${days}`;
+    const now = new Date();
+    const from = new Date(now.getTime() - (days * 86400000));
+
+    if (!proxyApiCache.errors.has(cacheKey)) {
+      proxyApiCache.errors.set(cacheKey, { timestamp: 0, data: null });
+    }
+
+    try {
+      const { payload, stale } = await getProxyCached(proxyApiCache.errors.get(cacheKey), PROXY_ERRORS_CACHE_MS, async () => {
+        const raw = await fetchProxyApi('/api/errors_stats_with_parameters', credentials, {
+          groupby: 'datetime,host',
+          datetime_interval: 'day',
+          from: from.toISOString(),
+          to: now.toISOString(),
+          limit: 100,
+          offset: 0,
+        });
+        return { available: true, stale: false, raw, days };
+      });
+      res.end(JSON.stringify({ ...payload, stale }));
+    } catch (error) {
+      console.error('[API] /api/proxy/errors error:', error.message);
+      res.end(JSON.stringify({ available: false, error: error.message }));
+    }
+    return;
+  }
   if (path === '/api/host') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(collector.hostMetrics));

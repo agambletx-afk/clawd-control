@@ -41,6 +41,7 @@
     '/watcher.html': 'watcher',
     '/create.html': 'create',
     '/analytics.html': 'analytics',
+    '/proxy.html': 'proxy',
     '/cortex.html': 'cortex',
     '/cortex': 'cortex',
     '/tokens.html': 'tokens',
@@ -641,6 +642,10 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
       <a href="/analytics.html" class="nav-item${isActive('analytics')}">
         <i data-lucide="bar-chart-3" class="nav-icon"></i>
         <span class="nav-label">Intelligence</span>
+      </a>
+      <a href="/proxy.html" class="nav-item${isActive('proxy')}">
+        <i data-lucide="globe" class="nav-icon" style="color:#2dd4bf;opacity:1"></i>
+        <span class="nav-label">Web Proxy</span>
       </a>
       <a href="/tokens.html" class="nav-item${isActive('tokens')}">
         <i data-lucide="target" class="nav-icon"></i>
