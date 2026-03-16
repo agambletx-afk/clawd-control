@@ -4815,7 +4815,7 @@ const server = createServer(async (req, res) => {
         const db = openFactsDbWrite();
         try {
           const tx = db.transaction((id) => {
-            db.prepare('DELETE FROM co_occurrences WHERE fact_id = ? OR related_fact_id = ?').run(id, id);
+            db.prepare('DELETE FROM co_occurrences WHERE fact_a = ? OR fact_b = ?').run(id, id);
             const result = db.prepare('DELETE FROM facts WHERE id = ?').run(id);
             return result.changes;
           });
