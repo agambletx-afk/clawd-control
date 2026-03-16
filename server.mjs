@@ -4986,6 +4986,7 @@ const server = createServer(async (req, res) => {
       }
 
       const data = JSON.parse(readFileSync(API_LIVENESS_PATH, 'utf8'));
+      if (!data.checked_at && data.timestamp) data.checked_at = data.timestamp;
       const checkedAtMs = Date.parse(data?.checked_at);
       const stale = !data?.checked_at || Number.isNaN(checkedAtMs) || (Date.now() - checkedAtMs > 10 * 60 * 1000);
 
