@@ -12,7 +12,7 @@ from datetime import date, timedelta
 
 WORKSPACE = os.environ.get("OPENCLAW_WORKSPACE", os.path.expanduser("~/.openclaw"))
 FACTS_DB = os.environ.get("FACTS_DB", os.path.join(WORKSPACE, "memory", "facts.db"))
-MEMORY_DIR = os.path.join(WORKSPACE, "memory")
+MEMORY_DIR = os.path.join(WORKSPACE, "workspace", "memory")
 
 SENSITIVE_RE = re.compile(
     r"password|passwd|api.?key|secret(?:[_\s]?=|[_\s]key|[_\s]token)|(?:(?:auth|access|bearer|refresh|api)[_\s]token|token(?:[_\s]?=\S+|[_\s]?:\s*\S+))|sk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{36}|\b\d{3}-\d{2}-\d{4}\b|\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b",
@@ -30,9 +30,9 @@ EMOJI_RE = re.compile(
 )
 INSERT_SQL = """
 INSERT INTO facts (
-    id, text, category, importance, entity, key, value,
+    category, importance, entity, key, value,
     source, created_at, decay_class, expires_at, last_confirmed_at, confidence
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """.strip()
 
 TTL_SECONDS = {
@@ -179,8 +179,6 @@ def validate_schema(cursor):
     cursor.execute("PRAGMA table_info(facts)")
     cols = {row[1] for row in cursor.fetchall()}
     required = {
-        "id",
-        "text",
         "category",
         "importance",
         "entity",
@@ -252,7 +250,7 @@ def main():
                 category = detect_category(line)
                 entity, key, value = extract_structured(line)
 
-                cur.execute("SELECT 1 FROM facts WHERE text = ? LIMIT 1", (line,))
+                cur.execute("SELECT 1 FROM facts WHERE value = ? LIMIT 1", (line,))
                 if cur.fetchone() is not None:
                     duplicates += 1
                     continue
@@ -262,8 +260,6 @@ def main():
                 ttl_seconds = TTL_SECONDS[decay_class]
                 expires_at = None if ttl_seconds is None else created_at + ttl_seconds
                 row = (
-                    str(uuid.uuid4()),
-                    line,
                     category,
                     0.7,
                     entity,
