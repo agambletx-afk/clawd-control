@@ -102,6 +102,8 @@ const VERIFY_RESULTS_PATH = '/tmp/verify-deployment-results.json';
 const VERIFY_SCRIPT_PATH = '/usr/local/bin/verify-deployment.sh';
 const SOUL_MD_PATH = '/home/openclaw/.openclaw/workspace/SOUL.md';
 const SOUL_HASH_PATH = '/home/openclaw/.openclaw/.soul-hash';
+const CONFIG_DRIFT_BASELINE_PATH = '/var/tmp/config-drift-baseline.json';
+const CREDENTIAL_ALLOWLIST_PATH = '/home/openclaw/.openclaw/workspace/credential-allowlist.json';
 const WATCHER_STATUS_PATH = '/home/openclaw/.openclaw/workspace/watcher-status.json';
 const WATCHER_CONFIG_PATH = '/etc/jarvis/watcher.json';
 let lastStoredSecurityGeneratedAt = null;
@@ -142,6 +144,116 @@ function getByPath(obj, path) {
 
 function openFactsDb() {
   return openSqlite(MEMORY_FACTS_DB_PATH, { readonly: true, fileMustExist: true });
+}
+
+function openFactsDbWrite() {
+  return openSqlite(MEMORY_FACTS_DB_PATH, { readonly: false, fileMustExist: true });
+}
+
+function flattenConfigForDrift(input) {
+  const out = {};
+  const walk = (value, path = '') => {
+    if (Array.isArray(value)) {
+      if (value.length > 10) {
+        out[path] = JSON.stringify(value);
+        return;
+      }
+      if (value.length === 0) {
+        out[path] = JSON.stringify([]);
+        return;
+      }
+      value.forEach((entry, i) => walk(entry, path ? `${path}.${i}` : String(i)));
+      return;
+    }
+
+    if (value && typeof value === 'object') {
+      const keys = Object.keys(value);
+      if (keys.length === 0) {
+        out[path] = JSON.stringify({});
+        return;
+      }
+      keys.forEach((key) => walk(value[key], path ? `${path}.${key}` : key));
+      return;
+    }
+
+    out[path] = value;
+  };
+
+  walk(input, '');
+  if (Object.prototype.hasOwnProperty.call(out, '')) {
+    delete out[''];
+  }
+  return out;
+}
+
+function readCredentialAllowlist() {
+  if (!existsSync(CREDENTIAL_ALLOWLIST_PATH)) {
+    writeFileSync(CREDENTIAL_ALLOWLIST_PATH, '[]\n', 'utf8');
+    return new Set();
+  }
+
+  try {
+    const parsed = JSON.parse(readFileSync(CREDENTIAL_ALLOWLIST_PATH, 'utf8'));
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.map((value) => Number.parseInt(value, 10)).filter(Number.isInteger));
+  } catch {
+    return new Set();
+  }
+}
+
+function writeCredentialAllowlist(ids) {
+  writeFileSync(CREDENTIAL_ALLOWLIST_PATH, `${JSON.stringify(Array.from(ids).sort((a, b) => a - b), null, 2)}\n`, 'utf8');
+}
+
+function maskCredentialValue(value) {
+  const text = String(value || '');
+  if (text.length < 12) return text;
+  return `${text.slice(0, 4)}...${text.slice(-4)}`;
+}
+
+function detectLikelyCredential(value = '') {
+  const text = String(value || '');
+  return /\bsk-[A-Za-z0-9]{20,}\b/.test(text)
+    || /\bghp_[A-Za-z0-9]{36}\b/.test(text)
+    || /(?:^|\s)[A-Z0-9_]*(?:TOKEN|KEY|SECRET|PASSWORD)\s*=\s*[A-Za-z0-9_\-+/=]{16,}/i.test(text)
+    || /[A-Za-z0-9+/]{32,}={0,2}/.test(text);
+}
+
+function getCredentialReviewRows() {
+  const allowlist = readCredentialAllowlist();
+  const db = openFactsDb();
+  try {
+    const rows = db.prepare(`
+      SELECT id, entity, key, value
+      FROM facts
+      WHERE
+        value GLOB 'sk-[A-Za-z0-9]*'
+        OR value GLOB 'ghp_[A-Za-z0-9]*'
+        OR lower(COALESCE(key, '')) IN ('password', 'api_key', 'secret', 'token')
+      ORDER BY id DESC
+      LIMIT 250
+    `).all();
+
+    return rows
+      .filter((row) => !allowlist.has(Number(row.id)))
+      .map((row) => {
+        const value = String(row.value || '');
+        const skMatch = value.match(/\bsk-[A-Za-z0-9]{20,}\b/);
+        const ghMatch = value.match(/\bghp_[A-Za-z0-9]{36}\b/);
+        const exactValue = skMatch?.[0] || ghMatch?.[0] || value;
+        const likelyReal = detectLikelyCredential(exactValue);
+        return {
+          id: Number(row.id),
+          entity: row.entity || '',
+          key: row.key || '',
+          masked_value: likelyReal ? maskCredentialValue(exactValue) : value,
+          full_value_length: value.length,
+          is_likely_real: likelyReal,
+        };
+      });
+  } finally {
+    db.close();
+  }
 }
 
 function safeReadLines(filePath, maxLines = 4000) {
@@ -4588,6 +4700,159 @@ const server = createServer(async (req, res) => {
     }
     return;
   }
+
+  if (path === '/api/security/config-drift/ack' && req.method === 'POST') {
+    try {
+      if (!existsSync(OPENCLAW_CONFIG_PATH)) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'openclaw.json not found' }));
+        return;
+      }
+
+      const config = JSON.parse(readFileSync(OPENCLAW_CONFIG_PATH, 'utf8'));
+      const flattened = flattenConfigForDrift(config);
+      writeFileSync(CONFIG_DRIFT_BASELINE_PATH, `${JSON.stringify(flattened, null, 2)}\n`, 'utf8');
+
+      const timestamp = new Date().toISOString();
+      logAction({
+        category: 'security',
+        action: 'config-drift-ack',
+        target: 'config-drift-baseline',
+        status: 'success',
+        detail: 'Config drift acknowledged by dashboard operator',
+      });
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, keyCount: Object.keys(flattened).length, timestamp }));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (path === '/api/security/soul-hash/ack' && req.method === 'POST') {
+    try {
+      if (!existsSync(SOUL_MD_PATH)) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'SOUL.md not found' }));
+        return;
+      }
+
+      const hash = createHash('sha256').update(readFileSync(SOUL_MD_PATH)).digest('hex');
+      writeFileSync(SOUL_HASH_PATH, hash, 'utf8');
+      const timestamp = new Date().toISOString();
+
+      logAction({
+        category: 'security',
+        action: 'soul-hash-ack',
+        target: 'SOUL.md',
+        status: 'success',
+        detail: 'SOUL.md hash baseline updated by dashboard operator',
+      });
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, hash: hash.slice(0, 12), timestamp }));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (path === '/api/security/memory-credentials' && req.method === 'GET') {
+    try {
+      const payload = getMemoryCached('security-memory-credentials', 60000, () => {
+        const rows = getCredentialReviewRows();
+        return {
+          credentials: rows,
+          count: rows.length,
+          generatedAt: new Date().toISOString(),
+        };
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(payload));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (path === '/api/security/memory-credentials/dismiss' && req.method === 'POST') {
+    readJsonBody(req).then((body) => {
+      try {
+        const factId = Number.parseInt(body?.factId, 10);
+        const action = String(body?.action || '');
+        if (!Number.isInteger(factId) || factId <= 0) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'factId must be a positive integer' }));
+          return;
+        }
+        if (!['delete', 'allowlist'].includes(action)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'action must be delete or allowlist' }));
+          return;
+        }
+
+        if (action === 'allowlist') {
+          const ids = readCredentialAllowlist();
+          ids.add(factId);
+          writeCredentialAllowlist(ids);
+          memoryApiCache.delete('security-memory-credentials');
+          logAction({
+            category: 'security',
+            action: 'memory-credential-allowlist',
+            target: 'facts.db',
+            status: 'success',
+            detail: `Allowlisted credential fact id=${factId}`,
+          });
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: true, factId, action }));
+          return;
+        }
+
+        const db = openFactsDbWrite();
+        try {
+          const tx = db.transaction((id) => {
+            db.prepare('DELETE FROM co_occurrences WHERE fact_id = ? OR related_fact_id = ?').run(id, id);
+            const result = db.prepare('DELETE FROM facts WHERE id = ?').run(id);
+            return result.changes;
+          });
+          const changes = tx(factId);
+          if (!changes) {
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Fact not found' }));
+            return;
+          }
+        } finally {
+          db.close();
+        }
+
+        memoryApiCache.delete('security-memory-credentials');
+        memoryApiCache.delete('stats');
+
+        logAction({
+          category: 'security',
+          action: 'memory-credential-delete',
+          target: 'facts.db',
+          status: 'success',
+          detail: `Deleted credential fact id=${factId}`,
+        });
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, factId, action }));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    }).catch((e) => {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    });
+    return;
+  }
+
 
   if (path === '/api/security/acknowledge' && req.method === 'POST') {
     readJsonBody(req).then((body) => {
