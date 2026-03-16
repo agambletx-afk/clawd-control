@@ -564,13 +564,11 @@ module.exports = {
         }, { priority: 90 });
 
         if (typeof api.registerTool === 'function') {
-            api.registerTool({
+            api.registerTool((ctx) => ({
                 name: 'memory_store',
-                label: 'Memory Store',
                 description: 'Save important information in long-term memory as a structured fact.',
-                inputSchema: {
+                parameters: {
                     type: 'object',
-                    additionalProperties: false,
                     required: ['text'],
                     properties: {
                         text: { type: 'string', description: 'Human-readable description of what to remember.' },
@@ -582,7 +580,7 @@ module.exports = {
                             enum: ['identity', 'system', 'preference', 'relationship', 'work', 'decision'],
                             description: 'Fact category.',
                         },
-                        importance: { type: 'number', minimum: 0, maximum: 1, description: 'Importance score (0-1).' },
+                        importance: { type: 'number', description: 'Importance score (0-1).' },
                         decayClass: {
                             type: 'string',
                             enum: ['permanent', 'stable', 'active', 'session', 'checkpoint'],
@@ -590,7 +588,7 @@ module.exports = {
                         },
                     },
                 },
-                handler: async (params = {}) => {
+                async execute(_toolCallId, params = {}) {
                     if (!db) return { success: false, message: 'Memory database is unavailable.' };
 
                     const text = String(params.text || '').trim();
@@ -622,21 +620,19 @@ module.exports = {
                         fact: { entity, key, value: value.slice(0, 100), decayClass, category, importance },
                     };
                 },
-            });
+            }));
 
-            api.registerTool({
+            api.registerTool((ctx) => ({
                 name: 'memory_forget',
-                label: 'Memory Forget',
                 description: 'Delete specific memories from the knowledge graph.',
-                inputSchema: {
+                parameters: {
                     type: 'object',
-                    additionalProperties: false,
                     properties: {
                         query: { type: 'string', description: 'Search text to find memories to delete.' },
                         factId: { type: 'number', description: 'Direct fact ID to delete.' },
                     },
                 },
-                handler: async (params = {}) => {
+                async execute(_toolCallId, params = {}) {
                     if (!db) return { success: false, message: 'Memory database is unavailable.' };
 
                     const parsedFactId = Number(params.factId);
@@ -698,7 +694,7 @@ module.exports = {
                         deleted: fact,
                     };
                 },
-            });
+            }));
         }
     },
 };
