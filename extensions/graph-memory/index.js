@@ -552,6 +552,53 @@ module.exports = {
             }
         }, { priority: 5 });
 
+        api.on('before_compaction', async (event) => {
+            try {
+                const agentId = event?.agentId || 'unknown';
+                const sessionId = event?.sessionId || event?.sessionKey;
+                const messages = Array.isArray(event?.messages) ? event.messages : [];
+                const takeText = (message, role) => {
+                    if (!message?.content) return '';
+                    if (typeof message.content === 'string') return message.content.trim().slice(0, 100);
+                    if (role === 'user' && Array.isArray(message.content)) {
+                        const firstText = message.content.find((part) => part?.type === 'text' && typeof part.text === 'string');
+                        return (firstText?.text || '').trim().slice(0, 100);
+                    }
+                    if (Array.isArray(message.content)) {
+                        return message.content
+                            .filter((part) => part?.type === 'text' && typeof part.text === 'string')
+                            .map((part) => part.text.trim())
+                            .filter(Boolean)
+                            .join(' ')
+                            .slice(0, 100);
+                    }
+                    return '';
+                };
+
+                const users = messages.filter((m) => m?.role === 'user').slice(-3).map((m) => takeText(m, 'user')).filter(Boolean);
+                const assistants = messages.filter((m) => m?.role === 'assistant').slice(-3).map((m) => takeText(m, 'assistant')).filter(Boolean);
+                const fallback = `Compaction checkpoint for agent ${agentId} at ${new Date().toISOString()}`;
+                let checkpointValue = (users.length || assistants.length)
+                    ? `Last user messages: ${users.join(' | ')}. Last assistant actions: ${assistants.join(' | ')}`
+                    : fallback;
+                if (sessionId) checkpointValue += ` (session: ${sessionId})`;
+                checkpointValue = checkpointValue.slice(0, 500);
+
+                if (!db) throw new Error('database unavailable');
+                insertFact(db, {
+                    text: checkpointValue,
+                    category: 'checkpoint',
+                    entity: 'system',
+                    key: `compaction-checkpoint:${Date.now()}`,
+                    value: checkpointValue,
+                    decayClass: 'checkpoint',
+                });
+                console.log(`[graph-memory] compaction checkpoint saved for agent ${agentId} (${checkpointValue.length} chars)`);
+            } catch (err) {
+                console.error(`[graph-memory] compaction checkpoint failed: ${err.message}`);
+            }
+        });
+
         initCapture(api, db, DEFAULTS);
 
         // -------------------------------------------------------------------
