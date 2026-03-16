@@ -7,12 +7,11 @@ import re
 import sqlite3
 import sys
 import time
-import uuid
 from datetime import date, timedelta
 
 WORKSPACE = os.environ.get("OPENCLAW_WORKSPACE", os.path.expanduser("~/.openclaw"))
 FACTS_DB = os.environ.get("FACTS_DB", os.path.join(WORKSPACE, "memory", "facts.db"))
-MEMORY_DIR = os.path.join(WORKSPACE, "memory")
+MEMORY_DIR = os.path.join(WORKSPACE, "workspace", "memory")
 
 SENSITIVE_RE = re.compile(
     r"password|passwd|api.?key|secret(?:[_\s]?=|[_\s]key|[_\s]token)|(?:(?:auth|access|bearer|refresh|api)[_\s]token|token(?:[_\s]?=\S+|[_\s]?:\s*\S+))|sk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{36}|\b\d{3}-\d{2}-\d{4}\b|\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b",
@@ -20,19 +19,24 @@ SENSITIVE_RE = re.compile(
 )
 EMOJI_RE = re.compile(
     "["
-    "\\U0001F300-\\U0001F5FF"
-    "\\U0001F600-\\U0001F64F"
-    "\\U0001F680-\\U0001F6FF"
-    "\\U0001F700-\\U0001F77F"
-    "\\U0001F900-\\U0001F9FF"
-    "\\U0001FA70-\\U0001FAFF"
+    "\U0001F300-\U0001F5FF"
+    "\U0001F600-\U0001F64F"
+    "\U0001F680-\U0001F6FF"
+    "\U0001F700-\U0001F77F"
+    "\U0001F900-\U0001F9FF"
+    "\U0001FA70-\U0001FAFF"
     "]"
 )
+
+# Schema: id (INTEGER PK auto), entity, key, value, category, source,
+#         created_at (TEXT datetime), last_accessed, access_count, permanent,
+#         decay_score, activation, importance, decay_class, expires_at,
+#         last_confirmed_at, confidence
 INSERT_SQL = """
 INSERT INTO facts (
-    id, text, category, importance, entity, key, value,
-    source, created_at, decay_class, expires_at, last_confirmed_at, confidence
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    entity, key, value, category, source, created_at,
+    importance, decay_class, expires_at, last_confirmed_at, confidence
+) VALUES (?, ?, ?, ?, ?, datetime('now'), ?, ?, ?, ?, ?)
 """.strip()
 
 
@@ -128,22 +132,21 @@ def extract_structured(line):
         }
         return "Adam", key_map.get(verb, verb), actor_match.group(3).strip()
 
-    return None, None, s
+    fallback_entity = "Jarvis" if detect_category(s) == "system" else "Adam"
+    return fallback_entity, 'note', s
 
 
 def validate_schema(cursor):
     cursor.execute("PRAGMA table_info(facts)")
     cols = {row[1] for row in cursor.fetchall()}
     required = {
-        "id",
-        "text",
-        "category",
-        "importance",
         "entity",
         "key",
         "value",
+        "category",
         "source",
         "created_at",
+        "importance",
         "decay_class",
         "expires_at",
         "last_confirmed_at",
@@ -208,33 +211,33 @@ def main():
                 category = detect_category(line)
                 entity, key, value = extract_structured(line)
 
-                cur.execute("SELECT 1 FROM facts WHERE text = ? LIMIT 1", (line,))
+                # Dedup on value column (no text column in this schema)
+                cur.execute("SELECT 1 FROM facts WHERE value = ? LIMIT 1", (value,))
                 if cur.fetchone() is not None:
                     duplicates += 1
                     continue
 
-                created_at = int(time.time())
-                expires_at = created_at + 1_209_600
+                now_ts = int(time.time())
+                expires_at = now_ts + 1_209_600  # 14 days
+
                 row = (
-                    str(uuid.uuid4()),
-                    line,
-                    category,
-                    0.7,
-                    entity,
-                    key,
-                    value,
-                    source,
-                    created_at,
-                    "active",
-                    expires_at,
-                    created_at,
-                    1.0,
+                    entity,       # entity
+                    key,          # key
+                    value,        # value
+                    category,     # category
+                    source,       # source
+                    # created_at handled by datetime('now') in SQL
+                    0.7,          # importance
+                    "active",     # decay_class
+                    expires_at,   # expires_at
+                    now_ts,       # last_confirmed_at
+                    1.0,          # confidence
                 )
 
                 if args.dry_run:
                     print(
                         f"[DRY-RUN] source={source} category={category} "
-                        f"entity={entity!r} key={key!r} value={value!r} text={line!r}"
+                        f"entity={entity!r} key={key!r} value={value!r}"
                     )
                 else:
                     cur.execute(INSERT_SQL, row)
