@@ -6688,7 +6688,7 @@ const server = createServer(async (req, res) => {
         const candidatesExtracted = parseNumberOrNull(m(/(?:candidates\s*extracted|candidate\s*lines|eligible\s*lines|candidates)[=:\s]*(\d+)/i));
         const factsInserted = parseNumberOrNull(m(/(?:facts\s*inserted|inserted\s*facts|new\s*facts|new_facts_stored)[=:\s]*(\d+)/i));
         const duplicatesSkipped = parseNumberOrNull(m(/(?:duplicates\s*skipped|skipped\s*duplicates|duplicates_skipped)[=:\s]*(\d+)/i));
-        const hasSuccess = /success|completed/i.test(lastErrorLine || '') ? false : /success|completed/i.test(joined);
+        const hasSuccess = /success|completed|SUMMARY/i.test(lastErrorLine || '') ? false : /success|completed|SUMMARY/i.test(joined);
         return {
           available: true,
           lastRunTimestamp,
