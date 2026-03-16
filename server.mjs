@@ -57,6 +57,7 @@ const APIS_CONFIG_PATH = join(DIR, 'apis-config.json');
 const HEALTH_RESULTS_PATH = '/tmp/api-health-results.json';
 const CLI_USAGE_PATH = '/tmp/cli-usage.json';
 const COST_SENTINEL_STATUS_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', 'cost-sentinel-status.json');
+const CORTEX_SENTINEL_STATUS_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', 'cortex-sentinel-status.json');
 const CORTEX_QUOTA_STATE_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', 'cortex', 'quota-state.json');
 const BUDGET_CONFIG_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', 'budget.json');
 const SENTINEL_CONFIG_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', 'sentinel-config.json');
@@ -5580,6 +5581,86 @@ const server = createServer((req, res) => {
       console.error('[API] /api/cortex/status error:', e.message);
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Failed to load cortex status' }));
+    }
+    return;
+  }
+
+
+  if (path === '/api/cortex/sentinel' && req.method === 'GET') {
+    try {
+      if (!existsSync(CORTEX_SENTINEL_STATUS_PATH)) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          available: false,
+          stale: false,
+          age_seconds: null,
+          status: null,
+        }));
+        return;
+      }
+
+      const fileStats = statSync(CORTEX_SENTINEL_STATUS_PATH);
+      const ageSeconds = Math.max(0, Math.floor((Date.now() - fileStats.mtimeMs) / 1000));
+      const stale = ageSeconds > (25 * 60 * 60);
+
+      let sentinelPayload;
+      try {
+        sentinelPayload = JSON.parse(readFileSync(CORTEX_SENTINEL_STATUS_PATH, 'utf8'));
+      } catch {
+        sentinelPayload = null;
+      }
+
+      if (!sentinelPayload || typeof sentinelPayload !== 'object') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          available: false,
+          stale,
+          age_seconds: ageSeconds,
+          status: null,
+        }));
+        return;
+      }
+
+      const checksObject = sentinelPayload.checks && typeof sentinelPayload.checks === 'object' ? sentinelPayload.checks : {};
+      const checks = Object.values(checksObject);
+      const rank = { info: 0, ok: 0, normal: 0, watch: 1, warn: 1, warning: 1, critical: 2 };
+      const highest = checks.reduce((best, check) => {
+        const severity = String(check?.status || check?.severity || sentinelPayload?.overall || 'unknown').toLowerCase();
+        const score = rank[severity] ?? 0;
+        if (!best || score > best.score) {
+          return { score, severity };
+        }
+        return best;
+      }, null);
+      const alertCount = checks.filter((check) => {
+        const severity = String(check?.status || check?.severity || 'ok').toLowerCase();
+        return severity === 'warn' || severity === 'warning' || severity === 'critical';
+      }).length;
+
+      const overallRaw = String(sentinelPayload.overall || highest?.severity || 'unknown').toLowerCase();
+      const overall = overallRaw === 'warning' ? 'warn' : overallRaw;
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        available: true,
+        stale,
+        age_seconds: ageSeconds,
+        status: {
+          value: overall || 'unknown',
+          alertCount,
+          checks: checksObject,
+          asOf: parseIsoOrNull(sentinelPayload.timestamp),
+        },
+      }));
+    } catch (e) {
+      console.error('[API] /api/cortex/sentinel error:', e.message);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        available: false,
+        stale: false,
+        age_seconds: null,
+        status: null,
+      }));
     }
     return;
   }
