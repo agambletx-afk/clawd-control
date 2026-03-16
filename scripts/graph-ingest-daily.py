@@ -266,20 +266,16 @@ def main():
                 ttl_seconds = TTL_SECONDS[decay_class]
                 expires_at = None if ttl_seconds is None else created_at + ttl_seconds
                 row = (
-                    str(uuid.uuid4()),
-                    line,
-                    category,
-                    0.7,
                     entity,
                     key,
                     value,
+                    category,
                     source,
-                    created_at,
+                    0.7,
                     decay_class,
                     expires_at,
                     created_at,
                     1.0,
-
                 )
 
                 if args.dry_run:
