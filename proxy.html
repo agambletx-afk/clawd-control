@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Web Proxy — Clawd Control</title>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    :root { --proxy-accent:#2dd4bf; --bg:#0f1419; --surface:#1a2332; --text:#f1f5f9; --muted:#94a3b8; }
+    body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,sans-serif}
+    .main{padding:24px}
+    .page-header{margin-bottom:16px}
+    .page-header h1{margin:0;color:var(--proxy-accent)}
+    .page-header p{margin:6px 0 0;color:var(--muted)}
+    .grid6{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+    .card{background:var(--surface);border:1px solid #263446;border-radius:12px;padding:14px}
+    .stat-label{font-size:.78rem;color:var(--muted)}
+    .stat-value{font-size:1.6rem;font-family:ui-monospace,monospace;font-weight:700;margin:4px 0}
+    .stat-sub{font-size:.75rem;color:var(--muted)}
+    .bar-wrap{margin-top:14px}
+    .bar-track{height:16px;background:#0f172a;border-radius:999px;overflow:hidden;border:1px solid #334155}
+    .bar-fill{height:100%;background:#22c55e;transition:width .4s ease}
+    .bar-labels{display:flex;justify-content:space-between;margin-top:8px;color:var(--muted);font-size:.8rem;font-family:ui-monospace,monospace}
+    .twocol{margin-top:14px;display:grid;grid-template-columns:1.5fr 1fr;gap:12px}
+    .chart{display:flex;align-items:flex-end;gap:4px;height:220px;padding:8px;border:1px dashed #2d3d53;border-radius:8px}
+    .bar{flex:1;min-width:10px;display:flex;flex-direction:column;justify-content:flex-end;height:100%}
+    .bar .out{background:#5eead4}
+    .bar .in{background:#0d9488}
+    .bar .out,.bar .in{width:100%}
+    .xlabels{display:grid;grid-template-columns:repeat(auto-fit,minmax(40px,1fr));gap:4px;margin-top:6px;color:var(--muted);font-size:.65rem}
+    .top-list{display:flex;flex-direction:column;gap:8px}
+    .row{display:grid;grid-template-columns:1fr auto auto;gap:8px;font-size:.82rem}
+    .badge{display:inline-block;border-radius:999px;padding:2px 8px;font-size:.7rem;background:rgba(45,212,191,.15);color:#99f6e4}
+    .warn{background:rgba(245,158,11,.2);color:#fbbf24}.critical{background:rgba(239,68,68,.2);color:#fca5a5}
+    .empty{color:var(--muted);font-size:.82rem}
+  </style>
+</head>
+<body>
+  <main class="main">
+    <div class="page-header">
+      <h1>🌐 Web Proxy</h1>
+      <p>Residential proxy balance, traffic history, and consumption monitoring</p>
+    </div>
+
+    <section class="grid6" id="statCards"></section>
+
+    <section class="card bar-wrap">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <strong>Balance Utilization</strong>
+        <span id="staleBadge" class="badge" style="display:none">STALE</span>
+      </div>
+      <div class="bar-track"><div id="balanceFill" class="bar-fill" style="width:0%"></div></div>
+      <div class="bar-labels"><span id="balanceLabel">0 GB used</span><span id="balancePct">0%</span></div>
+    </section>
+
+    <section class="twocol">
+      <div class="card">
+        <strong>Traffic History (30 days)</strong>
+        <div id="chart" class="chart"></div>
+        <div id="xlabels" class="xlabels"></div>
+      </div>
+      <div class="card">
+        <strong>Top Consumers</strong>
+        <div id="topConsumers" class="top-list" style="margin-top:10px"></div>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top:14px">
+      <strong>Status & Config</strong>
+      <div id="statusGrid" class="top-list" style="margin-top:10px"></div>
+    </section>
+  </main>
+
+  <script src="/layout.js"></script>
+  <script>
+    const totalBudgetGb = 25;
+    const fmtGb = (n) => Number(n||0).toFixed(3);
+    const fmtDate = (iso) => iso ? new Date(iso).toLocaleDateString() : '—';
+
+    function renderCards(stats, history){
+      const h = history?.raw?.traffic_history || [];
+      const recent = h.slice(-7);
+      const burn = recent.length >= 2 ? recent.reduce((s,d)=>s+Number(d.total_traffic||0),0) / recent.length / (1024*1024*1024) : null;
+      const remaining = Number(stats?.computed?.remaining_gb||0);
+      const daysEmpty = burn && burn > 0 ? (remaining / burn) : null;
+      const status = stats?.computed?.status || 'ok';
+      const color = status === 'critical' ? '#ef4444' : (status === 'warn' ? '#f59e0b' : '#22c55e');
+      const cards = [
+        ['Remaining Balance', `${fmtGb(remaining)} GB`, status === 'critical' ? 'Critical threshold' : 'Available proxy balance', color],
+        ['Traffic Used', `${fmtGb(stats?.computed?.used_gb)} GB`, `${(stats?.computed?.used_pct||0).toFixed(2)}% of total`],
+        ['Total Budget', `${fmtGb(stats?.computed?.total_gb || totalBudgetGb)} GB`, 'Plan size'],
+        ['Daily Burn Rate', burn === null ? 'N/A' : `${fmtGb(burn)} GB/day`, '7 day average'],
+        ['Days Until Empty', burn === null ? '∞' : (burn === 0 ? '∞' : `${daysEmpty.toFixed(1)} days`), 'Remaining / burn rate'],
+        ['Active Threads', String(stats?.raw?.used_threads ?? '0'), 'Current DataImpulse active threads'],
+      ];
+      document.getElementById('statCards').innerHTML = cards.map(([l,v,s,c]) =>
+        `<div class="card"><div class="stat-label">${l}</div><div class="stat-value" style="color:${c||'var(--text)'}">${v}</div><div class="stat-sub">${s}</div></div>`
+      ).join('');
+    }
+
+    function renderBalanceBar(stats){
+      const usedPct = Number(stats?.computed?.used_pct||0);
+      const fill = document.getElementById('balanceFill');
+      fill.style.width = `${Math.min(100,Math.max(0,usedPct))}%`;
+      fill.style.background = usedPct > 80 ? '#ef4444' : (usedPct > 50 ? '#f59e0b' : '#22c55e');
+      document.getElementById('balanceLabel').textContent = `${fmtGb(stats?.computed?.used_gb)} GB used / ${fmtGb(stats?.computed?.total_gb||totalBudgetGb)} GB total`;
+      document.getElementById('balancePct').textContent = `${usedPct.toFixed(2)}% used`;
+      document.getElementById('staleBadge').style.display = stats?.stale ? 'inline-block' : 'none';
+    }
+
+    function renderChart(history){
+      const list = history?.raw?.traffic_history || [];
+      const chart = document.getElementById('chart');
+      const labels = document.getElementById('xlabels');
+      if (!list.length){ chart.innerHTML = '<div class="empty">No traffic history yet</div>'; labels.innerHTML = ''; return; }
+      const max = Math.max(...list.map(d=>Number(d.total_traffic||0)), 1);
+      chart.innerHTML = list.map(d=>{
+        const inbound = Number(d.inbound_traffic||0); const outgoing = Number(d.outgoing_traffic||0);
+        const totalHeight = (Number(d.total_traffic||0)/max)*100;
+        const outPct = (outgoing / Math.max(1, inbound + outgoing)) * totalHeight;
+        const inPct = totalHeight - outPct;
+        return `<div class="bar" title="${fmtDate(d.group_date)} • ${(Number(d.total_traffic)/(1024*1024)).toFixed(2)} MB • req ${d.requests_count||0}"><div class="out" style="height:${outPct}%"></div><div class="in" style="height:${inPct}%"></div></div>`;
+      }).join('');
+      labels.innerHTML = list.map(d=>`<span>${new Date(d.group_date).toLocaleDateString(undefined,{month:'numeric',day:'numeric'})}</span>`).join('');
+    }
+
+    function renderTopConsumers(errors){
+      const items = errors?.raw?.items || [];
+      const wrap = document.getElementById('topConsumers');
+      if (!items.length) { wrap.innerHTML = '<div class="empty">No error data yet — errors will appear as traffic accumulates</div>'; return; }
+      const grouped = new Map();
+      for (const item of items) {
+        const host = item?.group_key?.host || 'unknown';
+        const dt = item?.group_key?.datetime || null;
+        const value = Number(item?.value || 0);
+        const prev = grouped.get(host) || { count: 0, last: null };
+        prev.count += value;
+        if (!prev.last || (dt && dt > prev.last)) prev.last = dt;
+        grouped.set(host, prev);
+      }
+      const top = [...grouped.entries()].sort((a,b)=>b[1].count-a[1].count).slice(0,10);
+      wrap.innerHTML = top.map(([host,meta]) => `<div class="row"><span>${host}</span><span class="stat-value" style="font-size:1rem">${meta.count}</span><span class="stat-sub">${fmtDate(meta.last)}</span></div>`).join('');
+    }
+
+    function renderStatus(stats){
+      const rows = [
+        ['Current Proxy IP', 'Unavailable (requires explicit IP test call)'],
+        ['Proxy Host', 'gw.dataimpulse.com'],
+        ['Proxy Port', '823'],
+        ['Proxy Login', stats?.raw?.login || '—'],
+        ['Connection', stats?.available ? 'ok' : 'error'],
+        ['Last Refreshed', new Date().toLocaleString()],
+      ];
+      document.getElementById('statusGrid').innerHTML = rows.map(([k,v])=>`<div class="row" style="grid-template-columns:180px 1fr"><span class="stat-sub">${k}</span><span class="stat-value" style="font-size:.95rem">${v}</span></div>`).join('');
+    }
+
+    function showSetup(reason){
+      document.getElementById('statCards').innerHTML = `<div class="card" style="grid-column:1/-1"><div class="stat-label">Proxy unavailable</div><div class="stat-value" style="font-size:1rem">${reason||'Proxy credentials not configured'}</div><div class="stat-sub">Set PROXY_USERNAME and PROXY_PASSWORD in /opt/openclaw.env, then restart the dashboard service.</div></div>`;
+    }
+
+    async function refresh(){
+      const [statsRes, histRes, errRes] = await Promise.all([
+        fetch('/api/proxy/stats').then(r=>r.json()).catch(()=>({available:false,error:'stats failed'})),
+        fetch('/api/proxy/history?days=30').then(r=>r.json()).catch(()=>({available:false,error:'history failed'})),
+        fetch('/api/proxy/errors?days=7').then(r=>r.json()).catch(()=>({available:false,error:'errors failed'})),
+      ]);
+      if (!statsRes.available) { showSetup(statsRes.reason || statsRes.error); return; }
+      renderCards(statsRes, histRes);
+      renderBalanceBar(statsRes);
+      renderChart(histRes);
+      renderTopConsumers(errRes);
+      renderStatus(statsRes);
+    }
+
+    refresh();
+    setInterval(refresh, 120000);
+  </script>
+</body>
+</html>

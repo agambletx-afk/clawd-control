@@ -1,0 +1,2 @@
+# Description: Proxy balance sentinel
+0 */6 * * * openclaw /usr/local/bin/check-proxy-sentinel.sh 2>/dev/null
