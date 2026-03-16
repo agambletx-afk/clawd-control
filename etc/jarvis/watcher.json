@@ -36,7 +36,16 @@
       "cadence_minutes": 10080,
       "output_path": "/home/openclaw/.openclaw/workspace/bootstrap-audit.log",
       "check_method": "heartbeat_v2",
-      "heartbeat_path": "/tmp/bootstrap-audit-heartbeat.json"
+      "heartbeat_path": "/tmp/bootstrap-audit-heartbeat.json",
+      "validation": {
+        "type": "log_no_errors",
+        "error_patterns": [
+          "ERROR",
+          "FAIL",
+          "Traceback"
+        ],
+        "max_age_minutes": 10200
+      }
     },
     {
       "id": "cost-sentinel",
@@ -177,6 +186,50 @@
         ],
         "timestamp_field": "timestamp",
         "timestamp_max_age_minutes": 65
+      }
+    },
+    {
+      "id": "openclaw-orphan-reaper",
+      "description": "Kill orphaned openclaw-cron, codex, and doctor processes",
+      "cadence_minutes": 5,
+      "output_path": "/var/log/openclaw-liveness.log",
+      "check_method": "heartbeat_v2",
+      "heartbeat_path": "/tmp/openclaw-orphan-reaper-heartbeat.json"
+    },
+    {
+      "id": "cortex-sentinel",
+      "description": "CORTEX routing health sentinel",
+      "cadence_minutes": 1440,
+      "output_path": "/home/openclaw/.openclaw/workspace/cortex-sentinel-status.json",
+      "check_method": "heartbeat_v2",
+      "heartbeat_path": "/tmp/cortex-sentinel-heartbeat.json",
+      "validation": {
+        "type": "json",
+        "required_keys": [
+          "timestamp",
+          "overall",
+          "checks"
+        ],
+        "timestamp_field": "timestamp",
+        "timestamp_max_age_minutes": 1500
+      }
+    },
+    {
+      "id": "proxy-sentinel",
+      "description": "Proxy balance sentinel",
+      "cadence_minutes": 60,
+      "output_path": "/home/openclaw/.openclaw/workspace/proxy-sentinel-status.json",
+      "check_method": "heartbeat_v2",
+      "heartbeat_path": "/tmp/proxy-sentinel-heartbeat.json",
+      "validation": {
+        "type": "json",
+        "required_keys": [
+          "timestamp",
+          "overall",
+          "checks"
+        ],
+        "timestamp_field": "timestamp",
+        "timestamp_max_age_minutes": 75
       }
     }
   ],

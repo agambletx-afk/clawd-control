@@ -6288,6 +6288,26 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (path === '/api/proxy/sentinel' && req.method === 'GET') {
+    try {
+      const sentinelPath = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', 'proxy-sentinel-status.json');
+      if (!existsSync(sentinelPath)) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ available: false }));
+        return;
+      }
+      const raw = JSON.parse(readFileSync(sentinelPath, 'utf8'));
+      const age = Math.floor((Date.now() - new Date(raw.timestamp).getTime()) / 1000);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ available: true, stale: age > 3900, age_seconds: age, data: raw }));
+    } catch (e) {
+      console.error('[API] /api/proxy/sentinel error:', e.message);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ available: false, error: e.message }));
+    }
+    return;
+  }
+
   if (path === '/api/proxy/top-hosts' && req.method === 'GET') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     const days = Math.max(1, Math.min(7, parseInt(url.searchParams.get('days') || '7', 10) || 7));

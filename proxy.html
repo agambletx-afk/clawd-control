@@ -205,9 +205,11 @@
       wrap.innerHTML = top.map(([host,meta]) => `<div class="row"><span>${host}</span><span class="stat-value" style="font-size:1rem">${meta.count}</span><span class="stat-sub">${fmtDate(meta.last)}</span></div>`).join('');
     }
 
-    function renderStatus(stats){
+    function renderStatus(stats, sentinel){
+      const exitDetail = sentinel?.data?.checks?.proxy_exit_ip?.detail || 'Unknown';
+      const exitIp = exitDetail.startsWith('Exit IP:') ? exitDetail.replace('Exit IP: ','').replace(' (residential)','') : 'Unavailable';
       const rows = [
-        ['Current Proxy IP', 'Unavailable (requires explicit IP test call)'],
+        ['Current Proxy IP', exitIp],
         ['Proxy Host', 'gw.dataimpulse.com'],
         ['Proxy Port', '823'],
         ['Proxy Login', stats?.raw?.login || '—'],
@@ -222,11 +224,12 @@
     }
 
     async function refresh(){
-      const [statsRes, histRes, errRes, hostsRes] = await Promise.all([
+      const [statsRes, histRes, errRes, hostsRes, sentinelRes] = await Promise.all([
         fetch('/api/proxy/stats').then(r=>r.json()).catch(()=>({available:false,error:'stats failed'})),
         fetch('/api/proxy/history?days=30').then(r=>r.json()).catch(()=>({available:false,error:'history failed'})),
         fetch('/api/proxy/errors?days=7').then(r=>r.json()).catch(()=>({available:false,error:'errors failed'})),
         fetch('/api/proxy/top-hosts?days=7').then(r=>r.json()).catch(()=>({available:false,error:'top hosts failed'})),
+        fetch('/api/proxy/sentinel').then(r=>r.json()).catch(()=>({available:false})),
       ]);
       if (!statsRes.available) { showSetup(statsRes.reason || statsRes.error); return; }
       renderCards(statsRes, histRes);
@@ -234,7 +237,7 @@
       renderChart(histRes);
       renderTopConsumers(hostsRes);
       renderErrors(errRes);
-      renderStatus(statsRes);
+      renderStatus(statsRes, sentinelRes);
     }
 
     refresh();
