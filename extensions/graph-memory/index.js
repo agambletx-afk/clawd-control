@@ -21,7 +21,14 @@ const { execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const { initCapture } = require('./capture');
+const {
+    initCapture,
+    insertFact,
+    hasDuplicate,
+    detectCategory,
+    extractStructuredFields,
+    detectDecayClass,
+} = require('./capture');
 
 // ---------------------------------------------------------------------------
 // Defaults
@@ -555,6 +562,144 @@ module.exports = {
             closeDb();
             api.logger?.info?.('graph-memory: DB closed');
         }, { priority: 90 });
+
+        if (typeof api.registerTool === 'function') {
+            api.registerTool({
+                name: 'memory_store',
+                label: 'Memory Store',
+                description: 'Save important information in long-term memory as a structured fact.',
+                inputSchema: {
+                    type: 'object',
+                    additionalProperties: false,
+                    required: ['text'],
+                    properties: {
+                        text: { type: 'string', description: 'Human-readable description of what to remember.' },
+                        entity: { type: 'string', description: 'Entity name (person, system, project).' },
+                        key: { type: 'string', description: 'Attribute name (role, email, preference).' },
+                        value: { type: 'string', description: 'Attribute value.' },
+                        category: {
+                            type: 'string',
+                            enum: ['identity', 'system', 'preference', 'relationship', 'work', 'decision'],
+                            description: 'Fact category.',
+                        },
+                        importance: { type: 'number', minimum: 0, maximum: 1, description: 'Importance score (0-1).' },
+                        decayClass: {
+                            type: 'string',
+                            enum: ['permanent', 'stable', 'active', 'session', 'checkpoint'],
+                            description: 'Decay class for retention policy.',
+                        },
+                    },
+                },
+                handler: async (params = {}) => {
+                    if (!db) return { success: false, message: 'Memory database is unavailable.' };
+
+                    const text = String(params.text || '').trim();
+                    if (!text) return { success: false, message: 'text is required.' };
+
+                    const parsed = extractStructuredFields(text);
+                    const entity = String(params.entity || parsed.entity || 'Adam').trim() || 'Adam';
+                    const key = String(params.key || parsed.key || 'note').trim() || 'note';
+                    const value = String(params.value || parsed.value || text).trim() || text;
+                    const category = params.category || detectCategory(text);
+                    const importance = typeof params.importance === 'number' ? Math.max(0, Math.min(1, params.importance)) : 0.7;
+                    const decayClass = params.decayClass || detectDecayClass(entity, key, value);
+
+                    if (hasDuplicate(db, entity, key, value)) {
+                        return {
+                            success: false,
+                            message: 'Similar memory already exists.',
+                            fact: { entity, key, value: value.slice(0, 100), decayClass },
+                        };
+                    }
+
+                    insertFact(db, { text, category, entity, key, value, decayClass });
+                    db.prepare('UPDATE facts SET source = ?, importance = ? WHERE rowid = last_insert_rowid()').run('conversation', importance);
+
+                    api.logger?.info?.(`[graph-memory] memory_store saved: ${entity}.${key} (${decayClass})`);
+                    return {
+                        success: true,
+                        message: `Stored memory: ${entity}.${key} = ${value.slice(0, 100)} (${decayClass})`,
+                        fact: { entity, key, value: value.slice(0, 100), decayClass, category, importance },
+                    };
+                },
+            });
+
+            api.registerTool({
+                name: 'memory_forget',
+                label: 'Memory Forget',
+                description: 'Delete specific memories from the knowledge graph.',
+                inputSchema: {
+                    type: 'object',
+                    additionalProperties: false,
+                    properties: {
+                        query: { type: 'string', description: 'Search text to find memories to delete.' },
+                        factId: { type: 'number', description: 'Direct fact ID to delete.' },
+                    },
+                },
+                handler: async (params = {}) => {
+                    if (!db) return { success: false, message: 'Memory database is unavailable.' };
+
+                    const parsedFactId = Number(params.factId);
+                    const factId = Number.isFinite(parsedFactId) ? parsedFactId : null;
+                    const query = String(params.query || '').trim();
+
+                    if (!factId && !query) {
+                        return { success: false, message: 'Provide either factId or query.' };
+                    }
+
+                    if (!factId) {
+                        let rows = [];
+                        try {
+                            rows = db.prepare(`
+                                SELECT f.id, f.entity, f.key, f.value
+                                FROM facts_fts fts
+                                JOIN facts f ON f.id = fts.rowid
+                                WHERE facts_fts MATCH ?
+                                ORDER BY bm25(facts_fts)
+                                LIMIT 5
+                            `).all(query);
+                        } catch {
+                            rows = db.prepare(`
+                                SELECT id, entity, key, value
+                                FROM facts
+                                WHERE COALESCE(entity, '') LIKE '%' || ? || '%'
+                                   OR COALESCE(key, '') LIKE '%' || ? || '%'
+                                   OR COALESCE(value, '') LIKE '%' || ? || '%'
+                                LIMIT 5
+                            `).all(query, query, query);
+                        }
+
+                        if (rows.length === 0) {
+                            return { success: false, message: 'No matching memories found.' };
+                        }
+
+                        return {
+                            success: true,
+                            message: 'Found matching memories. Call memory_forget again with factId to confirm deletion.',
+                            matches: rows,
+                        };
+                    }
+
+                    const fact = db.prepare('SELECT id, entity, key, value FROM facts WHERE id = ?').get(factId);
+                    if (!fact) {
+                        return { success: false, message: `No fact found for id ${factId}.` };
+                    }
+
+                    const tx = db.transaction((id) => {
+                        db.prepare('DELETE FROM co_occurrences WHERE fact_a = ? OR fact_b = ?').run(id, id);
+                        db.prepare('DELETE FROM facts WHERE id = ?').run(id);
+                    });
+                    tx(factId);
+
+                    api.logger?.info?.(`[graph-memory] memory_forget deleted: ${fact.entity}.${fact.key} (id=${fact.id})`);
+                    return {
+                        success: true,
+                        message: `Deleted memory #${fact.id}: ${fact.entity}.${fact.key} = ${String(fact.value || '').slice(0, 100)}`,
+                        deleted: fact,
+                    };
+                },
+            });
+        }
     },
 };
 

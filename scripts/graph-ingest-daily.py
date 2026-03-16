@@ -39,6 +39,14 @@ INSERT INTO facts (
 ) VALUES (?, ?, ?, ?, ?, datetime('now'), ?, ?, ?, ?, ?)
 """.strip()
 
+TTL_SECONDS = {
+    "permanent": None,
+    "stable": 90 * 24 * 3600,
+    "active": 14 * 24 * 3600,
+    "session": 24 * 3600,
+    "checkpoint": 4 * 3600,
+}
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Ingest facts from daily markdown logs.")
@@ -136,6 +144,42 @@ def extract_structured(line):
     return fallback_entity, 'note', s
 
 
+def classify_fact(entity, key, value):
+    entity_lower = (entity or "").strip().lower()
+    key_lower = (key or "").strip().lower()
+    value_lower = (value or "").strip().lower()
+
+    checkpoint_keys = {"error", "traceback", "exception", "crash", "stack_trace"}
+    session_keys = {"current_task", "wip", "blocker", "debug", "temp"}
+    permanent_keys = {
+        "name",
+        "full_name",
+        "email",
+        "birthday",
+        "role",
+        "location",
+        "identity",
+        "phone",
+        "address",
+    }
+    permanent_entities = {"adam", "jarvis"}
+    active_keys = {"task", "sprint", "deadline", "milestone", "goal"}
+
+    if key_lower in checkpoint_keys:
+        return "checkpoint"
+    if key_lower in session_keys or any(term in value_lower for term in ("working on", "in progress", "debugging")):
+        return "session"
+    if (
+        key_lower in permanent_keys
+        or entity_lower in permanent_entities
+        or any(term in value_lower for term in ("convention", "rule", "policy", "always"))
+    ):
+        return "permanent"
+    if key_lower in active_keys or any(term in value_lower for term in ("due", "by end of", "this week", "next week")):
+        return "active"
+    return "stable"
+
+
 def validate_schema(cursor):
     cursor.execute("PRAGMA table_info(facts)")
     cols = {row[1] for row in cursor.fetchall()}
@@ -217,21 +261,25 @@ def main():
                     duplicates += 1
                     continue
 
-                now_ts = int(time.time())
-                expires_at = now_ts + 1_209_600  # 14 days
-
+                created_at = int(time.time())
+                decay_class = classify_fact(entity, key, value)
+                ttl_seconds = TTL_SECONDS[decay_class]
+                expires_at = None if ttl_seconds is None else created_at + ttl_seconds
                 row = (
-                    entity,       # entity
-                    key,          # key
-                    value,        # value
-                    category,     # category
-                    source,       # source
-                    # created_at handled by datetime('now') in SQL
-                    0.7,          # importance
-                    "active",     # decay_class
-                    expires_at,   # expires_at
-                    now_ts,       # last_confirmed_at
-                    1.0,          # confidence
+                    str(uuid.uuid4()),
+                    line,
+                    category,
+                    0.7,
+                    entity,
+                    key,
+                    value,
+                    source,
+                    created_at,
+                    decay_class,
+                    expires_at,
+                    created_at,
+                    1.0,
+
                 )
 
                 if args.dry_run:
