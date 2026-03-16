@@ -30,6 +30,11 @@
     .xlabels{display:grid;grid-template-columns:repeat(auto-fit,minmax(40px,1fr));gap:4px;margin-top:6px;color:var(--muted);font-size:.65rem}
     .top-list{display:flex;flex-direction:column;gap:8px}
     .row{display:grid;grid-template-columns:1fr auto auto;gap:8px;font-size:.82rem}
+    .row-host{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center}
+    .mono{font-family:ui-monospace,monospace}
+    .mini-bar-track{grid-column:1/-1;height:6px;background:#0f172a;border:1px solid #334155;border-radius:999px;overflow:hidden}
+    .mini-bar-fill{height:100%;background:#2dd4bf}
+    .cost-label{font-size:.62rem;color:#cbd5e1;text-align:center;margin-top:2px;min-height:11px}
     .badge{display:inline-block;border-radius:999px;padding:2px 8px;font-size:.7rem;background:rgba(45,212,191,.15);color:#99f6e4}
     .warn{background:rgba(245,158,11,.2);color:#fbbf24}.critical{background:rgba(239,68,68,.2);color:#fca5a5}
     .empty{color:var(--muted);font-size:.82rem}
@@ -57,12 +62,19 @@
       <div class="card">
         <strong>Traffic History (30 days)</strong>
         <div id="chart" class="chart"></div>
+        <div id="costLabels" class="xlabels" style="margin-top:4px"></div>
         <div id="xlabels" class="xlabels"></div>
       </div>
       <div class="card">
-        <strong>Top Consumers</strong>
+        <strong>Top Sites by Request Count</strong>
+        <div class="stat-sub" style="margin-top:4px">Tracked from Camofox navigation logs (last 7 days)</div>
         <div id="topConsumers" class="top-list" style="margin-top:10px"></div>
       </div>
+    </section>
+
+    <section class="card" style="margin-top:14px">
+      <strong>Recent Errors by Host</strong>
+      <div id="recentErrors" class="top-list" style="margin-top:10px"></div>
     </section>
 
     <section class="card" style="margin-top:14px">
@@ -74,20 +86,54 @@
   <script src="/layout.js"></script>
   <script>
     const totalBudgetGb = 25;
+    const COST_PER_GB = 1.00;
     const fmtGb = (n) => Number(n||0).toFixed(3);
+    const fmtUsd = (bytes) => `$${(Number(bytes || 0) / (1024 * 1024 * 1024) * COST_PER_GB).toFixed(2)}`;
     const fmtDate = (iso) => iso ? new Date(iso).toLocaleDateString() : '—';
+    const truncate = (s, max=30) => (s && s.length > max ? `${s.slice(0,max-1)}…` : (s || '—'));
+
+    function relativeTime(iso){
+      if (!iso) return '—';
+      const seconds = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+      if (Number.isNaN(seconds) || seconds < 0) return 'just now';
+      if (seconds < 60) return `${seconds}s ago`;
+      const minutes = Math.floor(seconds / 60);
+      if (minutes < 60) return `${minutes}m ago`;
+      const hours = Math.floor(minutes / 60);
+      if (hours < 24) return `${hours}h ago`;
+      const days = Math.floor(hours / 24);
+      return `${days}d ago`;
+    }
 
     function renderCards(stats, history){
       const h = history?.raw?.traffic_history || [];
+      const now = Date.now();
+      const recent24h = h.filter(d => {
+        const ts = new Date(d.group_date).getTime();
+        return !Number.isNaN(ts) && ts >= (now - 86400000);
+      });
+      const requests24h = recent24h.reduce((sum,d)=>sum + Number(d.requests_count || 0), 0);
+      const errors24h = recent24h.reduce((sum,d)=>sum + Number(d.errors || 0), 0);
+      const successPct = requests24h > 0 ? ((requests24h - errors24h) / requests24h) * 100 : null;
+      const successColor = successPct === null
+        ? '#94a3b8'
+        : (successPct > 90 ? '#22c55e' : (successPct >= 75 ? '#f59e0b' : '#ef4444'));
       const recent = h.slice(-7);
       const burn = recent.length >= 2 ? recent.reduce((s,d)=>s+Number(d.total_traffic||0),0) / recent.length / (1024*1024*1024) : null;
       const remaining = Number(stats?.computed?.remaining_gb||0);
       const daysEmpty = burn && burn > 0 ? (remaining / burn) : null;
       const status = stats?.computed?.status || 'ok';
       const color = status === 'critical' ? '#ef4444' : (status === 'warn' ? '#f59e0b' : '#22c55e');
+      const today = h.find(d => {
+        const date = new Date(d.group_date);
+        const current = new Date();
+        return date.getFullYear() === current.getFullYear() && date.getMonth() === current.getMonth() && date.getDate() === current.getDate();
+      });
       const cards = [
         ['Remaining Balance', `${fmtGb(remaining)} GB`, status === 'critical' ? 'Critical threshold' : 'Available proxy balance', color],
         ['Traffic Used', `${fmtGb(stats?.computed?.used_gb)} GB`, `${(stats?.computed?.used_pct||0).toFixed(2)}% of total`],
+        ['Estimated Spend', fmtUsd(stats?.raw?.traffic_used), `Today: ${fmtUsd(today?.total_traffic || 0)}`],
+        ['Success Rate (24h)', successPct === null ? 'N/A' : `${successPct.toFixed(1)}%`, requests24h === 0 ? 'No requests yet' : `${Math.max(0, requests24h - errors24h)} successful of ${requests24h}`, successColor],
         ['Total Budget', `${fmtGb(stats?.computed?.total_gb || totalBudgetGb)} GB`, 'Plan size'],
         ['Daily Burn Rate', burn === null ? 'N/A' : `${fmtGb(burn)} GB/day`, '7 day average'],
         ['Days Until Empty', burn === null ? '∞' : (burn === 0 ? '∞' : `${daysEmpty.toFixed(1)} days`), 'Remaining / burn rate'],
@@ -112,7 +158,8 @@
       const list = history?.raw?.traffic_history || [];
       const chart = document.getElementById('chart');
       const labels = document.getElementById('xlabels');
-      if (!list.length){ chart.innerHTML = '<div class="empty">No traffic history yet</div>'; labels.innerHTML = ''; return; }
+      const costs = document.getElementById('costLabels');
+      if (!list.length){ chart.innerHTML = '<div class="empty">No traffic history yet</div>'; labels.innerHTML = ''; costs.innerHTML = ''; return; }
       const max = Math.max(...list.map(d=>Number(d.total_traffic||0)), 1);
       chart.innerHTML = list.map(d=>{
         const inbound = Number(d.inbound_traffic||0); const outgoing = Number(d.outgoing_traffic||0);
@@ -121,12 +168,28 @@
         const inPct = totalHeight - outPct;
         return `<div class="bar" title="${fmtDate(d.group_date)} • ${(Number(d.total_traffic)/(1024*1024)).toFixed(2)} MB • req ${d.requests_count||0}"><div class="out" style="height:${outPct}%"></div><div class="in" style="height:${inPct}%"></div></div>`;
       }).join('');
+      costs.innerHTML = list.map(d=>`<span class="cost-label">${fmtUsd(d.total_traffic || 0)}</span>`).join('');
       labels.innerHTML = list.map(d=>`<span>${new Date(d.group_date).toLocaleDateString(undefined,{month:'numeric',day:'numeric'})}</span>`).join('');
     }
 
-    function renderTopConsumers(errors){
-      const items = errors?.raw?.items || [];
+    function renderTopConsumers(topHosts){
       const wrap = document.getElementById('topConsumers');
+      if (!topHosts?.available) {
+        wrap.innerHTML = '<div class="empty">Camofox logs unavailable — no gateway log files found.</div>';
+        return;
+      }
+      const items = topHosts?.hosts || [];
+      if (!items.length) { wrap.innerHTML = '<div class="empty">No Camofox navigation logged yet — data will appear as Jarvis browses.</div>'; return; }
+      const max = Math.max(...items.map(i=>Number(i.requests||0)), 1);
+      wrap.innerHTML = items.map(item => {
+        const width = (Number(item.requests||0) / max) * 100;
+        return `<div class="row-host"><span title="${item.host}">${truncate(item.host)}</span><span class="mono">${item.requests}</span><span class="stat-sub">${relativeTime(item.last_seen)}</span><div class="mini-bar-track"><div class="mini-bar-fill" style="width:${width}%"></div></div></div>`;
+      }).join('');
+    }
+
+    function renderErrors(errors){
+      const items = errors?.raw?.items || [];
+      const wrap = document.getElementById('recentErrors');
       if (!items.length) { wrap.innerHTML = '<div class="empty">No error data yet — errors will appear as traffic accumulates</div>'; return; }
       const grouped = new Map();
       for (const item of items) {
@@ -159,16 +222,18 @@
     }
 
     async function refresh(){
-      const [statsRes, histRes, errRes] = await Promise.all([
+      const [statsRes, histRes, errRes, hostsRes] = await Promise.all([
         fetch('/api/proxy/stats').then(r=>r.json()).catch(()=>({available:false,error:'stats failed'})),
         fetch('/api/proxy/history?days=30').then(r=>r.json()).catch(()=>({available:false,error:'history failed'})),
         fetch('/api/proxy/errors?days=7').then(r=>r.json()).catch(()=>({available:false,error:'errors failed'})),
+        fetch('/api/proxy/top-hosts?days=7').then(r=>r.json()).catch(()=>({available:false,error:'top hosts failed'})),
       ]);
       if (!statsRes.available) { showSetup(statsRes.reason || statsRes.error); return; }
       renderCards(statsRes, histRes);
       renderBalanceBar(statsRes);
       renderChart(histRes);
-      renderTopConsumers(errRes);
+      renderTopConsumers(hostsRes);
+      renderErrors(errRes);
       renderStatus(statsRes);
     }
 

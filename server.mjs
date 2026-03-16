@@ -8,8 +8,9 @@
 
 import http from 'http';
 const { createServer } = http;
-import { readFileSync, existsSync, writeFileSync, copyFileSync, readdirSync, statSync, unlinkSync, renameSync } from 'fs';
+import { readFileSync, existsSync, writeFileSync, copyFileSync, readdirSync, statSync, unlinkSync, renameSync, createReadStream } from 'fs';
 import { join, extname, resolve, sep } from 'path';
+import { createInterface } from 'readline';
 import { gzipSync } from 'zlib';
 import { exec, execFileSync, execSync, spawn, spawnSync } from 'child_process';
 import { AgentCollector } from './collector.mjs';
@@ -68,6 +69,7 @@ const PROXY_FETCH_TIMEOUT_MS = 10000;
 const PROXY_STATS_CACHE_MS = 5 * 60 * 1000;
 const PROXY_HISTORY_CACHE_MS = 15 * 60 * 1000;
 const PROXY_ERRORS_CACHE_MS = 15 * 60 * 1000;
+const PROXY_TOP_HOSTS_CACHE_MS = 15 * 60 * 1000;
 const OPENCLAW_DIR = join(homedir(), '.openclaw');
 const OPENCLAW_WORKSPACE = join(OPENCLAW_DIR, 'workspace');
 const CORTEX_CONFIG_PATH = join(OPENCLAW_WORKSPACE, 'cortex/cortex.json');
@@ -100,6 +102,7 @@ const proxyApiCache = {
   stats: { timestamp: 0, data: null },
   history: new Map(),
   errors: new Map(),
+  topHosts: new Map(),
 };
 
 // ── Security constants ──
@@ -319,6 +322,106 @@ async function getProxyCached(cacheEntry, ttlMs, fetchFn) {
     }
     throw error;
   }
+}
+
+function formatDateKey(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function extractLogMessage(entry) {
+  if (!entry || typeof entry !== 'object') return '';
+  if (typeof entry['1'] === 'string') return entry['1'];
+  if (typeof entry.message === 'string') return entry.message;
+  if (typeof entry.msg === 'string') return entry.msg;
+  return '';
+}
+
+function extractLogTimestamp(entry) {
+  if (!entry || typeof entry !== 'object') return null;
+  const keys = ['timestamp', 'time', 'ts', '@timestamp', '0'];
+  for (const key of keys) {
+    const value = entry[key];
+    if (!value) continue;
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
+  }
+  return null;
+}
+
+async function computeTopProxyHosts(days) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const logPaths = [];
+  for (let i = 0; i < days; i += 1) {
+    const day = new Date(today.getTime() - (i * 86400000));
+    const filePath = `/tmp/openclaw/openclaw-${formatDateKey(day)}.log`;
+    if (existsSync(filePath)) logPaths.push(filePath);
+  }
+
+  if (!logPaths.length) {
+    return { available: false };
+  }
+
+  const hostStats = new Map();
+  const urlRegex = /https?:\/\/[^\s"']+/gi;
+  const excludedHosts = new Set(['localhost', '127.0.0.1', 'api.ipify.org']);
+
+  for (const logPath of logPaths) {
+    const lineReader = createInterface({
+      input: createReadStream(logPath, { encoding: 'utf8' }),
+      crlfDelay: Infinity,
+    });
+
+    for await (const line of lineReader) {
+      if (!line || !line.includes('camofox')) continue;
+
+      const extractedUrls = line.match(urlRegex) || [];
+      if (!extractedUrls.length) continue;
+
+      let timestampIso = null;
+      let message = '';
+      try {
+        const parsed = JSON.parse(line);
+        message = extractLogMessage(parsed);
+        timestampIso = extractLogTimestamp(parsed);
+      } catch {
+        // Skip malformed JSON parsing and continue using raw-line fallback.
+      }
+
+      const textToCheck = message || line;
+      if (!textToCheck.includes('camofox')) continue;
+
+      for (const rawUrl of extractedUrls) {
+        try {
+          const parsedUrl = new URL(rawUrl);
+          const host = parsedUrl.hostname.toLowerCase();
+          if (!host || excludedHosts.has(host)) continue;
+          const previous = hostStats.get(host) || { requests: 0, last_seen: null };
+          previous.requests += 1;
+          if (timestampIso && (!previous.last_seen || timestampIso > previous.last_seen)) {
+            previous.last_seen = timestampIso;
+          }
+          hostStats.set(host, previous);
+        } catch {
+          // Ignore invalid URL fragments.
+        }
+      }
+    }
+  }
+
+  const allHosts = [...hostStats.entries()]
+    .map(([host, meta]) => ({ host, requests: meta.requests, last_seen: meta.last_seen }))
+    .sort((a, b) => b.requests - a.requests);
+
+  const hosts = allHosts.slice(0, 20);
+
+  const totalRequests = allHosts.reduce((sum, item) => sum + item.requests, 0);
+  return {
+    available: true,
+    days,
+    total_requests: totalRequests,
+    hosts,
+  };
 }
 
 function loadApisConfig() {
@@ -6113,6 +6216,28 @@ const server = createServer(async (req, res) => {
     }
     return;
   }
+
+  if (path === '/api/proxy/top-hosts' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    const days = Math.max(1, Math.min(7, parseInt(url.searchParams.get('days') || '7', 10) || 7));
+    const cacheKey = `days:${days}`;
+
+    if (!proxyApiCache.topHosts.has(cacheKey)) {
+      proxyApiCache.topHosts.set(cacheKey, { timestamp: 0, data: null });
+    }
+
+    try {
+      const { payload, stale } = await getProxyCached(proxyApiCache.topHosts.get(cacheKey), PROXY_TOP_HOSTS_CACHE_MS, async () => {
+        return await computeTopProxyHosts(days);
+      });
+      res.end(JSON.stringify({ ...payload, stale }));
+    } catch (error) {
+      console.error('[API] /api/proxy/top-hosts error:', error.message);
+      res.end(JSON.stringify({ available: false, error: error.message }));
+    }
+    return;
+  }
+
   if (path === '/api/host') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(collector.hostMetrics));
