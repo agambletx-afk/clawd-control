@@ -294,8 +294,10 @@ def main():
         except Exception as err:
             print(f"WARN: facts_fts optimize failed: {err}")
 
+        cur.close()
+
         try:
-            cur.execute("VACUUM")
+            conn.execute("VACUUM")
             vacuumed = True
         except Exception as err:
             print(f"WARN: VACUUM failed: {err}")
