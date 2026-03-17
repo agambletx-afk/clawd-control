@@ -249,6 +249,10 @@ def main():
                 candidates += 1
                 category = detect_category(line)
                 entity, key, value = extract_structured(line)
+                if not entity:
+                    entity = "unknown"
+                if not key:
+                    key = "note"
 
                 cur.execute("SELECT 1 FROM facts WHERE value = ? LIMIT 1", (line,))
                 if cur.fetchone() is not None:
