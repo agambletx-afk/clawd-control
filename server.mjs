@@ -5408,16 +5408,6 @@ const server = createServer(async (req, res) => {
         return;
       }
 
-      if (body.source === 'agent' && body.status === 'proposed') {
-        const todayCst = toCstDate(new Date().toISOString());
-        const proposalCount = getProposalCount(todayCst);
-        if (proposalCount >= 3) {
-          res.writeHead(429, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Proposal limit reached (3/day)' }));
-          return;
-        }
-      }
-
       try {
         const task = createTask(body);
         res.writeHead(201, { 'Content-Type': 'application/json' });
