@@ -294,9 +294,14 @@ def main():
 
         try:
             cur.execute("INSERT INTO facts_fts(facts_fts) VALUES('optimize')")
+            conn.commit()
             fts_optimized = True
         except Exception as err:
             print(f"WARN: facts_fts optimize failed: {err}")
+            try:
+                conn.rollback()
+            except Exception:
+                pass
 
         cur.close()
 
