@@ -18,10 +18,55 @@ check_service() {
 }
 
 check_heartbeats() {
-  local hb_dir="/tmp/jarvis/heartbeats"
+  # v2 source of truth: watcher-status artifact (heartbeat_v2 checks)
+  local watcher_file="/home/openclaw/.openclaw/workspace/watcher-status.json"
 
+  if [[ -f "$watcher_file" ]]; then
+    local watcher_json watcher_generated watcher_epoch watcher_age hb2_count stale_count
+    watcher_json=$(cat "$watcher_file" 2>/dev/null || true)
+
+    if echo "$watcher_json" | jq -e '.system_crons and (.system_crons|type=="array")' >/dev/null 2>&1; then
+      watcher_generated=$(echo "$watcher_json" | jq -r '.generated_at // empty')
+      watcher_epoch=$(date -u -d "$watcher_generated" +%s 2>/dev/null || echo 0)
+      watcher_age=999999
+      if (( watcher_epoch > 0 )); then
+        watcher_age=$((NOW_EPOCH - watcher_epoch))
+      fi
+
+      hb2_count=$(echo "$watcher_json" | jq '[.system_crons[] | select((.heartbeat_version|tostring)=="2")] | length')
+      stale_count=$(echo "$watcher_json" | jq --argjson now "$NOW_EPOCH" '
+        [.system_crons[]
+          | select((.heartbeat_version|tostring)=="2")
+          | .last_seen as $ls
+          | (try ($ls | fromdateiso8601) catch 0) as $ts
+          | select($ts > 0)
+          | select(($now - $ts) > (((.threshold_minutes // 10) * 60) | floor))
+        ] | length')
+
+      if (( hb2_count == 0 )); then
+        jq -n '[{"name":"heartbeats","status":"yellow","message":"no heartbeat_v2 checks found in watcher-status"}]'
+        return
+      fi
+
+      if (( watcher_age > 900 )); then
+        jq -n --arg age "${watcher_age}" '[{"name":"heartbeats","status":"yellow","message":("watcher-status stale (" + $age + "s old)")}]'
+        return
+      fi
+
+      if (( stale_count > 0 )); then
+        jq -n --arg stale "${stale_count}" '[{"name":"heartbeats","status":"yellow","message":($stale + " heartbeat_v2 checks stale")}]'
+        return
+      fi
+
+      jq -n --arg count "${hb2_count}" '[{"name":"heartbeats","status":"green","message":("heartbeat_v2 healthy (" + $count + " checks)")}]'
+      return
+    fi
+  fi
+
+  # Legacy fallback: older /tmp/jarvis/heartbeats artifacts
+  local hb_dir="/tmp/jarvis/heartbeats"
   if [[ ! -d "$hb_dir" ]]; then
-    jq -n '[{"name":"heartbeats","status":"yellow","message":"no heartbeat files found"}]'
+    jq -n '[{"name":"heartbeats","status":"yellow","message":"no heartbeat artifacts found (watcher-status + legacy path missing)"}]'
     return
   fi
 
@@ -29,7 +74,7 @@ check_heartbeats() {
   local files=("$hb_dir"/*.json)
   shopt -u nullglob
   if (( ${#files[@]} == 0 )); then
-    jq -n '[{"name":"heartbeats","status":"yellow","message":"no heartbeat files found"}]'
+    jq -n '[{"name":"heartbeats","status":"yellow","message":"no heartbeat artifacts found (legacy path empty)"}]'
     return
   fi
 

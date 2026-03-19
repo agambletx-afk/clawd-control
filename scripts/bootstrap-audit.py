@@ -517,6 +517,15 @@ def main():
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+
+    # Emit one-line run summary for wrapper log-based health validation.
+    print(
+        f"bootstrap-audit: status={report['summary']['critical'] == 0 and 'ok' or 'issues'} "
+        f"files={report['summary']['files_scanned']} "
+        f"critical={report['summary']['critical']} "
+        f"warning={report['summary']['warning']}"
+    )
+
     return 0
 
 
