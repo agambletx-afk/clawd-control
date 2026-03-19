@@ -63,6 +63,14 @@ check_heartbeats() {
       fi
 
       if (( stale_count > 0 )); then
+        local stale_log_file="/home/openclaw/.openclaw/workspace/heartbeats-stale.log"
+        local stale_line
+        stale_line="$(date -u +%Y-%m-%dT%H:%M:%SZ) stale_count=${stale_count} ids=${stale_ids:-unknown}"
+        {
+          echo "$stale_line"
+          [[ -f "$stale_log_file" ]] && cat "$stale_log_file"
+        } | head -n 500 > "${stale_log_file}.tmp" && mv "${stale_log_file}.tmp" "$stale_log_file"
+
         jq -n --arg stale "${stale_count}" --arg ids "${stale_ids}" '[{"name":"heartbeats","status":"yellow","message":($stale + " heartbeat_v2 checks stale: " + (if ($ids|length)>0 then $ids else "unknown" end))}]'
         return
       fi
