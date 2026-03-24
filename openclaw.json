@@ -5,5 +5,22 @@
         "enabled": true
       }
     }
+  },
+  "hooks": {
+    "internal": {
+      "enabled": true,
+      "handlers": [
+        {
+          "event": "message_sending",
+          "module": "/home/openclaw/.openclaw/extensions/telegram-dedupe/index.js",
+          "export": "message_sending"
+        },
+        {
+          "event": "message_sent",
+          "module": "/home/openclaw/.openclaw/extensions/telegram-dedupe/index.js",
+          "export": "message_sent"
+        }
+      ]
+    }
   }
 }
