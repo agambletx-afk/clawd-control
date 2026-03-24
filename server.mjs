@@ -3383,6 +3383,30 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (path === '/api/overview/summarizer' && req.method === 'GET') {
+    try {
+      const statePath = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', 'summarizer-state.json');
+      if (!existsSync(statePath)) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ available: false, reason: 'Summarizer has not run yet' }));
+        return;
+      }
+      const raw = JSON.parse(readFileSync(statePath, 'utf8'));
+      const age = (Date.now() - new Date(raw.generated_at).getTime()) / 1000;
+      if (age <= 90) raw.current_freshness = 'fresh';
+      else if (age <= 180) raw.current_freshness = 'aging';
+      else raw.current_freshness = 'stale';
+      raw.age_seconds = Math.round(age);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(raw));
+    } catch (e) {
+      console.error('[API] /api/overview/summarizer error:', e.message);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ available: false, error: e.message }));
+    }
+    return;
+  }
+
   if (path === '/api/cli-usage' && req.method === 'GET') {
     try {
       const payload = loadCliUsage();

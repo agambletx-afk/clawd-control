@@ -1,0 +1,9 @@
+[Unit]
+Description=Clawd Control Overview Summarizer
+After=network.target clawd-control.service
+
+[Service]
+Type=oneshot
+User=openclaw
+ExecStart=/usr/bin/node /home/openclaw/clawd-control/scripts/overview-summarizer.js
+TimeoutStartSec=10
