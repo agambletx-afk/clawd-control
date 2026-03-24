@@ -311,9 +311,14 @@ body {
   font-size: 13px;
   font-weight: 500;
   text-align: center;
-  grid-column: 1 / -1;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 200;
 }
 .incident-banner a { color: inherit; text-decoration: underline; }
+body.has-banner { padding-top: 36px; }
 .incident-banner.issues {
   display: block;
   background: rgba(239, 68, 68, 0.08);
@@ -331,6 +336,7 @@ body {
 
 .main {
   grid-row: 2;
+  grid-column: 2;
   overflow-y: auto;
   padding: 20px 24px;
   background: var(--bg-primary);
@@ -709,12 +715,14 @@ body {
       const data = await res.json();
       if (!data || data.available === false) {
         banner.className = 'incident-banner';
+        document.body.classList.remove('has-banner');
         return;
       }
 
       if (data.current_freshness === 'stale') {
         const ageMin = Math.round((data.age_seconds || 0) / 60);
         banner.className = 'incident-banner stale';
+        document.body.classList.add('has-banner');
         banner.innerHTML = `Dashboard data is ${ageMin} minutes old.`;
         return;
       }
@@ -723,13 +731,16 @@ body {
       const redDomains = Object.entries(domains).filter(([, d]) => d.health === 'red');
       if (redDomains.length > 0) {
         banner.className = 'incident-banner issues';
+        document.body.classList.add('has-banner');
         banner.innerHTML = `<a href="/">${redDomains.length} domain${redDomains.length > 1 ? 's' : ''} need${redDomains.length === 1 ? 's' : ''} attention</a>`;
         return;
       }
 
       banner.className = 'incident-banner';
+      document.body.classList.remove('has-banner');
     } catch {
       banner.className = 'incident-banner';
+      document.body.classList.remove('has-banner');
     }
   }
 
