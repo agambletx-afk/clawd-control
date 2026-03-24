@@ -225,7 +225,7 @@ body {
 .sidebar-header { padding: 0 12px 12px; }
 .sidebar-header .sidebar-name {
   font-size: 14px; font-weight: 700; color: var(--text-primary);
-  text-shadow: 0 0 8px rgba(245,158,11,0.5);
+  text-shadow: 0 0 12px rgba(245,158,11,0.7), 0 0 4px rgba(245,158,11,0.4);
 }
 .sidebar-header .sidebar-product {
   font-size: 12px; color: var(--text-tertiary); font-weight: 400;
@@ -428,6 +428,10 @@ body {
 
     // Refresh lucide icons if already loaded
     refreshIcons();
+
+    // Initialize agents badge (SSE may not have fired yet)
+    const agentsBadge = document.getElementById('agentsNavBadge');
+    if (agentsBadge) agentsBadge.textContent = String(Object.keys(agentState).length);
   }
 
   function buildSidebarHTML() {
@@ -939,6 +943,43 @@ body {
 
       // Update URL
       if (pushState) history.pushState({}, '', href);
+
+      // Update topbar and sidebar active state for SPA navigation
+      const newPath = new URL(href, window.location.origin).pathname;
+      const newPageMap = {
+        '/': 'dashboard', '/dashboard.html': 'dashboard',
+        '/agents.html': 'agents', '/sessions.html': 'sessions',
+        '/tasks.html': 'tasks', '/ops.html': 'ops',
+        '/security.html': 'security', '/analytics.html': 'analytics',
+        '/cortex.html': 'cortex', '/cortex': 'cortex',
+        '/memory.html': 'memory', '/memory': 'memory',
+        '/chat.html': 'chat',
+      };
+      const newActivePage = newPageMap[newPath] || (newPath.startsWith('/agent/') ? 'agent-detail' : 'other');
+      const newMeta = PAGE_META[newActivePage] || PAGE_META.dashboard;
+
+      // Update topbar
+      const topbarLeft = document.querySelector('.topbar-left');
+      if (topbarLeft) {
+        topbarLeft.innerHTML = `<h1 style="font-size:20px;font-weight:700;color:var(--text-primary);text-shadow:0 0 8px ${newMeta.color}80;margin:0;line-height:1.2">${newMeta.title}</h1><span style="font-size:13px;color:var(--text-secondary);font-weight:400;margin-left:12px">${newMeta.subtitle}</span>`;
+      }
+
+      // Update Chat button active state
+      const chatBtn = document.getElementById('topbarChatBtn');
+      if (chatBtn) {
+        chatBtn.classList.toggle('active', newActivePage === 'chat');
+      }
+
+      // Update sidebar active item
+      document.querySelectorAll('.sidebar .nav-item').forEach(item => {
+        const itemHref = item.getAttribute('href');
+        const itemPage = itemHref ? (newPageMap[itemHref] || '') : '';
+        if (itemPage === newActivePage) {
+          item.classList.add('active');
+        } else {
+          item.classList.remove('active');
+        }
+      });
 
       // Execute page-specific scripts from the new page in original order.
       // innerHTML does not execute scripts, so run scripts explicitly.
