@@ -304,6 +304,29 @@ body {
 }
 .topbar-chat-btn .nav-icon { width: 14px; height: 14px; }
 
+/* Incident Banner */
+.incident-banner {
+  display: none;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: center;
+  grid-column: 1 / -1;
+}
+.incident-banner a { color: inherit; text-decoration: underline; }
+.incident-banner.issues {
+  display: block;
+  background: rgba(239, 68, 68, 0.08);
+  border-bottom: 1px solid rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+.incident-banner.stale {
+  display: block;
+  background: rgba(245, 158, 11, 0.08);
+  border-bottom: 1px solid rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
+}
+
 /* ── Main Content ──────────────────────── */
 
 .main {
@@ -379,6 +402,11 @@ body {
       return;
     }
 
+    const banner = document.createElement('div');
+    banner.className = 'incident-banner';
+    banner.id = 'incidentBanner';
+    main.parentNode.insertBefore(banner, main);
+
     // ── Topbar ──
     const topbar = document.createElement('div');
     topbar.className = 'topbar';
@@ -425,6 +453,10 @@ body {
 
     // Start Cortex badge polling
     initCortexBadgePolling();
+
+    // Start incident banner polling
+    refreshIncidentBanner();
+    setInterval(refreshIncidentBanner, 60000);
 
     // Refresh lucide icons if already loaded
     refreshIcons();
@@ -667,6 +699,39 @@ body {
 
   window.refreshSecurityBadge = refreshSecurityBadge;
   window.refreshWatcherBadge = refreshWatcherBadge;
+
+  async function refreshIncidentBanner() {
+    const banner = document.getElementById('incidentBanner');
+    if (!banner) return;
+    try {
+      const res = await fetch('/api/overview/summarizer', { cache: 'no-store', credentials: 'same-origin' });
+      if (!res.ok) throw new Error('fetch failed');
+      const data = await res.json();
+      if (!data || data.available === false) {
+        banner.className = 'incident-banner';
+        return;
+      }
+
+      if (data.current_freshness === 'stale') {
+        const ageMin = Math.round((data.age_seconds || 0) / 60);
+        banner.className = 'incident-banner stale';
+        banner.innerHTML = `Dashboard data is ${ageMin} minutes old.`;
+        return;
+      }
+
+      const domains = data.domains || {};
+      const redDomains = Object.entries(domains).filter(([, d]) => d.health === 'red');
+      if (redDomains.length > 0) {
+        banner.className = 'incident-banner issues';
+        banner.innerHTML = `<a href="/">${redDomains.length} domain${redDomains.length > 1 ? 's' : ''} need${redDomains.length === 1 ? 's' : ''} attention</a>`;
+        return;
+      }
+
+      banner.className = 'incident-banner';
+    } catch {
+      banner.className = 'incident-banner';
+    }
+  }
 
 
 

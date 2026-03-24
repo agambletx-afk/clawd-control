@@ -11,29 +11,12 @@
    are provided by layout.js.
    ═══════════════════════════════════════════ */
 
-/* ── Host Bar ──────────────────────────── */
 .page-header { margin-bottom: 24px; }
 .page-header h1 {
   font-size: 20px; font-weight: 700; color: var(--text-primary);
   text-shadow: 0 0 8px rgba(45, 212, 191, 0.5);
 }
 .page-header .subtitle { font-size: 13px; font-weight: 400; color: var(--text-secondary); margin-top: 4px; }
-
-.host-bar {
-  display: flex; gap: 20px; font-size: 0.75rem; color: var(--text-tertiary);
-  padding: 8px 12px; margin-bottom: 16px;
-  background: var(--surface); border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm); flex-wrap: wrap;
-}
-.host-bar strong { color: var(--text-primary); font-weight: 600; }
-.bar-track {
-  width: 60px; height: 3px; background: var(--bg-primary); border-radius: 2px;
-  display: inline-block; vertical-align: middle; margin-left: 4px;
-}
-.bar-fill { height: 100%; border-radius: 2px; transition: width 0.5s; }
-.bar-fill.ok { background: var(--success); }
-.bar-fill.warn { background: var(--warning); }
-.bar-fill.crit { background: var(--error); }
 
 /* ── Stats Grid ────────────────────────── */
 .stats-grid {
@@ -45,6 +28,11 @@
   border-radius: var(--radius-md); padding: 14px 16px;
   transition: all 0.35s ease; position: relative;
 }
+.stat-card { position: relative; border-left: 3px solid transparent; }
+#cardGateway { border-left-color: #ef4444; }
+#cardTasks { border-left-color: #6366f1; }
+#cardSecurity { border-left-color: #ef4444; }
+#cardCost { border-left-color: #2dd4bf; }
 .stat-card:hover { border-color: var(--border); }
 [data-theme="light"] .stat-card { box-shadow: var(--shadow-sm); }
 .stat-label {
@@ -60,36 +48,6 @@
 .stat-value.warning { color: var(--warning); }
 .stat-value.accent { color: var(--accent); }
 .stat-sub { font-size: 0.7rem; color: var(--text-tertiary); margin-top: 4px; }
-.cost-delta-badge {
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 2px 8px; border-radius: 999px;
-  font-size: 0.65rem; font-weight: 700; margin-top: 6px;
-}
-.cost-delta-badge.delta-good {
-  color: var(--success);
-  background: color-mix(in oklab, var(--success) 15%, transparent);
-}
-.cost-delta-badge.delta-neutral {
-  color: var(--text-tertiary);
-  background: var(--bg-primary);
-}
-.cost-delta-badge.delta-warn {
-  color: var(--warning);
-  background: color-mix(in oklab, var(--warning) 15%, transparent);
-}
-.cost-delta-badge.delta-critical {
-  color: var(--error);
-  background: color-mix(in oklab, var(--error) 15%, transparent);
-}
-.cost-concentration {
-  font-size: 0.68rem; font-weight: 600; margin-top: 4px;
-  color: var(--warning);
-}
-.cost-concentration.critical { color: var(--error); }
-.stat-dot {
-  position: absolute; top: 14px; right: 14px;
-  width: 6px; height: 6px; border-radius: 50%;
-}
 
 /* ── Fleet Health Breakdown ────────────── */
 .fleet-breakdown {
@@ -293,35 +251,27 @@
     <p class="subtitle">System health at a glance. Green means go home.</p>
   </div>
 
-  <div class="host-bar" id="hostBar"><span>⏳ Loading host…</span></div>
-
   <div class="stats-grid" id="statsGrid">
-    <div class="stat-card fade-up" style="animation-delay:.05s">
-      <div class="stat-label">Agents</div>
-      <div class="stat-value accent" id="statTotal">—</div>
-      <div class="stat-sub" id="statTotalSub">Registered</div>
-      <div class="stat-dot" style="background:var(--accent)"></div>
-    </div>
-    <div class="stat-card fade-up" style="animation-delay:.1s">
-      <div class="stat-label">Online</div>
-      <div class="stat-value success" id="statOnline">—</div>
-      <div class="stat-sub" id="statOnlineSub">Connected</div>
-      <div class="stat-dot" id="onlineDot" style="background:var(--success)"></div>
-    </div>
-    <div class="stat-card fade-up" style="animation-delay:.15s">
-      <div class="stat-label">7d API Cost (est.)</div>
-      <div class="stat-value accent" id="statCost">—</div>
-      <div class="stat-sub" id="statCostSub">All gateways, token-based</div>
-      <div class="cost-delta-badge" id="costDeltaBadge" style="display:none"></div>
-      <div class="cost-concentration" id="costConcentration" style="display:none"></div>
-      <div class="stat-dot" style="background:var(--accent)"></div>
-    </div>
-    <div class="stat-card fade-up" style="animation-delay:.2s">
-      <div class="stat-label">Last Update</div>
-      <div class="stat-value" id="statTime" style="font-size:1.1rem">—</div>
-      <div class="stat-sub" id="statTimeSub"></div>
-      <div class="stat-dot" style="background:var(--info)"></div>
-    </div>
+    <a href="/ops.html" class="stat-card fade-up" style="animation-delay:.05s;text-decoration:none;color:inherit" id="cardGateway">
+      <div class="stat-label">Gateway</div>
+      <div class="stat-value" id="statGatewayValue">—</div>
+      <div class="stat-sub" id="statGatewaySub">Loading…</div>
+    </a>
+    <a href="/tasks.html" class="stat-card fade-up" style="animation-delay:.1s;text-decoration:none;color:inherit" id="cardTasks">
+      <div class="stat-label">Tasks</div>
+      <div class="stat-value" id="statTasksValue">—</div>
+      <div class="stat-sub" id="statTasksSub">Loading…</div>
+    </a>
+    <a href="/security.html" class="stat-card fade-up" style="animation-delay:.15s;text-decoration:none;color:inherit" id="cardSecurity">
+      <div class="stat-label">Security</div>
+      <div class="stat-value" id="statSecurityValue">—</div>
+      <div class="stat-sub" id="statSecuritySub">Loading…</div>
+    </a>
+    <a href="/analytics.html" class="stat-card fade-up" style="animation-delay:.2s;text-decoration:none;color:inherit" id="cardCost">
+      <div class="stat-label">Cost</div>
+      <div class="stat-value" id="statCostValue">—</div>
+      <div class="stat-sub" id="statCostSub">Loading…</div>
+    </a>
   </div>
 
   <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
@@ -371,8 +321,6 @@ const $ = s => document.querySelector(s);
 // VIEW MODE (compact / expanded)
 // ═══════════════════════════════════════════
 let viewMode = localStorage.getItem('cc-view') || 'compact';
-let overviewAnalytics = null;
-let costInsightsRequested = false;
 
 function setView(mode) {
   viewMode = mode;
@@ -386,110 +334,25 @@ function setView(mode) {
 // Apply saved view on load
 document.addEventListener('DOMContentLoaded', () => {
   setView(viewMode);
-  loadCostInsights();
+  renderSummarizerCards();
+  setInterval(renderSummarizerCards, 60000);
 });
 
 // ═══════════════════════════════════════════
 // SSE EVENT LISTENERS (from layout.js)
 // ═══════════════════════════════════════════
 
-document.addEventListener('layout:snapshot', () => { renderAll(); renderCostInsights(); });
+document.addEventListener('layout:snapshot', () => { renderAll(); renderSummarizerCards(); });
 document.addEventListener('layout:agent-update', (e) => {
   renderAgent(e.detail.id);
   renderStats();
-  renderCostInsights();
 });
-document.addEventListener('layout:host-update', () => renderHost());
-
-async function loadCostInsights() {
-  if (costInsightsRequested) return;
-  costInsightsRequested = true;
-  try {
-    const response = await fetch('/api/analytics?range=7');
-    if (!response.ok) throw new Error('analytics fetch failed');
-    const data = await response.json();
-    overviewAnalytics = data && typeof data === 'object' ? data : null;
-    renderCostInsights();
-  } catch {
-    overviewAnalytics = null;
-    const badge = $('#costDeltaBadge');
-    const concentration = $('#costConcentration');
-    if (badge) badge.style.display = 'none';
-    if (concentration) concentration.style.display = 'none';
-  }
-}
-
-function renderCostInsights() {
-  const badge = $('#costDeltaBadge');
-  const concentration = $('#costConcentration');
-  if (!badge || !concentration || !overviewAnalytics) {
-    if (badge) badge.style.display = 'none';
-    if (concentration) concentration.style.display = 'none';
-    return;
-  }
-
-  const overTime = Array.isArray(overviewAnalytics.overTime) ? overviewAnalytics.overTime : [];
-  if (overTime.length >= 2) {
-    const todayCost = Number(overTime[overTime.length - 1]?.cost);
-    const yesterdayCost = Number(overTime[overTime.length - 2]?.cost);
-    if (Number.isFinite(todayCost) && Number.isFinite(yesterdayCost) && yesterdayCost > 0) {
-      const delta = ((todayCost - yesterdayCost) / yesterdayCost) * 100;
-      const deltaRounded = Math.round(delta);
-      let deltaClass = 'delta-neutral';
-      if (delta <= -5) deltaClass = 'delta-good';
-      else if (delta > 50) deltaClass = 'delta-critical';
-      else if (delta > 5) deltaClass = 'delta-warn';
-      badge.className = `cost-delta-badge ${deltaClass}`.trim();
-      const prefix = deltaRounded > 0 ? '+' : '';
-      badge.innerHTML = `${prefix}${deltaRounded}% vs yesterday`;
-      badge.style.display = '';
-    } else {
-      badge.style.display = 'none';
-    }
-  } else {
-    badge.style.display = 'none';
-  }
-
-  const totalCost = Number(overviewAnalytics.totalCost);
-  if (Number.isFinite(totalCost) && totalCost >= 0) {
-    const costSub = $('#statCostSub');
-    if (costSub) costSub.textContent = `7d total: $${totalCost.toFixed(2)}`;
-  }
-
-  const byAgent = Array.isArray(overviewAnalytics.byAgent) ? overviewAnalytics.byAgent : [];
-  const totalTokens = Number(overviewAnalytics.totalTokens) || 0;
-  if (totalTokens <= 0 || byAgent.length === 0) {
-    concentration.style.display = 'none';
-    return;
-  }
-
-  let highest = null;
-  for (const item of byAgent) {
-    const share = (Number(item?.tokens) || 0) / totalTokens;
-    if (!highest || share > highest.share) highest = { item, share };
-  }
-
-  if (!highest || highest.share < 0.7) {
-    concentration.style.display = 'none';
-    return;
-  }
-
-  const topId = highest.item?.agentId;
-  const info = topId ? agentState[topId] : null;
-  const name = info?.name || topId || 'Unknown';
-  const emoji = info?.emoji || '';
-  const pct = (highest.share * 100).toFixed(1);
-  concentration.className = `cost-concentration${highest.share > 0.9 ? ' critical' : ''}`;
-  concentration.innerHTML = `⚠ ${emoji ? `${emoji} ` : ''}${name}: ${pct}% of tokens`;
-  concentration.style.display = '';
-}
 
 // ═══════════════════════════════════════════
 // RENDER
 // ═══════════════════════════════════════════
 
 function renderAll() {
-  renderHost();
   renderStats();
   renderFleetHealth();
   const grid = $('#agentGrid');
@@ -513,48 +376,71 @@ function renderAll() {
 }
 
 function renderStats() {
-  const ids = Object.keys(agentState);
-  const total = ids.length;
-  const online = ids.filter(id => agentState[id].online).length;
-  const seenGateways = new Set();
-  const totalCost = ids.reduce((sum, id) => {
-    const a = agentState[id];
-    const cost = extractCostRaw(a);
-    if (!cost) return sum;
-    if (a.usage?.shared) {
-      const gwKey = String(cost);
-      if (seenGateways.has(gwKey)) return sum;
-      seenGateways.add(gwKey);
-    }
-    return sum + cost;
-  }, 0);
-
-  $('#statTotal').textContent = total;
-  $('#statTotalSub').textContent = 'Registered';
-  $('#statOnline').textContent = online;
-  $('#statOnline').className = `stat-value ${online === total ? 'success' : 'warning'}`;
-  $('#statOnlineSub').textContent = `of ${total} connected`;
-  $('#onlineDot').style.background = online === total ? 'var(--success)' : 'var(--warning)';
-  $('#statCost').textContent = totalCost > 0 ? '~$' + totalCost.toFixed(2) : '—';
-  const now = new Date();
-  const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  $('#statTime').textContent = timeStr;
-  $('#statTimeSub').textContent = `${online}/${total} online`;
+  renderSummarizerCards();
 }
 
-function renderHost() {
-  const h = window.hostState;
-  if (!h || !h.memory) return;
-  const memPct = Math.round(h.memory.used / h.memory.total * 100);
-  const diskPct = h.disk?.total ? Math.round(h.disk.used / h.disk.total * 100) : 0;
-  const load = h.loadAvg?.[0]?.toFixed(2) || '—';
-  $('#hostBar').innerHTML = `
-    <span><strong>${h.hostname || 'host'}</strong></span>
-    <span>Load: <strong>${load}</strong></span>
-    <span>RAM: <strong>${memPct}%</strong> ${barHtml(memPct)} <span style="font-size:0.65rem">${fmtBytes(h.memory.used)}/${fmtBytes(h.memory.total)}</span></span>
-    <span>Disk: <strong>${diskPct}%</strong> ${barHtml(diskPct)}</span>
-    <span>Uptime: <strong>${formatUptime(h.uptime)}</strong></span>
-  `;
+async function renderSummarizerCards() {
+  try {
+    const res = await fetch('/api/overview/summarizer', { cache: 'no-store', credentials: 'same-origin' });
+    if (!res.ok) throw new Error('summarizer fetch failed');
+    const data = await res.json();
+    if (!data || data.available === false) throw new Error(data?.reason || 'unavailable');
+
+    const sc = data.stat_cards || {};
+    const domains = data.domains || {};
+
+    const gw = sc.gateway || {};
+    const gwDomain = domains.gateway || {};
+    const gwEl = document.getElementById('statGatewayValue');
+    const gwSub = document.getElementById('statGatewaySub');
+    if (gwEl) {
+      gwEl.textContent = gw.status === 'connected' ? 'Connected' : gw.status === 'degraded' ? 'Degraded' : 'Down';
+      gwEl.className = 'stat-value ' + (gw.status === 'connected' ? 'success' : gw.status === 'degraded' ? 'warning' : 'error');
+    }
+    if (gwSub) gwSub.textContent = gwDomain.detail || '—';
+
+    const tasks = sc.tasks || {};
+    const taskEl = document.getElementById('statTasksValue');
+    const taskSub = document.getElementById('statTasksSub');
+    const reviewCount = Number(tasks.review || 0);
+    const proposedCount = Number(tasks.proposed || 0);
+    const inProgressCount = Number(tasks.in_progress || 0);
+    const needsAttention = reviewCount + proposedCount;
+    if (taskEl) {
+      taskEl.textContent = String(needsAttention);
+      taskEl.className = 'stat-value ' + (needsAttention > 0 ? 'warning' : 'success');
+    }
+    if (taskSub) taskSub.textContent = `${reviewCount} review, ${proposedCount} proposed, ${inProgressCount} active`;
+
+    const sec = sc.security || {};
+    const secEl = document.getElementById('statSecurityValue');
+    const secSub = document.getElementById('statSecuritySub');
+    if (secEl) {
+      const status = sec.overall_status || 'red';
+      secEl.textContent = status === 'green' ? 'Secure' : status === 'amber' ? 'Degraded' : 'Issues';
+      secEl.className = 'stat-value ' + (status === 'green' ? 'success' : status === 'amber' ? 'warning' : 'error');
+    }
+    if (secSub) {
+      const critText = sec.critical_failures > 0 ? `${sec.critical_failures} critical` : 'No critical failures';
+      secSub.textContent = `${sec.total_checks} checks, ${critText}`;
+    }
+
+    const cost = sc.cost || {};
+    const costDomain = domains.cost || {};
+    const costEl = document.getElementById('statCostValue');
+    const costSub = document.getElementById('statCostSub');
+    if (costEl) {
+      const tokens = Number(cost.tokens_today || 0);
+      costEl.textContent = tokens > 0 ? tokens.toLocaleString() : '0';
+      costEl.className = 'stat-value';
+    }
+    if (costSub) costSub.textContent = costDomain.detail || 'Tokens today';
+  } catch (err) {
+    ['statGatewayValue', 'statTasksValue', 'statSecurityValue', 'statCostValue'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) { el.textContent = '—'; el.className = 'stat-value'; }
+    });
+  }
 }
 
 function renderFleetHealth() {
@@ -860,14 +746,6 @@ async function fleetClearCooldowns() {
   } catch (e) { showToast(e.message, 'error'); }
 }
 
-// ═══════════════════════════════════════════
-// HELPERS
-// ═══════════════════════════════════════════
-
-function barHtml(pct) {
-  const cls = pct > 90 ? 'crit' : pct > 70 ? 'warn' : 'ok';
-  return `<span class="bar-track"><span class="bar-fill ${cls}" style="width:${pct}%"></span></span>`;
-}
 </script>
 <script src="/lucide.min.js"></script>
 <script>lucide.createIcons();</script>
