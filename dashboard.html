@@ -12,6 +12,13 @@
    ═══════════════════════════════════════════ */
 
 /* ── Host Bar ──────────────────────────── */
+.page-header { margin-bottom: 24px; }
+.page-header h1 {
+  font-size: 20px; font-weight: 700; color: var(--text-primary);
+  text-shadow: 0 0 8px rgba(45, 212, 191, 0.5);
+}
+.page-header .subtitle { font-size: 13px; font-weight: 400; color: var(--text-secondary); margin-top: 4px; }
+
 .host-bar {
   display: flex; gap: 20px; font-size: 0.75rem; color: var(--text-tertiary);
   padding: 8px 12px; margin-bottom: 16px;
@@ -281,6 +288,11 @@
 
 <!-- ── Main Content (sidebar + topbar injected by layout.js) ── -->
 <main class="main">
+  <div class="page-header">
+    <h1>Overview</h1>
+    <p class="subtitle">System health at a glance. Green means go home.</p>
+  </div>
+
   <div class="host-bar" id="hostBar"><span>⏳ Loading host…</span></div>
 
   <div class="stats-grid" id="statsGrid">
