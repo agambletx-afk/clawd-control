@@ -2,7 +2,7 @@
  * layout.js — Shared layout module for Clawd Control
  *
  * Injects sidebar + topbar + design-system CSS into every page.
- * Manages SSE connection, theme, sidebar collapse, and keyboard shortcuts.
+ * Manages SSE connection and keyboard shortcuts.
  *
  * Usage: include <script src="/layout.js"></script> after <main class="main">
  *        Each page wraps its content in <main class="main">...</main>
@@ -17,12 +17,9 @@
   const agentState = (window.agentState = window.agentState || {});
   window.hostState = window.hostState || {};
   let evtSource = null;
-  let cliUsagePollTimer = null;
   let securityBadgeTimer = null;
   let watcherBadgeTimer = null;
-  let chatUnreadTimer = null;
-  let cliUsageState = null;
-  let expandedCliProvider = null;
+  let tasksBadgeTimer = null;
 
   // ════════════════════════════════════════════════════
   // PAGE DETECTION
@@ -35,24 +32,27 @@
     '/agents.html': 'agents',
     '/sessions.html': 'sessions',
     '/tasks.html': 'tasks',
-    '/apis.html': 'apis',
     '/ops.html': 'ops',
     '/security.html': 'security',
-    '/watcher.html': 'watcher',
-    '/create.html': 'create',
     '/analytics.html': 'analytics',
-    '/proxy.html': 'proxy',
     '/cortex.html': 'cortex',
     '/cortex': 'cortex',
     '/memory.html': 'memory',
     '/memory': 'memory',
-    '/tokens.html': 'tokens',
-    '/waterfall.html': 'waterfall',
-    '/traces.html': 'traces',
-    '/crons.html': 'crons',
-    '/fleet.html': 'fleet',
-    '/gandalf-view.html': 'gandalf',
     '/chat.html': 'chat',
+  };
+  const PAGE_META = {
+    dashboard:  { title: 'Overview', subtitle: 'System health at a glance. Green means go home.', color: '#2dd4bf' },
+    tasks:      { title: 'Tasks', subtitle: 'All durable work, from proposal to archive.', color: '#6366f1' },
+    agents:     { title: 'Agents', subtitle: 'Agent fleet status and per-agent workspace.', color: '#f59e0b' },
+    analytics:  { title: 'Usage', subtitle: 'Where tokens and money go.', color: '#2dd4bf' },
+    ops:        { title: 'Operations', subtitle: 'Infrastructure health, jobs, recovery, and learning.', color: '#ef4444' },
+    security:   { title: 'Security', subtitle: 'Security posture and enforcement status.', color: '#ef4444' },
+    cortex:     { title: 'CORTEX', subtitle: 'Model routing, workload controls, and configuration.', color: '#7c3aed' },
+    sessions:   { title: 'Sessions', subtitle: 'Active and recent gateway sessions.', color: '#6366f1' },
+    memory:     { title: 'Memory', subtitle: 'What the system knows. Pipeline health and knowledge.', color: '#10b981' },
+    chat:       { title: 'Chat', subtitle: 'Conversation with Jarvis.', color: '#2dd4bf' },
+    'agent-detail': { title: 'Agent Detail', subtitle: 'Per-agent workspace.', color: '#f59e0b' },
   };
 
   const activePage = PAGE_MAP[path] || (path.startsWith('/agent/') ? 'agent-detail' : 'other');
@@ -63,14 +63,6 @@
 
   window.layoutActivePage = activePage;
   window.layoutActiveAgentId = activeAgentId;
-
-  // ════════════════════════════════════════════════════
-  // THEME — apply before first paint
-  // ════════════════════════════════════════════════════
-
-  if (localStorage.getItem('cc-theme') === 'light') {
-    document.documentElement.setAttribute('data-theme', 'light');
-  }
 
   // ════════════════════════════════════════════════════
   // CSS INJECTION
@@ -94,6 +86,7 @@
   --text-primary: #f4f4f5;
   --text-secondary: #a1a1aa;
   --text-tertiary: #71717a;
+  --text-nav-muted: #7c8aa0;
 
   --success: #22c55e;
   --success-bg: rgba(34, 197, 94, 0.1);
@@ -113,7 +106,7 @@
   --warning-dim: rgba(245, 158, 11, 0.06);
   --accent-dim: rgba(201, 164, 74, 0.06);
 
-  --sidebar-w: 220px;
+  --sidebar-w: 232px;
 
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   --font-mono: 'SF Mono', 'Consolas', 'Monaco', monospace;
@@ -131,49 +124,10 @@
   --transition-base: 250ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* ── Light Theme ───────────────────────── */
-
-[data-theme="light"] {
-  --bg-primary: #f5f2ee;
-  --bg-secondary: #fdfbf9;
-  --bg-tertiary: #ece8e3;
-  --surface: #ffffff;
-  --surface-hover: #f7f5f2;
-  --border: #ddd8d0;
-  --border-subtle: #e8e4de;
-
-  --text-primary: #1a1d23;
-  --text-secondary: #5a5d66;
-  --text-tertiary: #8a8d96;
-
-  --success: #059669;
-  --success-bg: rgba(5, 150, 105, 0.08);
-  --error: #dc2626;
-  --error-bg: rgba(220, 38, 38, 0.08);
-  --warning: #d97706;
-  --warning-bg: rgba(217, 119, 6, 0.08);
-  --info: #2563eb;
-  --info-bg: rgba(37, 99, 235, 0.08);
-
-  --accent: #a07d2e;
-  --accent-hover: #8a6b22;
-  --accent-bg: rgba(160, 125, 46, 0.08);
-
-  --success-dim: rgba(5, 150, 105, 0.04);
-  --error-dim: rgba(220, 38, 38, 0.04);
-  --warning-dim: rgba(217, 119, 6, 0.04);
-  --accent-dim: rgba(160, 125, 46, 0.04);
-
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
-  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.1);
-}
-
 /* ── Reset & Base ──────────────────────── */
 
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 html { font-size: 16px; -webkit-font-smoothing: antialiased; color-scheme: dark; }
-[data-theme="light"] { color-scheme: light; }
 
 h1, h2, h3 { line-height: 1.2; font-weight: 700; letter-spacing: -0.02em; }
 
@@ -191,14 +145,11 @@ body {
   grid-template-columns: var(--sidebar-w) 1fr;
   transition: background-color 0.35s ease, color 0.35s ease;
 }
-body.sidebar-collapsed { grid-template-columns: 0px 1fr; }
-body.sidebar-collapsed .sidebar { width: 0; padding: 0; overflow: hidden; border: none; }
-body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
 
 /* ── Topbar ────────────────────────────── */
 
 .topbar {
-  grid-column: 1 / -1;
+  grid-column: 2;
   padding: 0 20px;
   height: 48px;
   display: flex;
@@ -209,39 +160,10 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
   z-index: 100;
 }
 .topbar-left { display: flex; align-items: center; gap: 10px; }
-.topbar-left .status-dot {
-  width: 8px; height: 8px; border-radius: 50%;
-  background: var(--text-tertiary); flex-shrink: 0;
-  transition: all var(--transition-base);
-}
-.topbar-left .status-dot.live {
-  background: var(--success);
-  box-shadow: 0 0 8px var(--success), 0 0 16px rgba(34,197,94,0.15);
-  animation: pulse 2s infinite;
-}
-.topbar-left .status-dot.dead { background: var(--error); box-shadow: 0 0 6px var(--error); }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 
-.topbar-title {
-  font-size: 0.9rem; font-weight: 700; color: var(--text-primary);
-  letter-spacing: -0.02em;
-}
-.topbar-time {
-  font-size: 0.75rem; color: var(--text-tertiary); margin-left: 8px;
-  font-variant-numeric: tabular-nums;
-}
 .topbar-right { display: flex; align-items: center; gap: 2px; }
 
-/* Fleet health bar in topbar */
-.fleet-bar {
-  width: 120px; height: 3px; border-radius: 2px; overflow: hidden;
-  display: flex; gap: 1px; margin-left: 12px;
-}
-.fleet-bar .seg { flex: 1; border-radius: 1px; transition: background 0.5s; }
-.fleet-bar .seg.ok { background: var(--success); }
-.fleet-bar .seg.warn { background: var(--warning); }
-.fleet-bar .seg.err { background: var(--error); }
-.fleet-bar .seg.off { background: var(--border-subtle); }
 
 /* ── Sidebar ───────────────────────────── */
 
@@ -254,16 +176,11 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
   overflow-y: auto;
   overflow-x: hidden;
   transition: width 0.25s ease;
-}
-
-.sidebar-section {
-  padding: 16px 12px 6px;
-  font-size: 0.6rem; font-weight: 700; text-transform: uppercase;
-  letter-spacing: 0.1em; color: var(--text-tertiary);
+  padding-top: 16px;
 }
 
 .nav-item {
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: center; gap: 10px;
   padding: 7px 12px; margin: 1px 8px;
   border-radius: var(--radius-sm);
   font-size: 0.8rem; font-weight: 500; color: var(--text-secondary);
@@ -271,175 +188,121 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
   text-decoration: none; position: relative;
 }
 .nav-item:hover { background: var(--surface); color: var(--text-primary); }
-.nav-item.active { background: var(--surface); color: var(--text-primary); font-weight: 600; }
+.nav-item.active {
+  background: var(--surface);
+  color: var(--text-primary);
+  font-weight: 600;
+  border-left: 3px solid #2dd4bf;
+}
+.nav-item.active .nav-icon {
+  opacity: 1;
+}
 .nav-item .nav-icon { width: 16px; height: 16px; opacity: 0.6; flex-shrink: 0; }
-.nav-item .nav-emoji { font-size: 1rem; flex-shrink: 0; width: 20px; text-align: center; }
 .nav-item .nav-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chat-unread-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #22C55E;
-  display: inline-block;
-  margin-left: 6px;
+
+/* Tier typography */
+.nav-item.tier-1 { color: var(--text-primary); font-weight: 500; }
+.nav-item.tier-1 .nav-icon { opacity: 0.8; }
+.nav-item.tier-2 { color: var(--text-secondary); font-weight: 400; }
+.nav-item.tier-2 .nav-icon { opacity: 0.65; }
+.nav-item.tier-3 { color: var(--text-nav-muted); font-weight: 400; }
+.nav-item.tier-3 .nav-icon { opacity: 0.55; }
+
+/* Hover promotes one step */
+.nav-item.tier-2:hover { color: var(--text-primary); }
+.nav-item.tier-2:hover .nav-icon { opacity: 0.8; }
+.nav-item.tier-3:hover { color: var(--text-secondary); }
+.nav-item.tier-3:hover .nav-icon { opacity: 0.65; }
+
+/* Active overrides tier */
+.nav-item.active { color: var(--text-primary); font-weight: 600; }
+.nav-item.active .nav-icon { opacity: 1; }
+
+/* Tier gaps */
+.nav-tier-gap { height: 16px; }
+
+/* Sidebar header */
+.sidebar-header { padding: 0 12px 12px; }
+.sidebar-header .sidebar-name {
+  font-size: 14px; font-weight: 700; color: var(--text-primary);
+  text-shadow: 0 0 8px rgba(245,158,11,0.5);
+}
+.sidebar-header .sidebar-product {
+  font-size: 12px; color: var(--text-tertiary); font-weight: 400;
 }
 
-/* Sidebar badges */
-.nav-badges { display: flex; gap: 3px; flex-shrink: 0; }
-.nav-badge {
-  font-size: 0.6rem; font-weight: 700; min-width: 16px; height: 16px;
-  display: flex; align-items: center; justify-content: center;
-  border-radius: 8px; padding: 0 4px;
-}
-.nav-badge.pass { background: var(--success-bg); color: var(--success); }
-.nav-badge.warn { background: var(--warning-bg); color: var(--warning); }
-.nav-badge.fail { background: var(--error-bg); color: var(--error); }
-.nav-badge.info { background: var(--info-bg); color: var(--info); }
-
-.security-nav-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: #95A5A6;
-  flex-shrink: 0;
-}
-.security-nav-dot.green { background: #27AE60; }
-.security-nav-dot.yellow { background: #E67E22; }
-.security-nav-dot.red { background: #C0392B; }
-.security-nav-dot.unknown { background: #95A5A6; }
-
-.sidebar-spacer { flex: 1; }
-
-.sidebar-footer {
-  padding: 10px 12px;
-  border-top: 1px solid var(--border-subtle);
-  display: flex; align-items: center; gap: 4px;
-}
-.sidebar-footer .sf-btn {
-  width: 32px; height: 32px; border: none; border-radius: var(--radius-sm);
-  background: none; color: var(--text-tertiary); cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  transition: all var(--transition-fast); font-size: 0.85rem;
-}
-.sidebar-footer .sf-btn:hover { background: var(--surface); color: var(--text-primary); }
-.sidebar-footer .sf-label {
-  flex: 1; text-align: right; font-size: 0.65rem; color: var(--text-tertiary);
-  letter-spacing: -0.01em;
-}
-
-.sidebar-cli-usage {
-  padding: 8px 12px 10px;
-  border-top: 1px solid var(--border-subtle);
-}
-.cli-usage-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 6px;
-  color: var(--text-tertiary);
-  font-size: 0.58rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-.cli-usage-refresh {
-  width: 18px;
-  height: 18px;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--text-tertiary);
+/* Nav indicator badges (informational counts) */
+.nav-count-badge {
+  background: var(--surface);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 9999px;
+  padding: 0 6px;
+  font-size: 10px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  min-width: 18px;
+  height: 16px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
-  transition: color var(--transition-fast), background-color var(--transition-fast), transform var(--transition-fast);
+  flex-shrink: 0;
 }
-.cli-usage-refresh:hover {
-  color: var(--text-primary);
+
+/* Nav health dots (status indicators) */
+.nav-health-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--text-tertiary);
+}
+.nav-health-dot.green { background: #22c55e; }
+.nav-health-dot.amber { background: #f59e0b; }
+.nav-health-dot.red { background: #ef4444; }
+
+/* Sidebar footer (minimal) */
+.sidebar-footer-minimal {
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.sidebar-footer-minimal .logout-link {
+  display: flex; align-items: center; gap: 6px;
+  color: var(--text-tertiary); font-size: 13px; font-weight: 400;
+  cursor: pointer; text-decoration: none;
+  transition: color var(--transition-fast);
+}
+.sidebar-footer-minimal .logout-link:hover { color: var(--text-secondary); }
+.sidebar-footer-minimal .logout-link .nav-icon { width: 14px; height: 14px; opacity: 0.6; }
+.sidebar-footer-minimal .version-label {
+  font-size: 11px; color: var(--text-tertiary); font-family: var(--font-mono);
+}
+
+/* Topbar Chat button */
+.topbar-chat-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   background: var(--surface);
-}
-.cli-usage-refresh.spinning i {
-  animation: cli-usage-refresh-spin 0.5s linear;
-}
-@keyframes cli-usage-refresh-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-.cli-usage-bars {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.cli-usage-bar {
-  width: 100%;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: 9999px;
+  padding: 6px 14px;
   color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
-  padding: 0;
-  text-align: left;
+  text-decoration: none;
+  transition: all var(--transition-fast);
 }
-.cli-usage-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 0.62rem;
-  line-height: 1;
-  margin-bottom: 2px;
-  letter-spacing: 0.03em;
-}
-.cli-usage-track {
-  width: 100%;
-  height: 8px;
-  background: #374151;
-  border-radius: 4px;
-  overflow: hidden;
-}
-.cli-usage-fill {
-  width: 0%;
-  height: 100%;
-  border-radius: 4px;
-  transition: width 220ms ease, background-color 220ms ease;
-}
-.cli-usage-detail {
-  margin-top: 8px;
-  padding: 8px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--bg-tertiary);
-  font-size: 0.68rem;
-  color: var(--text-secondary);
-}
-.cli-usage-detail[hidden] {
-  display: none;
-}
-.cli-usage-detail-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 6px;
-}
-.cli-usage-detail-title {
-  font-weight: 600;
+.topbar-chat-btn:hover { border-color: #2dd4bf; color: var(--text-primary); }
+.topbar-chat-btn.active {
+  background: rgba(45, 212, 191, 0.1);
+  border-color: #2dd4bf;
   color: var(--text-primary);
-  font-size: 0.72rem;
 }
-.cli-usage-detail-close {
-  border: 0;
-  background: none;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  font-size: 0.85rem;
-  line-height: 1;
-}
-.cli-usage-detail-line {
-  margin-top: 3px;
-}
-.cli-usage-detail-error {
-  margin-top: 6px;
-  color: var(--warning);
-}
+.topbar-chat-btn .nav-icon { width: 14px; height: 14px; }
 
 /* ── Main Content ──────────────────────── */
 
@@ -449,9 +312,6 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
   padding: 20px 24px;
   background: var(--bg-primary);
   background-image: radial-gradient(ellipse at 50% 0%, rgba(201, 164, 74, 0.03) 0%, transparent 50%);
-}
-[data-theme="light"] .main {
-  background-image: radial-gradient(ellipse at 50% 0%, rgba(160, 125, 46, 0.04) 0%, transparent 50%);
 }
 
 /* ── Toast ─────────────────────────────── */
@@ -477,20 +337,16 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 10px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.16); }
-[data-theme="light"] ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); }
-[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.2); }
 
 /* ── Responsive ────────────────────────── */
 
-@media (max-width: 800px) {
-  body { grid-template-columns: 0px 1fr; }
-  .sidebar { display: none; }
+@media (max-width: 900px) {
   .main { padding: 16px; }
 }
 
 /* ── Accessibility ─────────────────────── */
 
-.nav-item:focus-visible, .sf-btn:focus-visible {
+.nav-item:focus-visible {
   outline: 2px solid var(--accent); outline-offset: 2px;
 }
 *:focus:not(:focus-visible) { outline: none; }
@@ -523,22 +379,22 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
       return;
     }
 
-    // Restore sidebar collapse state
-    if (localStorage.getItem('cc-sidebar') === 'collapsed') {
-      document.body.classList.add('sidebar-collapsed');
-    }
-
     // ── Topbar ──
     const topbar = document.createElement('div');
     topbar.className = 'topbar';
+    const meta = PAGE_META[activePage] || PAGE_META.dashboard;
+    const chatActive = activePage === 'chat' ? ' active' : '';
     topbar.innerHTML = `
       <div class="topbar-left">
-        <span class="status-dot" id="connDot"></span>
-        <span class="topbar-title">Clawd Control</span>
-        <span class="topbar-time" id="topbarTime"></span>
-        <div class="fleet-bar" id="fleetBar"></div>
+        <h1 style="font-size:20px;font-weight:700;color:var(--text-primary);text-shadow:0 0 8px ${meta.color}80;margin:0;line-height:1.2">${meta.title}</h1>
+        <span style="font-size:13px;color:var(--text-secondary);font-weight:400;margin-left:12px">${meta.subtitle}</span>
       </div>
-      <div class="topbar-right"></div>
+      <div class="topbar-right">
+        <a href="/chat.html" class="topbar-chat-btn${chatActive}" id="topbarChatBtn">
+          <i data-lucide="message-circle" class="nav-icon"></i>
+          <span>Chat</span>
+        </a>
+      </div>
     `;
 
     // ── Sidebar ──
@@ -558,20 +414,14 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
     updateClock();
     setInterval(updateClock, 30000);
 
-    // Update theme icon
-    updateThemeIcon();
-
-    // Start CLI usage polling
-    initCliUsage();
-
     // Start security nav badge polling
     initSecurityBadgePolling();
 
     // Start WATCHER nav badge polling
     initWatcherBadgePolling();
 
-    // Start chat unread indicator polling
-    initChatUnreadPolling();
+    // Start tasks nav badge polling
+    initTasksBadgePolling();
 
     // Start Cortex badge polling
     initCortexBadgePolling();
@@ -583,143 +433,67 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
   function buildSidebarHTML() {
     const isActive = (page) => (activePage === page ? ' active' : '');
     return `
-      <a href="/" class="nav-item${isActive('dashboard')}">
+      <div class="sidebar-header">
+        <div class="sidebar-name">JARVIS</div>
+        <div class="sidebar-product">Clawd Control</div>
+      </div>
+
+      <a href="/" class="nav-item tier-1${isActive('dashboard')}">
         <i data-lucide="layout-dashboard" class="nav-icon"></i>
         <span class="nav-label">Overview</span>
       </a>
-      <a href="/chat.html" id="chatNavItem" class="nav-item${isActive('chat')}">
-        <i data-lucide="message-circle" class="nav-icon"></i>
-        <span class="nav-label" id="chatNavLabel">Chat</span>
+      <a href="/tasks.html" class="nav-item tier-1${isActive('tasks')}">
+        <i data-lucide="check-square" class="nav-icon"></i>
+        <span class="nav-label">Tasks</span>
+        <span class="nav-count-badge" id="tasksNavBadge">—</span>
+      </a>
+      <a href="/agents.html" class="nav-item tier-1${isActive('agents')}">
+        <i data-lucide="bot" class="nav-icon"></i>
+        <span class="nav-label">Agents</span>
+        <span class="nav-count-badge" id="agentsNavBadge">—</span>
       </a>
 
-      <div class="sidebar-section">Monitoring</div>
-      <a href="/agents.html" class="nav-item${isActive('agents')}">
-        <span class="nav-emoji">🤖</span>
-        <span class="nav-label">Agents</span>
+      <div class="nav-tier-gap"></div>
+
+      <a href="/analytics.html" class="nav-item tier-2${isActive('analytics')}">
+        <i data-lucide="bar-chart-3" class="nav-icon"></i>
+        <span class="nav-label">Usage</span>
       </a>
-      <a href="/sessions.html" class="nav-item${isActive('sessions')}">
-        <span class="nav-emoji">📋</span>
-        <span class="nav-label">Sessions</span>
-      </a>
-      <a href="/tasks.html" class="nav-item${isActive('tasks')}">
-        <span class="nav-emoji">📋</span>
-        <span class="nav-label">Tasks</span>
-      </a>
-      <a href="/apis.html" class="nav-item${isActive('apis')}">
-        <span class="nav-emoji">📡</span>
-        <span class="nav-label">APIs</span>
-      </a>
-      <a href="/ops.html" class="nav-item${isActive('ops')}">
-        <span class="nav-emoji">⚙️</span>
+      <a href="/ops.html" class="nav-item tier-2${isActive('ops')}">
+        <i data-lucide="settings" class="nav-icon"></i>
         <span class="nav-label">Operations</span>
+        <span class="nav-health-dot" id="opsNavDot"></span>
       </a>
-      <a href="/security.html" class="nav-item${isActive('security')}">
+      <a href="/security.html" class="nav-item tier-2${isActive('security')}">
         <i data-lucide="shield" class="nav-icon"></i>
         <span class="nav-label">Security</span>
-        <span class="security-nav-dot unknown" id="securityNavDot" aria-label="Security status"></span>
-      </a>
-      <a href="/watcher.html" class="nav-item${isActive('watcher')}">
-        <i data-lucide="radar" class="nav-icon"></i>
-        <span class="nav-label">WATCHER</span>
-        <span class="security-nav-dot unknown" id="watcherNavDot" aria-label="WATCHER status"></span>
+        <span class="nav-health-dot" id="securityNavDot"></span>
       </a>
 
-      <div class="sidebar-section">Agents</div>
-      <div id="sidebarAgents">
-        <div class="nav-item" style="color:var(--text-tertiary);font-size:0.72rem;cursor:default">
-          Connecting…
-        </div>
-      </div>
+      <div class="nav-tier-gap"></div>
 
-      <div class="sidebar-section">Tools</div>
-      <a href="/fleet.html" class="nav-item${isActive('fleet')}">
-        <i data-lucide="users" class="nav-icon"></i>
-        <span class="nav-label">Fleet Matrix</span>
-      </a>
-      <a href="/cortex" class="nav-item${isActive('cortex')}">
+      <a href="/cortex" class="nav-item tier-3${isActive('cortex')}">
         <i data-lucide="brain" class="nav-icon"></i>
-        <span class="nav-label">Cortex</span>
-        <span id="cortexNavBadge" class="security-nav-dot unknown" style="position:static;display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:16px;border-radius:9999px;font-size:10px;padding:0 5px;background:var(--surface);border:1px solid var(--border);color:var(--text-secondary)">—</span>
+        <span class="nav-label">CORTEX</span>
+        <span class="nav-count-badge" id="cortexNavBadge">—</span>
       </a>
-      <a href="/analytics.html" class="nav-item${isActive('analytics')}">
-        <i data-lucide="bar-chart-3" class="nav-icon"></i>
-        <span class="nav-label">Intelligence</span>
+      <a href="/sessions.html" class="nav-item tier-3${isActive('sessions')}">
+        <i data-lucide="terminal" class="nav-icon"></i>
+        <span class="nav-label">Sessions</span>
       </a>
-      <a href="/proxy.html" class="nav-item${isActive('proxy')}">
-        <i data-lucide="globe" class="nav-icon" style="color:#2dd4bf;opacity:1"></i>
-        <span class="nav-label">Web Proxy</span>
-      </a>
-      <a href="/memory" class="nav-item${isActive('memory')}">
-        <i data-lucide="database" class="nav-icon" style="color:#10b981;opacity:1"></i>
+      <a href="/memory" class="nav-item tier-3${isActive('memory')}">
+        <i data-lucide="database" class="nav-icon"></i>
         <span class="nav-label">Memory</span>
       </a>
-      <a href="/tokens.html" class="nav-item${isActive('tokens')}">
-        <i data-lucide="target" class="nav-icon"></i>
-        <span class="nav-label">Token Usage</span>
-      </a>
-      <a href="/waterfall.html" class="nav-item${isActive('waterfall')}">
-        <i data-lucide="activity" class="nav-icon"></i>
-        <span class="nav-label">Session Waterfall</span>
-      </a>
-      <a href="/traces.html" class="nav-item${isActive('traces')}">
-        <i data-lucide="git-branch" class="nav-icon"></i>
-        <span class="nav-label">Trace View</span>
-      </a>
-      <a href="/crons.html" class="nav-item${isActive('crons')}">
-        <i data-lucide="clock" class="nav-icon"></i>
-        <span class="nav-label">Cron Jobs</span>
-      </a>
 
-      <div class="sidebar-section">Actions</div>
-      <a href="/create.html" class="nav-item${isActive('create')}">
-        <i data-lucide="plus" class="nav-icon"></i>
-        <span class="nav-label">New Agent</span>
-      </a>
-      <div class="nav-item" onclick="window._layoutLogout()">
-        <i data-lucide="log-out" class="nav-icon"></i>
-        <span class="nav-label">Logout</span>
-      </div>
+      <div style="flex:1"></div>
 
-      <div class="sidebar-spacer"></div>
-
-      <div class="sidebar-cli-usage">
-        <div class="cli-usage-header">
-          <span>CLI Usage</span>
-          <button class="cli-usage-refresh" id="cliUsageRefreshBtn" type="button" aria-label="Refresh CLI usage" title="Refresh CLI usage">
-            <i data-lucide="refresh-cw" style="width:12px;height:12px"></i>
-          </button>
+      <div class="sidebar-footer-minimal">
+        <div class="logout-link" onclick="window._layoutLogout()">
+          <i data-lucide="log-out" class="nav-icon"></i>
+          <span>Logout</span>
         </div>
-        <div class="cli-usage-bars">
-          <button class="cli-usage-bar" id="cliUsageBar-codex" data-provider="codex" aria-expanded="false">
-            <div class="cli-usage-row">
-              <span>Codex</span>
-              <span id="cliUsageLabel-codex">-</span>
-            </div>
-            <div class="cli-usage-track">
-              <div class="cli-usage-fill" id="cliUsageFill-codex"></div>
-            </div>
-          </button>
-          <button class="cli-usage-bar" id="cliUsageBar-claude" data-provider="claude" aria-expanded="false">
-            <div class="cli-usage-row">
-              <span>Claude Code</span>
-              <span id="cliUsageLabel-claude">-</span>
-            </div>
-            <div class="cli-usage-track">
-              <div class="cli-usage-fill" id="cliUsageFill-claude"></div>
-            </div>
-          </button>
-        </div>
-        <div class="cli-usage-detail" id="cliUsageDetail" hidden></div>
-      </div>
-
-      <div class="sidebar-footer">
-        <button class="sf-btn" onclick="window.toggleSidebar()" title="Collapse sidebar [B]">
-          <i data-lucide="panel-left-close" style="width:16px;height:16px"></i>
-        </button>
-        <button class="sf-btn" onclick="window.toggleTheme()" id="themeBtn" title="Toggle theme [T]">
-          <i data-lucide="moon" style="width:16px;height:16px" id="themeIcon"></i>
-        </button>
-        <span class="sf-label">v3</span>
+        <span class="version-label">v2.4.0</span>
       </div>
     `;
   }
@@ -763,7 +537,6 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
           }
           if (msg.data.host) window.hostState = msg.data.host;
           renderSidebar();
-          renderFleetBar();
           updateClock();
           document.dispatchEvent(new CustomEvent('layout:snapshot'));
         } else if (msg.type === 'agent') {
@@ -773,7 +546,6 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
             agentState[msg.id] = msg.data;
           }
           renderSidebar();
-          renderFleetBar();
           document.dispatchEvent(
             new CustomEvent('layout:agent-update', { detail: { id: msg.id, removed: !!msg.removed } })
           );
@@ -785,15 +557,9 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
         /* ignore parse errors */
       }
     };
-
-    evtSource.onopen = () => {
-      const dot = document.getElementById('connDot');
-      if (dot) dot.className = 'status-dot live';
-    };
+    evtSource.onopen = () => {};
 
     evtSource.onerror = () => {
-      const dot = document.getElementById('connDot');
-      if (dot) dot.className = 'status-dot dead';
       setTimeout(() => {
         evtSource?.close();
         connectSSE();
@@ -806,83 +572,18 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
   // ════════════════════════════════════════════════════
 
   function renderSidebar() {
-    const container = document.getElementById('sidebarAgents');
-    if (!container) return;
-    const ids = Object.keys(agentState).sort();
-    if (ids.length === 0) {
-      container.innerHTML =
-        '<div class="nav-item" style="color:var(--text-tertiary);font-size:0.72rem;cursor:default">No agents</div>';
-      return;
-    }
-    container.innerHTML = ids
-      .map((id) => {
-        const a = agentState[id];
-        const health = computeHealth(a);
-        const checks = health.checks;
-        const ok = checks.filter((c) => c.s === 'ok').length;
-        const warn = checks.filter((c) => c.s === 'warn').length;
-        const fail = checks.filter((c) => c.s === 'err').length;
-        const isActive =
-          activePage === 'agent-detail' && activeAgentId === id;
-        return `<a href="/agent/${encodeURIComponent(id)}" class="nav-item${isActive ? ' active' : ''}" tabindex="0">
-        <span class="nav-emoji">${a.emoji || '🤖'}</span>
-        <span class="nav-label">${a.name || id}</span>
-        <span class="nav-badges">
-          ${ok ? `<span class="nav-badge pass">${ok}</span>` : ''}
-          ${warn ? `<span class="nav-badge warn">${warn}</span>` : ''}
-          ${fail ? `<span class="nav-badge fail">${fail}</span>` : ''}
-        </span>
-      </a>`;
-      })
-      .join('');
-    refreshIcons();
+    const badge = document.getElementById('agentsNavBadge');
+    if (!badge) return;
+    badge.textContent = String(Object.keys(agentState).length);
   }
-
-  function renderFleetBar() {
-    const fb = document.getElementById('fleetBar');
-    if (!fb) return;
-    const ids = Object.keys(agentState).sort();
-    fb.innerHTML = '';
-    ids.forEach((id) => {
-      const h = computeHealth(agentState[id]);
-      const s = document.createElement('div');
-      s.className = `seg ${h.level === 'healthy' ? 'ok' : h.level === 'degraded' ? 'warn' : h.level === 'down' ? 'err' : 'off'}`;
-      fb.appendChild(s);
-    });
-  }
-
-  // ════════════════════════════════════════════════════
-  // CLI USAGE FOOTER
-  // ════════════════════════════════════════════════════
-
-  function initCliUsage() {
-    const codexBar = document.getElementById('cliUsageBar-codex');
-    const claudeBar = document.getElementById('cliUsageBar-claude');
-    const refreshBtn = document.getElementById('cliUsageRefreshBtn');
-    if (!codexBar || !claudeBar) return;
-
-    codexBar.addEventListener('click', () => toggleCliDetail('codex'));
-    claudeBar.addEventListener('click', () => toggleCliDetail('claude'));
-    if (refreshBtn) {
-      refreshBtn.addEventListener('click', (event) => {
-        event.stopPropagation();
-        refreshCliUsage(true);
-      });
-    }
-
-    refreshCliUsage();
-    if (cliUsagePollTimer) clearInterval(cliUsagePollTimer);
-    cliUsagePollTimer = setInterval(() => refreshCliUsage(), 60000);
-  }
-
 
   function mapSecurityStatus(status, stale) {
-    if (stale) return 'unknown';
+    if (stale) return '';
     const token = String(status || '').toLowerCase();
     if (token === 'green' || token === 'secure' || token === 'ok' || token === 'success') return 'green';
-    if (token === 'yellow' || token === 'warning' || token === 'warn' || token === 'degraded') return 'yellow';
+    if (token === 'yellow' || token === 'warning' || token === 'warn' || token === 'degraded') return 'amber';
     if (token === 'red' || token === 'critical' || token === 'error' || token === 'failed') return 'red';
-    return 'unknown';
+    return '';
   }
 
   async function refreshSecurityBadge() {
@@ -892,9 +593,10 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
       const res = await fetch('/api/security/health', { cache: 'no-store', credentials: 'same-origin' });
       if (!res.ok) throw new Error('health fetch failed');
       const data = await res.json();
-      dot.className = `security-nav-dot ${mapSecurityStatus(data.overall_status, data.stale)}`;
+      const statusClass = mapSecurityStatus(data.overall_status, data.stale);
+      dot.className = `nav-health-dot${statusClass ? ` ${statusClass}` : ''}`;
     } catch {
-      dot.className = 'security-nav-dot unknown';
+      dot.className = 'nav-health-dot';
     }
   }
 
@@ -905,25 +607,26 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
   }
 
   function mapWatcherStatus(status, stale) {
-    if (stale) return 'yellow';
+    if (stale) return 'amber';
     const token = String(status || '').toLowerCase();
     if (token === 'green' || token === 'healthy' || token === 'ok' || token === 'success') return 'green';
-    if (token === 'yellow' || token === 'warning' || token === 'warn' || token === 'stale') return 'yellow';
+    if (token === 'yellow' || token === 'warning' || token === 'warn' || token === 'stale') return 'amber';
     if (token === 'red' || token === 'critical' || token === 'error' || token === 'failed') return 'red';
-    return 'unknown';
+    return '';
   }
 
   async function refreshWatcherBadge() {
-    const dot = document.getElementById('watcherNavDot');
+    const dot = document.getElementById('opsNavDot');
     if (!dot) return;
     try {
       const res = await fetch('/api/watcher/health', { cache: 'no-store', credentials: 'same-origin' });
       if (!res.ok) throw new Error('health fetch failed');
       const data = await res.json();
-      const status = data?.results?.overall_status || (data?.available ? 'unknown' : 'red');
-      dot.className = `security-nav-dot ${mapWatcherStatus(status, data?.stale)}`;
+      const status = data?.results?.overall_status || (data?.available ? '' : 'red');
+      const statusClass = mapWatcherStatus(status, data?.stale);
+      dot.className = `nav-health-dot${statusClass ? ` ${statusClass}` : ''}`;
     } catch {
-      dot.className = 'security-nav-dot unknown';
+      dot.className = 'nav-health-dot';
     }
   }
 
@@ -933,284 +636,35 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
     watcherBadgeTimer = setInterval(() => refreshWatcherBadge(), 60000);
   }
 
-  function getChatLastSeen() {
-    const value = localStorage.getItem('clawd-chat-lastSeen');
-    if (!value) return new Date(0);
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? new Date(0) : parsed;
-  }
-
-  function setChatLastSeen(ts = new Date().toISOString()) {
-    localStorage.setItem('clawd-chat-lastSeen', ts);
-  }
-
-  function getChatUnreadDot() {
-    return document.getElementById('chatUnreadDot');
-  }
-
-  function showChatUnreadDot() {
-    const label = document.getElementById('chatNavLabel');
-    if (!label || getChatUnreadDot()) return;
-    const dot = document.createElement('span');
-    dot.id = 'chatUnreadDot';
-    dot.className = 'chat-unread-dot';
-    dot.setAttribute('aria-label', 'Unread chat messages');
-    label.appendChild(dot);
-  }
-
-  function hideChatUnreadDot() {
-    const dot = getChatUnreadDot();
-    if (dot) dot.remove();
-  }
-
-  async function refreshChatUnreadIndicator() {
+  async function refreshTasksBadge() {
+    const badge = document.getElementById('tasksNavBadge');
+    if (!badge) return;
     try {
-      if (window.location.pathname === '/chat.html') {
-        setChatLastSeen();
-        hideChatUnreadDot();
-        return;
-      }
-
-      const res = await fetch('/api/chat/latest', { cache: 'no-store', credentials: 'same-origin' });
-      if (!res.ok) return;
-      const latest = await res.json();
-      if (!latest || !latest.timestamp || latest.role !== 'assistant') {
-        hideChatUnreadDot();
-        return;
-      }
-
-      const latestTs = new Date(latest.timestamp);
-      if (Number.isNaN(latestTs.getTime())) return;
-
-      const lastSeen = getChatLastSeen();
-      if (latestTs > lastSeen) {
-        showChatUnreadDot();
-      } else {
-        hideChatUnreadDot();
-      }
+      const res = await fetch('/api/tasks/stats', { cache: 'no-store', credentials: 'same-origin' });
+      if (!res.ok) throw new Error('tasks fetch failed');
+      const data = await res.json();
+      const byStatus = data?.by_status || {};
+      const count = Number(byStatus.proposed || 0)
+        + Number(byStatus.backlog || 0)
+        + Number(byStatus.in_progress || 0)
+        + Number(byStatus.review || 0)
+        + Number(byStatus.failed || 0);
+      badge.textContent = String(count);
     } catch {
-      // no-op
+      badge.textContent = '—';
     }
   }
 
-  function initChatUnreadPolling() {
-    if (chatUnreadTimer) clearInterval(chatUnreadTimer);
-
-    document.addEventListener('chat-seen', () => {
-      setChatLastSeen();
-      hideChatUnreadDot();
-    });
-
-    window.addEventListener('storage', (event) => {
-      if (event.key === 'clawd-chat-lastSeen') {
-        refreshChatUnreadIndicator();
-      }
-    });
-
-    refreshChatUnreadIndicator();
-    chatUnreadTimer = setInterval(() => {
-      if (window.location.pathname !== '/chat.html') {
-        refreshChatUnreadIndicator();
-      }
-    }, 5000);
+  function initTasksBadgePolling() {
+    if (tasksBadgeTimer) clearInterval(tasksBadgeTimer);
+    refreshTasksBadge();
+    tasksBadgeTimer = setInterval(() => refreshTasksBadge(), 60000);
   }
 
   window.refreshSecurityBadge = refreshSecurityBadge;
   window.refreshWatcherBadge = refreshWatcherBadge;
 
-  async function refreshCliUsage(withSpin = false) {
-    const refreshBtn = document.getElementById('cliUsageRefreshBtn');
-    if (withSpin && refreshBtn) refreshBtn.classList.add('spinning');
-    try {
-      const res = await fetch('/api/cli-usage', { cache: 'no-store' });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const payload = await res.json();
-      cliUsageState = payload;
-      renderCliUsageBars();
-      renderCliUsageDetail();
-    } catch {
-      cliUsageState = {
-        checked_at: null,
-        providers: {
-          codex: {
-            name: 'Codex CLI',
-            session_pct: null,
-            session_reset: null,
-            weekly_pct: null,
-            weekly_reset: null,
-            credits: null,
-            status: 'error',
-            error: 'Failed to load usage data',
-          },
-          claude: {
-            name: 'Claude Code',
-            session_pct: null,
-            session_reset: null,
-            weekly_pct: null,
-            weekly_reset: null,
-            credits: null,
-            status: 'error',
-            error: 'Failed to load usage data',
-          },
-        },
-      };
-      renderCliUsageBars();
-      renderCliUsageDetail();
-    } finally {
-      if (withSpin && refreshBtn) {
-        setTimeout(() => refreshBtn.classList.remove('spinning'), 500);
-      }
-    }
-  }
 
-  function normalizeProvider(provider, fallbackName) {
-    const p = provider && typeof provider === 'object' ? provider : {};
-    return {
-      name: typeof p.name === 'string' && p.name ? p.name : fallbackName,
-      session_pct: Number.isFinite(p.session_pct) ? p.session_pct : null,
-      session_reset: typeof p.session_reset === 'string' ? p.session_reset : null,
-      weekly_pct: Number.isFinite(p.weekly_pct) ? p.weekly_pct : null,
-      weekly_reset: typeof p.weekly_reset === 'string' ? p.weekly_reset : null,
-      credits: Number.isFinite(p.credits) ? p.credits : null,
-      status: typeof p.status === 'string' ? p.status : 'error',
-      error: typeof p.error === 'string' ? p.error : null,
-    };
-  }
-
-  function getBarState(provider) {
-    const pctCandidates = [provider.session_pct, provider.weekly_pct].filter((v) => Number.isFinite(v));
-    const pct = pctCandidates.length ? Math.max(...pctCandidates) : null;
-
-    if (provider.status === 'not_connected') {
-      return { label: '-', fill: 100, color: '#4b5563' };
-    }
-    if (provider.status === 'error') {
-      return { label: '?', fill: 100, color: '#6b7280' };
-    }
-    if (!Number.isFinite(pct)) {
-      return { label: '?', fill: 100, color: '#6b7280' };
-    }
-    const color = pct <= 50 ? '#22c55e' : pct <= 80 ? '#eab308' : '#ef4444';
-    return { label: `${Math.round(pct)}%`, fill: Math.max(0, Math.min(100, pct)), color };
-  }
-
-  function renderCliUsageBars() {
-    const codex = normalizeProvider(cliUsageState?.providers?.codex, 'Codex CLI');
-    const claude = normalizeProvider(cliUsageState?.providers?.claude, 'Claude Code');
-    renderCliProviderBar('codex', codex);
-    renderCliProviderBar('claude', claude);
-  }
-
-  function renderCliProviderBar(id, provider) {
-    const fillEl = document.getElementById(`cliUsageFill-${id}`);
-    const labelEl = document.getElementById(`cliUsageLabel-${id}`);
-    const barEl = document.getElementById(`cliUsageBar-${id}`);
-    if (!fillEl || !labelEl || !barEl) return;
-
-    const state = getBarState(provider);
-    fillEl.style.width = `${state.fill}%`;
-    fillEl.style.backgroundColor = state.color;
-    labelEl.textContent = state.label;
-    barEl.title = `${provider.name}: ${state.label}`;
-    barEl.setAttribute('aria-expanded', expandedCliProvider === id ? 'true' : 'false');
-  }
-
-  function toggleCliDetail(providerId) {
-    expandedCliProvider = expandedCliProvider === providerId ? null : providerId;
-    renderCliUsageBars();
-    renderCliUsageDetail();
-  }
-
-  function renderCliUsageDetail() {
-    const detailEl = document.getElementById('cliUsageDetail');
-    if (!detailEl) return;
-    if (!expandedCliProvider) {
-      detailEl.hidden = true;
-      detailEl.innerHTML = '';
-      return;
-    }
-
-    const provider = normalizeProvider(
-      cliUsageState?.providers?.[expandedCliProvider],
-      expandedCliProvider === 'codex' ? 'Codex CLI' : 'Claude Code'
-    );
-
-    const statusText =
-      provider.status === 'ok' ? 'Connected'
-      : provider.status === 'rate_limited' ? 'Rate limited'
-      : provider.status === 'not_connected' ? 'Not connected'
-      : 'Error';
-
-    const sessionLine = Number.isFinite(provider.session_pct)
-      ? `${Math.round(provider.session_pct)}% used, resets in ${formatDurationFromNow(provider.session_reset)}`
-      : provider.status === 'not_connected'
-        ? 'Not connected'
-        : 'Unavailable';
-    const weeklyLine = Number.isFinite(provider.weekly_pct)
-      ? `${Math.round(provider.weekly_pct)}% used, resets ${formatDay(provider.weekly_reset)}`
-      : provider.status === 'not_connected'
-        ? 'Not connected'
-        : 'Unavailable';
-
-    const codexCredits = expandedCliProvider === 'codex'
-      ? `<div class="cli-usage-detail-line">Credits remaining: ${
-          Number.isFinite(provider.credits) ? `$${provider.credits.toFixed(2)}` : '—'
-        }</div>`
-      : '';
-
-    const claudeHint = expandedCliProvider === 'claude' && provider.status === 'not_connected'
-      ? '<div class="cli-usage-detail-error">Not authenticated. SSH to VPS and run: <code>claude login</code></div>'
-      : '';
-
-    const maybeError = provider.error && provider.status !== 'not_connected'
-      ? `<div class="cli-usage-detail-error">${escapeHtml(provider.error)}</div>`
-      : '';
-
-    detailEl.innerHTML = `
-      <div class="cli-usage-detail-header">
-        <div class="cli-usage-detail-title">${escapeHtml(provider.name)} · ${statusText}</div>
-        <button class="cli-usage-detail-close" type="button" id="cliUsageDetailClose" aria-label="Close usage details">×</button>
-      </div>
-      <div class="cli-usage-detail-line">Session: ${sessionLine}</div>
-      <div class="cli-usage-detail-line">Weekly: ${weeklyLine}</div>
-      ${codexCredits}
-      ${claudeHint}
-      ${maybeError}
-    `;
-    detailEl.hidden = false;
-
-    const closeBtn = document.getElementById('cliUsageDetailClose');
-    if (closeBtn) closeBtn.addEventListener('click', () => toggleCliDetail(expandedCliProvider));
-  }
-
-  function formatDurationFromNow(iso) {
-    if (!iso) return '—';
-    const ts = Date.parse(iso);
-    if (Number.isNaN(ts)) return '—';
-    const diffMs = ts - Date.now();
-    if (diffMs <= 0) return 'now';
-    const totalMin = Math.floor(diffMs / 60000);
-    const h = Math.floor(totalMin / 60);
-    const m = totalMin % 60;
-    if (h <= 0) return `${m}m`;
-    return `${h}h ${m}m`;
-  }
-
-  function formatDay(iso) {
-    if (!iso) return '—';
-    const ts = Date.parse(iso);
-    if (Number.isNaN(ts)) return '—';
-    return new Date(ts).toLocaleDateString([], { weekday: 'short' });
-  }
-
-  function escapeHtml(value) {
-    return String(value)
-      .replaceAll('&', '&amp;')
-      .replaceAll('<', '&lt;')
-      .replaceAll('>', '&gt;')
-      .replaceAll('"', '&quot;')
-      .replaceAll("'", '&#39;');
-  }
 
   // ════════════════════════════════════════════════════
   // HEALTH COMPUTATION (shared across pages)
@@ -1337,40 +791,6 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
   window.getHeartbeatTs = getHeartbeatTs;
 
   // ════════════════════════════════════════════════════
-  // THEME TOGGLE
-  // ════════════════════════════════════════════════════
-
-  window.toggleTheme = function () {
-    const html = document.documentElement;
-    const isDark = html.getAttribute('data-theme') !== 'light';
-    html.setAttribute('data-theme', isDark ? 'light' : 'dark');
-    localStorage.setItem('cc-theme', isDark ? 'light' : 'dark');
-    updateThemeIcon();
-  };
-
-  function updateThemeIcon() {
-    const isDark =
-      document.documentElement.getAttribute('data-theme') !== 'light';
-    const icon = document.getElementById('themeIcon');
-    if (icon) icon.setAttribute('data-lucide', isDark ? 'moon' : 'sun');
-    refreshIcons();
-  }
-
-  // ════════════════════════════════════════════════════
-  // SIDEBAR COLLAPSE
-  // ════════════════════════════════════════════════════
-
-  window.toggleSidebar = function () {
-    document.body.classList.toggle('sidebar-collapsed');
-    localStorage.setItem(
-      'cc-sidebar',
-      document.body.classList.contains('sidebar-collapsed')
-        ? 'collapsed'
-        : 'open'
-    );
-  };
-
-  // ════════════════════════════════════════════════════
   // LOGOUT
   // ════════════════════════════════════════════════════
 
@@ -1384,12 +804,10 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
   // ════════════════════════════════════════════════════
 
   function updateClock() {
-    const el = document.getElementById('topbarTime');
-    if (el)
-      el.textContent = new Date().toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit',
-      });
+    window.layoutClock = new Date().toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   }
 
   // ════════════════════════════════════════════════════
@@ -1447,10 +865,7 @@ body.sidebar-collapsed .topbar { grid-column: 1 / -1; }
       e.target.tagName === 'SELECT'
     )
       return;
-    if (e.key === 't' || e.key === 'T') window.toggleTheme();
-    if (e.key === 'b' || e.key === 'B') window.toggleSidebar();
     if (e.key === 'r' || e.key === 'R') location.reload();
-    if (e.key === 'n' || e.key === 'N') window.location.href = '/create.html';
     // Number keys: jump to agent
     const num = parseInt(e.key);
     if (num >= 1 && num <= 9) {
