@@ -5,13 +5,28 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Intelligence — Clawd Control</title>
 <link rel="stylesheet" href="intelligence.css">
+<style>
+.page-header h1 {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-shadow: 0 0 8px rgba(45, 212, 191, 0.5);
+}
+.page-header .subtitle {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+</style>
 </head>
 <body>
 
 <main class="main">
   <div class="page-header fade-up">
-    <h1>🧠 Intelligence <button class="settings-gear" onclick="toggleSettingsPanel()" title="Intelligence Settings"><i data-lucide="settings"></i></button></h1>
-    <p>Token, rate limit, capacity, and cost intelligence across all agents</p>
+    <h1>Usage</h1>
+    <button class="settings-gear" onclick="toggleSettingsPanel()" title="Intelligence Settings"><i data-lucide="settings"></i></button>
+    <p class="subtitle">Where tokens and money go.</p>
   </div>
 
   <div class="controls fade-up" style="animation-delay:.05s">

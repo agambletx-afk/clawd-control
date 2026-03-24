@@ -14,12 +14,17 @@
     }
 
     .page-header h1 {
-      font-size: 1.9rem;
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text-primary);
+      text-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
     }
 
-    .subtitle {
+    .page-header .subtitle {
+      font-size: 13px;
+      font-weight: 400;
       color: var(--text-secondary);
-      font-size: 0.88rem;
+      margin-top: 4px;
     }
 
     .section {
@@ -578,8 +583,8 @@
 <body>
   <main class="main">
     <div class="page-header">
-      <h1>⚙️ Operations</h1>
-      <div class="subtitle">Service controls, cron triggers, backups, and full audit trail.</div>
+      <h1>Operations</h1>
+      <p class="subtitle">Infrastructure health, jobs, recovery, and learning.</p>
     </div>
 
     <section id="versionCheckBanner" class="version-check-banner" aria-label="OpenClaw version check">
