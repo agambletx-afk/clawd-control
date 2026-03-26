@@ -554,36 +554,6 @@
       <div class="activity-feed-empty">Loading…</div>
     </div>
   </div>
-
-  <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
-    <button class="ctrl-btn" onclick="fleetClearCooldowns()" title="Clear all API cooldowns across all agents" style="font-size:0.68rem">
-      <i data-lucide="timer-reset"></i> Clear All Cooldowns
-    </button>
-  </div>
-  <div class="fleet-breakdown fade-up" style="animation-delay:.25s" id="fleetBreakdown">
-    <span class="label">Fleet Health</span>
-    <div class="breakdown-bar" id="breakdownBar"></div>
-    <span class="fleet-pct" id="fleetPct">—</span>
-  </div>
-
-  <div class="view-toggle" id="viewToggle">
-    <span class="label">View</span>
-    <button class="view-btn active" id="btnCompact" onclick="setView('compact')" title="Compact view">
-      <i data-lucide="rows-3"></i> Compact
-    </button>
-    <button class="view-btn" id="btnExpanded" onclick="setView('expanded')" title="Expanded view">
-      <i data-lucide="layout-grid"></i> Expanded
-    </button>
-  </div>
-
-  <div id="agentGrid" class="agents-grid compact">
-    <div class="empty-state">
-      <div class="icon">📡</div>
-      <p>Connecting to agents…</p>
-    </div>
-  </div>
-
-  <div class="scan-footer" id="scanFooter"></div>
 </main>
 
 <script src="/layout.js"></script>
@@ -601,20 +571,11 @@ const $ = s => document.querySelector(s);
 // ═══════════════════════════════════════════
 // VIEW MODE (compact / expanded)
 // ═══════════════════════════════════════════
-let viewMode = localStorage.getItem('cc-view') || 'compact';
 
-function setView(mode) {
-  viewMode = mode;
-  localStorage.setItem('cc-view', mode);
-  $('#btnCompact').classList.toggle('active', mode === 'compact');
-  $('#btnExpanded').classList.toggle('active', mode === 'expanded');
-  $('#agentGrid').classList.toggle('compact', mode === 'compact');
-  renderAll();
-}
+
 
 // Apply saved view on load
 document.addEventListener('DOMContentLoaded', () => {
-  setView(viewMode);
   renderSummarizerCards();
   renderActionQueue();
   renderActivityFeed();
@@ -627,17 +588,17 @@ document.addEventListener('DOMContentLoaded', () => {
 // SSE EVENT LISTENERS (from layout.js)
 // ═══════════════════════════════════════════
 
-document.addEventListener('layout:snapshot', () => { renderAll(); renderSummarizerCards(); renderActionQueue(); renderActivityFeed(); });
-document.addEventListener('layout:agent-update', (e) => {
-  renderAgent(e.detail.id);
-  renderStats();
-});
+document.addEventListener('layout:snapshot', () => { renderSummarizerCards(); renderActionQueue(); renderActivityFeed(); });
+document.addEventListener('layout:agent-update', () => { renderSummarizerCards(); });
 
 // ═══════════════════════════════════════════
 // RENDER
 // ═══════════════════════════════════════════
 
 function renderAll() {
+  renderSummarizerCards();
+  return;
+  // Dead code below - legacy agent grid removed
   renderStats();
   renderFleetHealth();
   const grid = $('#agentGrid');
