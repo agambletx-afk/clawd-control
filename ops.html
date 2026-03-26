@@ -565,6 +565,302 @@
     .gateway-event-msg { font-size: 0.8rem; color: var(--text-primary); }
     .gateway-event-msg.alert { color: #ef4444; }
 
+
+    .ops-sub-nav {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 4px;
+      margin-bottom: 14px;
+      overflow-x: auto;
+      max-width: 100%;
+    }
+
+    .ops-sub-nav-btn {
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      border-radius: 4px;
+      padding: 6px 12px;
+      cursor: pointer;
+      font-size: 0.78rem;
+      font-weight: 600;
+      white-space: nowrap;
+      transition: background 0.2s ease, color 0.2s ease;
+    }
+
+    .ops-sub-nav-btn:hover { color: var(--text-primary); }
+
+    .ops-sub-nav-btn.active {
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+    }
+
+    .ops-logs-view {
+      display: grid;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .ops-logs-health-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .ops-logs-health-card {
+      position: relative;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      background: var(--bg-surface);
+      padding: 10px 10px 10px 12px;
+      overflow: hidden;
+    }
+
+    .ops-logs-health-card::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 3px;
+      background: #ef4444;
+    }
+
+    .ops-logs-health-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .ops-logs-health-label {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-weight: 600;
+    }
+
+    .ops-status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex: 0 0 8px;
+    }
+
+    .ops-status-dot.ok { background: #22c55e; }
+    .ops-status-dot.warn { background: var(--accent-amber); }
+    .ops-status-dot.bad { background: var(--accent-red); }
+    .ops-status-dot.idle { background: #94a3b8; }
+
+    .ops-logs-health-value,
+    .ops-logs-health-sub {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .ops-logs-health-value {
+      font-size: 0.95rem;
+      color: var(--text-primary);
+      margin-bottom: 2px;
+    }
+
+    .ops-logs-health-sub {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+    }
+
+    .ops-logs-filter-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      background: var(--bg-surface);
+      padding: 12px;
+    }
+
+    .ops-logs-filter-bar select,
+    .ops-logs-filter-bar input {
+      min-height: 30px;
+      font-size: 0.76rem;
+    }
+
+    .ops-severity-group {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 2px;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      background: var(--bg-tertiary);
+    }
+
+    .ops-severity-btn {
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .ops-severity-btn.active {
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+    }
+
+    .ops-severity-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex: 0 0 7px;
+    }
+
+    .ops-severity-dot.info { background: var(--text-secondary); }
+    .ops-severity-dot.warning { background: var(--accent-amber); }
+    .ops-severity-dot.error { background: var(--accent-red); }
+
+    .ops-logs-list-shell {
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      background: var(--bg-surface);
+      overflow: hidden;
+      min-width: 0;
+    }
+
+    .ops-logs-list-state {
+      text-align: center;
+      color: var(--text-secondary);
+      padding: 24px 12px;
+      font-size: 0.82rem;
+    }
+
+    .ops-logs-list-state.error { color: var(--accent-red); }
+
+    .ops-log-row {
+      border-bottom: 1px solid var(--border-subtle);
+      padding: 8px 10px;
+      cursor: pointer;
+    }
+
+    .ops-log-row:nth-child(odd) { background: transparent; }
+    .ops-log-row:nth-child(even) { background: rgba(148, 163, 184, 0.06); }
+
+    .ops-log-main {
+      display: grid;
+      grid-template-columns: 96px 12px auto auto minmax(0, 1fr);
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .ops-log-time {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      font-size: 12px;
+      color: var(--text-secondary);
+      white-space: nowrap;
+    }
+
+    .ops-log-severity-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    .ops-log-badge {
+      display: inline-flex;
+      align-items: center;
+      border-radius: var(--radius-full);
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+      padding: 2px 8px;
+      font-size: 10px;
+      line-height: 1.2;
+      text-transform: lowercase;
+      white-space: nowrap;
+    }
+
+    .ops-log-message {
+      min-width: 0;
+      color: var(--text-primary);
+      font-size: 13px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .ops-log-detail {
+      margin-top: 8px;
+      margin-left: 116px;
+      background: var(--bg-input);
+      border-radius: var(--radius-sm);
+      padding: 8px;
+      max-height: 200px;
+      overflow: auto;
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      line-height: 1.4;
+      white-space: pre-wrap;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .ops-logs-pagination {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      color: var(--text-secondary);
+      font-size: 0.8rem;
+      font-variant-numeric: tabular-nums;
+      font-family: var(--font-mono);
+    }
+
+    .ops-logs-stale {
+      color: var(--text-tertiary);
+      font-size: 0.72rem;
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+
+    @media (max-width: 1200px) {
+      .ops-logs-health-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 1024px) {
+      .ops-log-main {
+        grid-template-columns: 84px 12px auto minmax(0, 1fr);
+      }
+
+      .ops-log-main .ops-log-badge.ops-log-agent {
+        display: none;
+      }
+
+      .ops-logs-filter-bar > * {
+        flex: 1 1 180px;
+        min-width: 0;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .ops-logs-health-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .ops-log-detail { margin-left: 0; }
+    }
+
     /* =========================================================
        Responsive
        ========================================================= */
@@ -587,6 +883,12 @@
       <p class="subtitle">Infrastructure health, jobs, recovery, and learning.</p>
     </div>
 
+    <div class="ops-sub-nav" id="opsSubNav" role="tablist" aria-label="Operations views">
+      <button class="ops-sub-nav-btn active" data-view="health" role="tab" aria-selected="true">Health</button>
+      <button class="ops-sub-nav-btn" data-view="logs" role="tab" aria-selected="false">Logs</button>
+    </div>
+
+    <div id="ops-health-view">
     <section id="versionCheckBanner" class="version-check-banner" aria-label="OpenClaw version check">
       <div class="version-check-main">
         <div id="versionCheckSummary" class="version-check-summary">
@@ -732,6 +1034,36 @@
         </div>
       </div>
     </div>
+    </div>
+
+    <div id="ops-logs-view" class="ops-logs-view" style="display:none;">
+      <section class="section">
+        <h2 style="margin-bottom: 8px;">Unified Logs Viewer</h2>
+        <div id="opsLogsHealthStale" class="ops-logs-stale" style="display:none;"></div>
+        <div id="opsLogsHealthGrid" class="ops-logs-health-grid"></div>
+      </section>
+
+      <section class="section" style="padding: 0; background: transparent; border: none; margin-bottom: 0;">
+        <div class="ops-logs-filter-bar">
+          <select id="opsLogSourceFilter" aria-label="Log source filter"></select>
+          <div id="opsLogSeverityGroup" class="ops-severity-group" aria-label="Log severity filter"></div>
+          <select id="opsLogRangeFilter" aria-label="Log time range filter"></select>
+          <input id="opsLogAgentFilter" type="text" placeholder="Agent filter..." aria-label="Agent filter" />
+        </div>
+      </section>
+
+      <section class="section" style="padding: 0; background: transparent; border: none;">
+        <div id="opsLogsStale" class="ops-logs-stale" style="margin-bottom: 6px; display:none;"></div>
+        <div id="opsLogsListShell" class="ops-logs-list-shell">
+          <div id="opsLogsList" class="ops-logs-list-state">Loading logs...</div>
+        </div>
+        <div class="ops-logs-pagination" style="margin-top: 10px;">
+          <button id="opsLogsPrevBtn" class="btn">Previous</button>
+          <span id="opsLogsPageInfo">Showing 0-0 of 0 entries</span>
+          <button id="opsLogsNextBtn" class="btn">Next</button>
+        </div>
+      </section>
+    </div>
   </main>
 
   <script src="/layout.js"></script>
@@ -745,7 +1077,29 @@
       verificationError: '',
       verificationCategoryExpanded: {},
       gatewayEventsOpen: false,
-      gatewayEvents: []
+      gatewayEvents: [],
+      opsView: 'health',
+      opsLogs: {
+        initialized: false,
+        page: 0,
+        pageSize: 50,
+        source: '',
+        severity: 'all',
+        range: '24h',
+        agent: '',
+        entries: [],
+        total: 0,
+        loading: false,
+        error: '',
+        staleAt: null,
+        expanded: {},
+        health: {},
+        healthLoading: false,
+        healthError: '',
+        healthStaleAt: null,
+        timersStarted: false,
+        agentDebounce: null
+      }
     };
 
     const $ = (id) => document.getElementById(id);
@@ -1366,6 +1720,338 @@
       await loadLog(false);
     }
 
+    function getOpsViewFromHash() {
+      const raw = (location.hash || '').replace(/^#/, '');
+      return raw === 'logs' ? 'logs' : 'health';
+    }
+
+    function renderOpsSubNav() {
+      const view = state.opsView;
+      const healthView = $('ops-health-view');
+      const logsView = $('ops-logs-view');
+      if (healthView) healthView.style.display = view === 'health' ? '' : 'none';
+      if (logsView) logsView.style.display = view === 'logs' ? '' : 'none';
+      document.querySelectorAll('#opsSubNav .ops-sub-nav-btn').forEach((btn) => {
+        const active = btn.dataset.view === view;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-selected', active ? 'true' : 'false');
+      });
+      if (view === 'logs') {
+        ensureOpsLogsLoaded();
+      }
+    }
+
+    function setOpsView(view) {
+      const resolved = view === 'logs' ? 'logs' : 'health';
+      state.opsView = resolved;
+      if (location.hash !== `#${resolved}`) {
+        location.hash = resolved;
+        return;
+      }
+      renderOpsSubNav();
+    }
+
+    function setupOpsSubNav() {
+      state.opsView = getOpsViewFromHash();
+      if (!location.hash || !['#health', '#logs'].includes(location.hash)) {
+        location.hash = '#health';
+      }
+      const nav = $('opsSubNav');
+      if (nav && !nav.dataset.bound) {
+        nav.dataset.bound = '1';
+        nav.addEventListener('click', (event) => {
+          const btn = event.target.closest('.ops-sub-nav-btn');
+          if (!btn) return;
+          setOpsView(btn.dataset.view);
+        });
+      }
+      if (!window.__opsHashHandlerBound) {
+        window.__opsHashHandlerBound = true;
+        window.addEventListener('hashchange', () => {
+          state.opsView = getOpsViewFromHash();
+          renderOpsSubNav();
+        });
+      }
+      renderOpsSubNav();
+    }
+
+    function sourceLabel(source) {
+      const map = {
+        task_audit: 'Task Audit',
+        ops_log: 'Ops Log',
+        security_hook: 'Security Hook',
+        cron_health: 'Cron Health',
+        watcher: 'Watcher'
+      };
+      return map[source] || source;
+    }
+
+    function severityClass(severity) {
+      if (severity === 'error') return 'bad';
+      if (severity === 'warning') return 'warn';
+      if (severity === 'info') return 'ok';
+      return 'idle';
+    }
+
+    function logSeverityColor(severity) {
+      if (severity === 'error') return 'var(--accent-red)';
+      if (severity === 'warning') return 'var(--accent-amber)';
+      return 'var(--text-tertiary)';
+    }
+
+    function toAfterIso(range) {
+      const now = Date.now();
+      const map = {
+        '1h': 60 * 60 * 1000,
+        '6h': 6 * 60 * 60 * 1000,
+        '24h': 24 * 60 * 60 * 1000,
+        '7d': 7 * 24 * 60 * 60 * 1000
+      };
+      if (!map[range]) return '';
+      return new Date(now - map[range]).toISOString();
+    }
+
+    function renderOpsLogsHealth() {
+      const grid = $('opsLogsHealthGrid');
+      if (!grid) return;
+      const sources = ['task_audit', 'ops_log', 'security_hook', 'cron_health', 'watcher'];
+      grid.innerHTML = sources.map((source) => {
+        const item = state.opsLogs.health[source] || {};
+        const lastIngest = item.last_ingest_at || null;
+        const isRecent = lastIngest && (Date.now() - Date.parse(lastIngest) <= 5 * 60 * 1000);
+        let status = 'idle';
+        if (item.error_state) status = 'bad';
+        else if (!lastIngest) status = 'idle';
+        else if (!isRecent) status = 'warn';
+        else status = 'ok';
+        return `<div class="ops-logs-health-card">
+          <div class="ops-logs-health-head">
+            <div class="ops-logs-health-label">${esc(sourceLabel(source))}</div>
+            <span class="ops-status-dot ${status}"></span>
+          </div>
+          <div class="ops-logs-health-value">${Number(item.log_count || 0).toLocaleString()}</div>
+          <div class="ops-logs-health-sub">${esc(lastIngest ? rel(lastIngest) : 'never')}</div>
+        </div>`;
+      }).join('');
+      const stale = $('opsLogsHealthStale');
+      if (stale) {
+        if (state.opsLogs.healthError) {
+          stale.style.display = '';
+          stale.textContent = `Health stale · ${state.opsLogs.healthError}`;
+        } else if (state.opsLogs.healthStaleAt) {
+          stale.style.display = '';
+          stale.textContent = `Health last updated ${rel(state.opsLogs.healthStaleAt)}`;
+        } else {
+          stale.style.display = 'none';
+          stale.textContent = '';
+        }
+      }
+    }
+
+    async function loadOpsLogsHealth() {
+      state.opsLogs.healthLoading = true;
+      try {
+        const data = await api('/api/logs/health');
+        const sources = Array.isArray(data.sources) ? data.sources : [];
+        state.opsLogs.health = sources.reduce((acc, entry) => {
+          if (entry && entry.source) acc[entry.source] = entry;
+          return acc;
+        }, {});
+        state.opsLogs.healthError = '';
+        state.opsLogs.healthStaleAt = new Date().toISOString();
+      } catch (error) {
+        state.opsLogs.healthError = error.message;
+      } finally {
+        state.opsLogs.healthLoading = false;
+      }
+      renderOpsLogsHealth();
+    }
+
+    function getOpsLogsQuery() {
+      const params = new URLSearchParams();
+      params.set('limit', String(state.opsLogs.pageSize));
+      params.set('offset', String(state.opsLogs.page * state.opsLogs.pageSize));
+      if (state.opsLogs.source) params.set('source', state.opsLogs.source);
+      if (state.opsLogs.severity && state.opsLogs.severity !== 'all') params.set('severity', state.opsLogs.severity);
+      const after = toAfterIso(state.opsLogs.range);
+      if (after) params.set('after', after);
+      if (state.opsLogs.agent.trim()) params.set('agent', state.opsLogs.agent.trim());
+      return params.toString();
+    }
+
+    function renderOpsLogsList() {
+      const list = $('opsLogsList');
+      const prevBtn = $('opsLogsPrevBtn');
+      const nextBtn = $('opsLogsNextBtn');
+      const info = $('opsLogsPageInfo');
+      if (!list || !prevBtn || !nextBtn || !info) return;
+
+      if (state.opsLogs.loading) {
+        list.innerHTML = '<div class="ops-logs-list-state">Loading logs...</div>';
+      } else if (state.opsLogs.error && !state.opsLogs.entries.length) {
+        list.innerHTML = `<div class="ops-logs-list-state error">Failed to load logs.<div style="margin-top:8px;"><button id="opsLogsRetryBtn" class="btn btn-red">Retry</button></div></div>`;
+        const retryBtn = $('opsLogsRetryBtn');
+        if (retryBtn) retryBtn.onclick = () => loadOpsLogs();
+      } else if (!state.opsLogs.entries.length) {
+        list.innerHTML = '<div class="ops-logs-list-state">No log entries match the current filters.</div>';
+      } else {
+        list.innerHTML = state.opsLogs.entries.map((entry, index) => {
+          const key = entry.id || `${entry.timestamp || 'ts'}-${index}`;
+          const expanded = !!state.opsLogs.expanded[key];
+          const detail = entry.detail ? `<pre class="ops-log-detail">${esc(String(entry.detail))}</pre>` : '';
+          const agent = entry.agent && entry.agent !== 'system' ? `<span class="ops-log-badge ops-log-agent">${esc(entry.agent)}</span>` : '';
+          return `<div class="ops-log-row" data-log-key="${esc(key)}">
+            <div class="ops-log-main">
+              <span class="ops-log-time" title="${esc(entry.timestamp || '')}">${esc(rel(entry.timestamp))}</span>
+              <span class="ops-log-severity-dot" style="background:${logSeverityColor(entry.severity)}"></span>
+              <span class="ops-log-badge">${esc(entry.source || 'unknown')}</span>
+              ${agent}
+              <span class="ops-log-message">${esc(entry.message || '—')}</span>
+            </div>
+            ${expanded ? detail : ''}
+          </div>`;
+        }).join('');
+      }
+
+      const stale = $('opsLogsStale');
+      if (stale) {
+        if (state.opsLogs.error) {
+          stale.style.display = '';
+          stale.textContent = `Logs stale · ${state.opsLogs.error}`;
+        } else if (state.opsLogs.staleAt) {
+          stale.style.display = '';
+          stale.textContent = `Logs last updated ${rel(state.opsLogs.staleAt)}`;
+        }
+      }
+
+      const start = state.opsLogs.total === 0 ? 0 : state.opsLogs.page * state.opsLogs.pageSize + 1;
+      const end = Math.min((state.opsLogs.page + 1) * state.opsLogs.pageSize, state.opsLogs.total);
+      info.textContent = `Showing ${start}-${end} of ${state.opsLogs.total} entries`;
+      prevBtn.disabled = state.opsLogs.page === 0 || state.opsLogs.loading;
+      nextBtn.disabled = state.opsLogs.loading || end >= state.opsLogs.total;
+
+      if (!list.dataset.bound) {
+        list.dataset.bound = '1';
+        list.addEventListener('click', (event) => {
+          const row = event.target.closest('.ops-log-row');
+          if (!row) return;
+          const key = row.getAttribute('data-log-key');
+          state.opsLogs.expanded[key] = !state.opsLogs.expanded[key];
+          renderOpsLogsList();
+        });
+      }
+    }
+
+    async function loadOpsLogs() {
+      state.opsLogs.loading = true;
+      renderOpsLogsList();
+      try {
+        const query = getOpsLogsQuery();
+        const data = await api(`/api/logs?${query}`);
+        const entries = Array.isArray(data.entries) ? data.entries : (Array.isArray(data.logs) ? data.logs : []);
+        state.opsLogs.entries = entries;
+        state.opsLogs.total = Number(data.total ?? data.count ?? entries.length ?? 0);
+        state.opsLogs.error = '';
+        state.opsLogs.staleAt = new Date().toISOString();
+      } catch (error) {
+        state.opsLogs.error = error.message;
+      } finally {
+        state.opsLogs.loading = false;
+        renderOpsLogsList();
+      }
+    }
+
+    function applyOpsLogFiltersAndReload(resetPage = true) {
+      if (resetPage) state.opsLogs.page = 0;
+      loadOpsLogs();
+    }
+
+    function initOpsLogsControls() {
+      const sourceSelect = $('opsLogSourceFilter');
+      const rangeSelect = $('opsLogRangeFilter');
+      const severityGroup = $('opsLogSeverityGroup');
+      const agentInput = $('opsLogAgentFilter');
+      if (!sourceSelect || !rangeSelect || !severityGroup || !agentInput) return;
+
+      sourceSelect.innerHTML = `
+        <option value="">All Sources</option>
+        <option value="task_audit">task_audit</option>
+        <option value="ops_log">ops_log</option>
+        <option value="security_hook">security_hook</option>
+        <option value="cron_health">cron_health</option>
+        <option value="watcher">watcher</option>
+      `;
+      rangeSelect.innerHTML = `
+        <option value="1h">Last hour</option>
+        <option value="6h">Last 6 hours</option>
+        <option value="24h" selected>Last 24 hours</option>
+        <option value="7d">Last 7 days</option>
+        <option value="all">All time</option>
+      `;
+      severityGroup.innerHTML = ['info', 'warning', 'error', 'all'].map((sev) => {
+        const dot = sev === 'all' ? '' : `<span class="ops-severity-dot ${sev}"></span>`;
+        const active = sev === 'all' ? 'active' : '';
+        return `<button class="ops-severity-btn ${active}" data-severity="${sev}">${dot}${sev}</button>`;
+      }).join('');
+
+      sourceSelect.onchange = (event) => {
+        state.opsLogs.source = event.target.value;
+        applyOpsLogFiltersAndReload(true);
+      };
+      rangeSelect.onchange = (event) => {
+        state.opsLogs.range = event.target.value;
+        applyOpsLogFiltersAndReload(true);
+      };
+      severityGroup.onclick = (event) => {
+        const btn = event.target.closest('.ops-severity-btn');
+        if (!btn) return;
+        state.opsLogs.severity = btn.dataset.severity;
+        severityGroup.querySelectorAll('.ops-severity-btn').forEach((pill) => pill.classList.toggle('active', pill === btn));
+        applyOpsLogFiltersAndReload(true);
+      };
+      agentInput.oninput = (event) => {
+        const value = event.target.value;
+        if (state.opsLogs.agentDebounce) clearTimeout(state.opsLogs.agentDebounce);
+        state.opsLogs.agentDebounce = setTimeout(() => {
+          state.opsLogs.agent = value;
+          applyOpsLogFiltersAndReload(true);
+        }, 300);
+      };
+
+      $('opsLogsPrevBtn').onclick = () => {
+        if (state.opsLogs.page === 0) return;
+        state.opsLogs.page -= 1;
+        loadOpsLogs();
+      };
+      $('opsLogsNextBtn').onclick = () => {
+        state.opsLogs.page += 1;
+        loadOpsLogs();
+      };
+    }
+
+    function ensureOpsLogsLoaded() {
+      if (!state.opsLogs.initialized) return;
+      if (!state.opsLogs.entries.length && !state.opsLogs.loading) loadOpsLogs();
+      if (!Object.keys(state.opsLogs.health).length && !state.opsLogs.healthLoading) loadOpsLogsHealth();
+    }
+
+    function initOpsLogsView() {
+      if (state.opsLogs.initialized) return;
+      state.opsLogs.initialized = true;
+      initOpsLogsControls();
+      loadOpsLogsHealth();
+      loadOpsLogs();
+      if (!state.opsLogs.timersStarted) {
+        state.opsLogs.timersStarted = true;
+        window.__opsLogsRefreshTimer = setInterval(() => {
+          loadOpsLogs().catch(() => {});
+        }, 30000);
+        window.__opsLogsHealthRefreshTimer = setInterval(() => {
+          loadOpsLogsHealth().catch(() => {});
+        }, 60000);
+      }
+    }
+
     // Close manifest modal.
     function closeManifestModal() {
       $('manifestModal').classList.remove('open');
@@ -1376,6 +2062,9 @@
       const initRoot = $('serviceCards');
       if (!initRoot || window.__opsInitRoot === initRoot) return;
       window.__opsInitRoot = initRoot;
+
+      setupOpsSubNav();
+      initOpsLogsView();
 
       $('freshSessionBtn').onclick = handleFreshSession;
       $('versionCheckBanner').onclick = () => {
