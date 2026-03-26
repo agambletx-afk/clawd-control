@@ -249,18 +249,103 @@
     }
     .archive-collapsed .column-body { display: none; }
 
+    /* ── Task Card v2 ──────────────────────── */
     .task-card {
-      background: var(--bg-tertiary);
+      padding: 8px 10px;
+      background: var(--bg-secondary);
       border: 1px solid var(--border-subtle);
-      border-left: 4px solid var(--text-tertiary);
-      border-radius: 10px;
-      padding: 5px 6px;
+      border-left: 3px solid var(--text-tertiary);
+      border-radius: 6px;
+      margin-bottom: 6px;
       cursor: pointer;
-      box-shadow: var(--shadow-sm);
+      transition: all 150ms;
     }
     .task-card:hover { border-color: var(--border); background: var(--surface); }
-    .task-title { font-size: 0.74rem; font-weight: 700; line-height: 1.12; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .meta-row { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; line-height: 1.1; }
+
+    .card-line-1 {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+    }
+    .card-id {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      color: var(--text-tertiary);
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+    .card-title-text {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+    }
+
+    .card-line-2 {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+    }
+    .card-type-pill {
+      font-size: 0.58rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 1px 6px;
+      border-radius: 4px;
+      white-space: nowrap;
+    }
+    .card-priority {
+      font-size: 0.6rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 1px 5px;
+      border-radius: 4px;
+    }
+    .card-priority.priority-critical { background: rgba(239,68,68,0.15); color: #ef4444; }
+    .card-priority.priority-high { background: rgba(245,158,11,0.15); color: #f59e0b; }
+    .card-priority.priority-medium { background: rgba(161,161,170,0.1); color: var(--text-secondary); }
+    .card-priority.priority-low { background: rgba(161,161,170,0.06); color: var(--text-tertiary); }
+
+    .artifact-progress {
+      font-size: 0.6rem;
+      letter-spacing: 2px;
+      color: var(--text-tertiary);
+      font-family: var(--font-mono);
+    }
+
+    .card-line-3 {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.65rem;
+      color: var(--text-tertiary);
+    }
+    .card-claimer {
+      font-weight: 500;
+      color: var(--text-secondary);
+    }
+    .card-age {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+    .card-flag {
+      font-size: 0.55rem;
+      font-weight: 800;
+      padding: 0 4px;
+      border-radius: 3px;
+      text-transform: uppercase;
+    }
+    .flag-blocked { background: rgba(239,68,68,0.15); color: #ef4444; }
+    .flag-failed { background: rgba(239,68,68,0.15); color: #ef4444; }
+    .flag-stale { background: rgba(245,158,11,0.15); color: #f59e0b; }
+
     .badge {
       font-size: 0.61rem;
       border: 1px solid var(--border);
@@ -280,17 +365,6 @@
       display: inline-flex;
       font-size: 0.6rem;
     }
-    .task-card.overdue { border-left-color: #ef4444 !important; }
-    .meta-sub { margin-top: 3px; display: flex; align-items: center; justify-content: space-between; color: var(--text-tertiary); font-size: 0.62rem; line-height: 1.1; }
-    .failure-badge-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #ef4444;
-      display: inline-block;
-      box-shadow: 0 0 0 1px rgba(239,68,68,0.3);
-    }
-
     .retry-status {
       border: 1px solid var(--border-subtle);
       border-radius: 8px;
@@ -360,10 +434,75 @@
     }
     .expand-toggle:hover { color: var(--text-secondary); }
 
-    .priority-critical { border-left-color: #f87171; }
-    .priority-high { border-left-color: #fb923c; }
-    .priority-medium { border-left-color: #60a5fa; }
-    .priority-low { border-left-color: #9ca3af; }
+
+    .panel-tabs {
+      display: flex;
+      gap: 2px;
+      background: var(--bg-input, var(--bg-tertiary));
+      border-radius: 9999px;
+      padding: 2px;
+      margin-bottom: 12px;
+    }
+    .panel-tab {
+      padding: 4px 12px;
+      border-radius: 9999px;
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 150ms;
+    }
+    .panel-tab:hover { color: var(--text-primary); }
+    .panel-tab.active {
+      background: var(--surface);
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    .artifact-item {
+      background: var(--bg-primary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      padding: 8px 10px;
+      margin-bottom: 6px;
+    }
+    .artifact-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+    .artifact-type {
+      font-size: 0.68rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--accent);
+    }
+    .artifact-meta {
+      font-size: 0.62rem;
+      color: var(--text-tertiary);
+      font-family: var(--font-mono);
+    }
+    .artifact-content {
+      font-size: 0.68rem;
+      font-family: var(--font-mono);
+      color: var(--text-secondary);
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 200px;
+      overflow-y: auto;
+      margin: 0;
+      line-height: 1.4;
+    }
+    .panel-loading {
+      text-align: center;
+      padding: 20px;
+      color: var(--text-tertiary);
+      font-size: 0.78rem;
+    }
 
     .panel-backdrop {
       position: fixed;
@@ -715,6 +854,7 @@
         const FETCH_OPTS = { credentials: 'same-origin' };
         const PRIORITY_RANK = { critical: 1, high: 2, medium: 3, low: 4 };
         const STATUS_ORDER = ['proposed', 'backlog', 'in_progress', 'review', 'done', 'archive'];
+        let taskTypeMap = {};
 
         const state = {
           tasks: [],
@@ -725,6 +865,7 @@
           pollTimer: null,
           failureMeta: null,
           failureReasonExpanded: false,
+          panelTab: 'overview',
         };
 
         const cstFormatter = new Intl.DateTimeFormat('en-US', {
@@ -746,6 +887,16 @@
         const esc = (s) => String(s ?? '').replace(/[&<>\"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
         function normalizeStatus(s) { return (s || '').toLowerCase().replace(/[- ]/g, '_'); }
 
+
+        async function loadTaskTypes() {
+          try {
+            const res = await fetch('/api/task-types', { credentials: 'same-origin' });
+            const data = await res.json();
+            taskTypeMap = data.types || {};
+          } catch {
+            taskTypeMap = {};
+          }
+        }
 
         function switchView(view) {
           document.querySelectorAll('.sub-nav-btn').forEach((btn) => {
@@ -939,37 +1090,45 @@
           return names.join(', ');
         }
 
-        function getInProgressQueueMap() {
-          const list = state.tasks
-            .filter((task) => task.status === 'in_progress')
-            .slice()
-            .sort((a, b) => Date.parse(a.updated_at) - Date.parse(b.updated_at) || a.id - b.id);
-          return new Map(list.map((task, idx) => [task.id, idx === 0 ? 'Running' : `Queued #${idx + 1}`]));
-        }
+        function cardHtml(task) {
+          const typeConfig = taskTypeMap[task.task_type] || { label: task.task_type || 'operational', color: '#6b7280' };
+          const config = taskTypeMap[task.task_type];
+          const reviewRequired = config ? (config.review_artifacts || []).length : 0;
+          const doneRequired = config ? (config.done_artifacts || []).length : 0;
+          const totalRequired = reviewRequired + doneRequired;
+          const progressHtml = totalRequired > 0
+            ? `<span class="artifact-progress" title="${totalRequired} artifacts required">${'○'.repeat(totalRequired)}</span>`
+            : '';
 
-        function cardHtml(task, queueLabel = null) {
-          const agentLabel = task.assigned_agent ? `🤖 ${task.assigned_agent}` : '';
           const blocked = Array.isArray(task.blocked_by) && task.blocked_by.length > 0;
-          const createdBy = task.created_by ? task.created_by[0].toUpperCase() + task.created_by.slice(1) : 'Unknown';
           const failureCount = Number(task.failure_count || 0);
-          const due = dueLabel(task.due_at, task.status);
+          const staleDep = Number(task.stale_dependency || 0) > 0;
+          const flagsHtml = [
+            blocked ? '<span class="card-flag flag-blocked" title="Blocked">B</span>' : '',
+            failureCount > 0 ? `<span class="card-flag flag-failed" title="${failureCount} failure${failureCount > 1 ? 's' : ''}">F</span>` : '',
+            staleDep ? '<span class="card-flag flag-stale" title="Stale dependency">S</span>' : '',
+          ].filter(Boolean).join('');
+
+          const claimer = task.claimed_by || task.assigned_agent || '';
+          const claimerHtml = claimer ? `<span class="card-claimer">${esc(claimer)}</span>` : '';
+          const accentColor = typeConfig.color || '#6b7280';
+
           return `
-            <article class="task-card priority-${esc(task.priority)} ${due?.overdue ? 'overdue' : ''}" data-id="${task.id}">
-              <div class="task-title" title="${esc(task.title)}">${esc(task.title)}</div>
-              <div class="meta-row">
-                <span class="badge">${esc(task.priority)}</span>
-                ${agentLabel ? `<span class="badge">${esc(agentLabel)}</span>` : ''}
-                ${queueLabel ? `<span class="badge badge-muted">${esc(queueLabel)}</span>` : ''}
-                ${task.token_actual != null ? `<span class="badge">📊 ${esc(fmtTokens(task.token_actual))} tokens</span>` : ''}
-                <span class="badge">${esc(createdBy)}</span>
+            <article class="task-card" data-id="${task.id}" style="border-left-color:${accentColor}">
+              <div class="card-line-1">
+                <span class="card-id">#${task.id}</span>
+                <span class="card-title-text" title="${esc(task.title)}">${esc(task.title)}</span>
               </div>
-              ${due ? `<div class="badge badge-muted due-badge">${esc(due.text)}</div>` : ''}
-              <div class="meta-sub">
-                <span>${ageLabel(task.created_at)}</span>
-                <span>${blocked ? `🔒` : ''}</span>
-                <span>${failureCount > 0 ? `<span class="failure-badge-dot" title="${esc(`${failureCount} failure${failureCount === 1 ? '' : 's'}`)}"></span>` : ''}</span>
+              <div class="card-line-2">
+                <span class="card-type-pill" style="background:${accentColor}20;color:${accentColor}">${esc(typeConfig.label)}</span>
+                <span class="card-priority priority-${esc(task.priority)}">${esc(task.priority)}</span>
+                ${progressHtml}
               </div>
-              ${blocked ? `<div class="meta-sub" title="${esc(getBlockingTitle(task))}"><span>Blocked by: ${esc(task.blocked_by.join(','))}</span></div>` : ''}
+              <div class="card-line-3">
+                ${claimerHtml}
+                <span class="card-age">${ageLabel(task.updated_at || task.created_at)}</span>
+                ${flagsHtml}
+              </div>
             </article>
           `;
         }
@@ -998,12 +1157,11 @@
         }
 
         function renderColumns() {
-          const inProgressQueue = getInProgressQueueMap();
           for (const status of STATUS_ORDER) {
             const tasks = getColumnTasks(status);
             const container = document.getElementById(`col-${status}`);
             if (!container) continue;
-            container.innerHTML = tasks.map((task) => cardHtml(task, inProgressQueue.get(task.id) || null)).join('') || `<div class="badge" style="display:inline-flex">No tasks</div>`;
+            container.innerHTML = tasks.map((task) => cardHtml(task)).join('') || `<div class="badge" style="display:inline-flex">No tasks</div>`;
             if (status !== 'archive') {
               const countEl = document.getElementById(`count-${status}`);
               if (countEl) countEl.textContent = String(tasks.length);
@@ -1041,48 +1199,72 @@
           const task = state.tasks.find((item) => item.id === state.selectedTaskId);
           if (!task) return;
           document.getElementById('panelTitle').textContent = `#${task.id} ${task.title}`;
-          const blockedByText = task.blocked_by && task.blocked_by.length ? task.blocked_by.join(', ') : 'none';
-          const payloadText = task.handoff_payload ? (() => {
-            try { return JSON.stringify(JSON.parse(task.handoff_payload), null, 2); }
-            catch { return task.handoff_payload; }
-          })() : '';
+
+          const typeConfig = taskTypeMap[task.task_type] || { label: task.task_type || 'operational', color: '#6b7280' };
+          const activeTab = state.panelTab || 'overview';
+
+          const tabsHtml = `
+            <div class="panel-tabs">
+              <button class="panel-tab ${activeTab === 'overview' ? 'active' : ''}" data-panel-tab="overview">Overview</button>
+              <button class="panel-tab ${activeTab === 'artifacts' ? 'active' : ''}" data-panel-tab="artifacts">Artifacts</button>
+              <button class="panel-tab ${activeTab === 'audit' ? 'active' : ''}" data-panel-tab="audit">Audit</button>
+            </div>
+          `;
+
+          let contentHtml = '';
+          if (activeTab === 'overview') {
+            contentHtml = renderPanelOverview(task, typeConfig);
+          } else if (activeTab === 'artifacts') {
+            contentHtml = '<div id="artifactsContent"><div class="panel-loading">Loading artifacts...</div></div>';
+          } else if (activeTab === 'audit') {
+            contentHtml = '<div id="auditContent"><div class="panel-loading">Loading audit trail...</div></div>';
+          }
+
+          document.getElementById('panelBody').innerHTML = tabsHtml + contentHtml;
+          document.getElementById('panelActions').innerHTML = statusActionButtons(task);
+
+          if (activeTab === 'artifacts') loadPanelArtifacts(task);
+          if (activeTab === 'audit') loadPanelAudit(task);
+        }
+
+
+        function renderPanelOverview(task, typeConfig) {
+          const accentColor = typeConfig.color || '#6b7280';
+          const claimer = task.claimed_by || 'unclaimed';
+          const claimExpiry = task.claim_expires_at ? ` (expires ${esc(cstFormatter.format(new Date(task.claim_expires_at)))})` : '';
+          const staleDep = Number(task.stale_dependency || 0) > 0;
+
+          const intentHtml = task.original_intent || task.active_intent ? `
+            <div class="field"><div class="label">Intent</div></div>
+            ${task.original_intent ? `<div class="field"><div class="label">Original Intent</div><div class="value" style="background:var(--bg-primary);padding:8px;border-radius:6px;font-size:0.78rem">${esc(task.original_intent)}</div></div>` : ''}
+            ${task.active_intent ? `<div class="field"><div class="label">Active Intent <span style="font-size:0.6rem;color:var(--accent)">(v${task.active_intent_version || 1})</span></div><div class="value">${esc(task.active_intent)}</div></div>` : ''}
+            ${task.acceptance_criteria ? `<div class="field"><div class="label">Acceptance Criteria</div><div class="value" style="white-space:pre-wrap;font-size:0.78rem">${esc(task.acceptance_criteria)}</div></div>` : ''}
+            ${task.active_intent && task.original_intent && task.active_intent !== task.original_intent ? '<div class="field"><div class="value" style="color:#f59e0b;font-size:0.72rem">Intent updated from original. Check intent history.</div></div>' : ''}
+          ` : '';
 
           const failureMeta = state.failureMeta || {};
           const failureCount = Number(failureMeta.failure_count ?? task.failure_count ?? 0);
           const maxRetries = Number(failureMeta.max_retries ?? task.max_retries ?? 0);
           const lastReason = String(failureMeta.last_failure_reason || '').trim();
-          const retriesExhausted = failureCount > 0 && failureCount >= maxRetries;
-          const failedStatus = normalizeStatus(task.status) === 'failed';
-          const retryDot = failureCount === 0 ? 'green' : ((failedStatus || retriesExhausted) ? 'red' : 'yellow');
-          const retryText = (failedStatus || retriesExhausted)
+          const retryDot = failureCount === 0 ? 'green' : (failureCount >= maxRetries ? 'red' : 'yellow');
+          const retryText = failureCount >= maxRetries && failureCount > 0
             ? `Retries exhausted (${failureCount} / ${maxRetries})`
             : `Retries: ${failureCount} / ${maxRetries}`;
           const reasonLines = lastReason ? lastReason.split(/\r?\n/).length : 0;
           const needsReasonToggle = reasonLines > 3;
 
-          const detailsHtml = `
-            <div class="field"><div class="label">Status</div><div class="value">${esc(task.status)}</div></div>
+          return `
+            <div class="field"><div class="label">Status</div><div class="value">${esc(task.status)}${staleDep ? ' <span style="color:#f59e0b">stale dependency</span>' : ''}</div></div>
+            <div class="field"><div class="label">Type</div><div class="value"><span class="card-type-pill" style="background:${accentColor}20;color:${accentColor}">${esc(typeConfig.label)}</span></div></div>
             <div class="field"><div class="label">Priority</div><div class="value">${esc(task.priority)}</div></div>
-            <div class="field"><div class="label">Assigned Agent</div><div class="value">${esc(task.assigned_agent || 'unassigned')}</div></div>
-            <div class="field"><div class="label">Created By</div><div class="value">${esc(task.created_by || 'unknown')}</div></div>
-            <div class="field"><div class="label">Source</div><div class="value">${esc(task.source || 'dashboard')}</div></div>
+            <div class="field"><div class="label">Claimed By</div><div class="value">${esc(claimer)}${claimExpiry}</div></div>
+            <div class="field"><div class="label">Created By</div><div class="value">${esc(task.created_by || 'unknown')} via ${esc(task.source || 'dashboard')}</div></div>
             <div class="field"><div class="label">Depends On</div><div class="value">${esc(task.depends_on || 'none')}</div></div>
-            <div class="field"><div class="label">Blocked By</div><div class="value">${esc(blockedByText)}</div></div>
-            <div class="field"><div class="label">Token Estimate</div><div class="value">${esc(task.token_estimate ?? '--')}</div></div>
-            <div class="field"><div class="label">Token Actual</div><div class="value">${esc(task.token_actual ?? '--')}</div></div>
-            <div class="field"><div class="label">Created At (CST)</div><div class="value">${esc(cstFormatter.format(new Date(task.created_at)))}</div></div>
-            <div class="field"><div class="label">Updated At (CST)</div><div class="value">${esc(cstFormatter.format(new Date(task.updated_at)))}</div></div>
-            <div class="field"><div class="label">Description</div><div class="value">${esc(task.description || '')}</div></div>
-            <div class="field"><div class="label">Handoff Payload</div><div class="value">${payloadText ? `<pre>${esc(payloadText)}</pre>` : 'None'}</div></div>
-            ${[task.due_at, task.delivery_channel, task.execution_mode, task.requested_via, task.accepted_at, task.user_notified_at].some((value) => value != null && String(value).trim() !== '') ? `
-              <div class="field"><div class="label">Delivery</div></div>
-              ${task.due_at ? `<div class="field"><div class="label">Due At</div><div class="value">${esc(cstFormatter.format(new Date(task.due_at)))}</div></div>` : ''}
-              ${task.delivery_channel ? `<div class="field"><div class="label">Delivery Channel</div><div class="value">${esc(task.delivery_channel)}</div></div>` : ''}
-              ${task.execution_mode ? `<div class="field"><div class="label">Execution Mode</div><div class="value">${esc(task.execution_mode)}</div></div>` : ''}
-              ${task.requested_via ? `<div class="field"><div class="label">Requested Via</div><div class="value">${esc(task.requested_via)}</div></div>` : ''}
-              ${task.accepted_at ? `<div class="field"><div class="label">Accepted At</div><div class="value">${esc(cstFormatter.format(new Date(task.accepted_at)))}</div></div>` : ''}
-              ${task.user_notified_at ? `<div class="field"><div class="label">User Notified At</div><div class="value">${esc(cstFormatter.format(new Date(task.user_notified_at)))}</div></div>` : ''}
-            ` : ''}
+            <div class="field"><div class="label">Created</div><div class="value">${esc(cstFormatter.format(new Date(task.created_at)))}</div></div>
+            <div class="field"><div class="label">Last Updated</div><div class="value">${esc(cstFormatter.format(new Date(task.updated_at)))}</div></div>
+            ${task.description ? `<div class="field"><div class="label">Description</div><div class="value">${esc(task.description)}</div></div>` : ''}
+            ${intentHtml}
+            ${task.goal_id ? `<div class="field"><div class="label">Goal</div><div class="value">#${task.goal_id}</div></div>` : ''}
             <div class="field"><div class="label">Retry Status</div>
               <div class="retry-status">
                 <div class="retry-line"><span class="status-dot ${retryDot}"></span><span>${esc(retryText)}</span></div>
@@ -1098,43 +1280,127 @@
                 </div>
               </div>
             </div>
-            <div class="field"><div class="label">History</div>
-              <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tertiary);margin-bottom:8px;margin-top:12px">Decision Timeline</div>
-              <div class="timeline">
-                ${state.history.length ? state.history.map((entry, i) => {
-                  const isStateChange = entry.action === 'status_change' || entry.action === 'created';
-                  const isFirst = i === 0;
-                  const isLast = i === state.history.length - 1;
-                  const nodeClass = isStateChange ? 'timeline-node state-change' : 'timeline-node';
-                  const actorLabel = entry.actor === 'adam' ? 'Adam'
-                    : entry.actor === 'jarvis' ? 'Jarvis'
-                    : entry.actor === 'system' ? 'System'
-                    : esc(entry.actor || 'Unknown');
-                  return `<div class="timeline-entry${isFirst ? ' first' : ''}${isLast ? ' last' : ''}">
-                    <div class="timeline-rail">
-                      <span class="${nodeClass}"></span>
-                      ${!isLast ? '<span class="timeline-line"></span>' : ''}
-                    </div>
-                    <div class="timeline-content">
-                      <div class="timeline-header">
-                        <span class="timeline-action">${esc(entry.action || 'update')}</span>
-                        <span class="timeline-actor">${actorLabel}</span>
-                        <span class="timeline-time">${esc(cstFormatter.format(new Date(entry.created_at)))}</span>
-                      </div>
-                      ${entry.detail ? `<div class="timeline-detail">${esc(entry.detail)}</div>` : ''}
-                    </div>
-                  </div>`;
-                }).join('') : '<div class="timeline-empty">No history yet.</div>'}
-              </div>
-            </div>
           `;
-          document.getElementById('panelBody').innerHTML = detailsHtml;
-          document.getElementById('panelActions').innerHTML = statusActionButtons(task);
+        }
+
+        async function loadPanelArtifacts(task) {
+          const container = document.getElementById('artifactsContent');
+          if (!container) return;
+          try {
+            const [reviewRes, doneRes, gateRes] = await Promise.all([
+              fetch(`/api/tasks/${task.id}/artifacts?transition=in_progress->review`, { credentials: 'same-origin' }),
+              fetch(`/api/tasks/${task.id}/artifacts?transition=review->done`, { credentials: 'same-origin' }),
+              fetch(`/api/tasks/${task.id}/artifact-gate?transition=${task.status === 'review' ? 'review->done' : 'in_progress->review'}`, { credentials: 'same-origin' }),
+            ]);
+            const reviewData = await reviewRes.json();
+            const doneData = await doneRes.json();
+            const gateData = await gateRes.json();
+
+            const reviewArtifacts = reviewData.artifacts || [];
+            const doneArtifacts = doneData.artifacts || [];
+
+            let html = '';
+
+            if (gateData.required && gateData.required.length > 0) {
+              const gateLabel = gateData.passed ? 'Gate: Passed' : 'Gate: Missing artifacts';
+              const gateColor = gateData.passed ? 'var(--success)' : 'var(--error)';
+              html += `<div class="field"><div class="label" style="color:${gateColor}">${esc(gateLabel)}</div>`;
+              if (!gateData.passed && gateData.missing) {
+                html += `<div class="value" style="font-size:0.72rem">Missing: ${gateData.missing.map((m) => esc(m)).join(', ')}</div>`;
+              }
+              html += '</div>';
+            }
+
+            html += '<div class="field"><div class="label">Review Artifacts (in_progress → review)</div></div>';
+            if (reviewArtifacts.length === 0) {
+              html += '<div class="field"><div class="value" style="color:var(--text-tertiary);font-size:0.78rem">No artifacts submitted.</div></div>';
+            } else {
+              html += reviewArtifacts.map((a) => `
+                <div class="artifact-item">
+                  <div class="artifact-header">
+                    <span class="artifact-type">${esc(a.artifact_type)}</span>
+                    <span class="artifact-meta">${esc(a.created_by)} · ${esc(cstFormatter.format(new Date(a.created_at)))}</span>
+                  </div>
+                  <pre class="artifact-content">${esc(typeof a.content === 'string' && a.content.length > 500 ? `${a.content.substring(0, 500)}...` : a.content)}</pre>
+                </div>
+              `).join('');
+            }
+
+            html += '<div class="field" style="margin-top:12px"><div class="label">Done Artifacts (review → done)</div></div>';
+            if (doneArtifacts.length === 0) {
+              html += '<div class="field"><div class="value" style="color:var(--text-tertiary);font-size:0.78rem">No artifacts submitted.</div></div>';
+            } else {
+              html += doneArtifacts.map((a) => `
+                <div class="artifact-item">
+                  <div class="artifact-header">
+                    <span class="artifact-type">${esc(a.artifact_type)}</span>
+                    <span class="artifact-meta">${esc(a.created_by)} · ${esc(cstFormatter.format(new Date(a.created_at)))}</span>
+                  </div>
+                  <pre class="artifact-content">${esc(typeof a.content === 'string' && a.content.length > 500 ? `${a.content.substring(0, 500)}...` : a.content)}</pre>
+                </div>
+              `).join('');
+            }
+
+            container.innerHTML = html;
+          } catch {
+            container.innerHTML = '<div class="panel-loading">Unable to load artifacts.</div>';
+          }
+        }
+
+        async function loadPanelAudit(task) {
+          const container = document.getElementById('auditContent');
+          if (!container) return;
+          try {
+            const res = await fetch(`/api/tasks/${task.id}/audit`, { credentials: 'same-origin' });
+            const data = await res.json();
+            const entries = data.audit || [];
+
+            if (entries.length === 0) {
+              container.innerHTML = '<div class="panel-loading">No audit entries.</div>';
+              return;
+            }
+
+            container.innerHTML = `<div class="timeline">${entries.map((entry, i) => {
+              const isFirst = i === 0;
+              const isLast = i === entries.length - 1;
+              const isStateChange = entry.action === 'status_changed' || entry.action === 'checkpoint_created';
+              const nodeClass = isStateChange ? 'timeline-node state-change' : 'timeline-node';
+              let detail = '';
+              if (entry.details) {
+                try {
+                  const d = JSON.parse(entry.details);
+                  detail = Object.entries(d).map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join(', ');
+                } catch {
+                  detail = entry.details;
+                }
+              }
+              if (entry.from_status && entry.to_status) {
+                detail = `${entry.from_status} → ${entry.to_status}${detail ? ` | ${detail}` : ''}`;
+              }
+              return `<div class="timeline-entry${isFirst ? ' first' : ''}${isLast ? ' last' : ''}">
+                <div class="timeline-rail">
+                  <span class="${nodeClass}"></span>
+                  ${!isLast ? '<span class="timeline-line"></span>' : ''}
+                </div>
+                <div class="timeline-content">
+                  <div class="timeline-header">
+                    <span class="timeline-action">${esc(entry.action)}</span>
+                    <span class="timeline-actor">${esc(entry.actor)}</span>
+                    <span class="timeline-time">${esc(cstFormatter.format(new Date(entry.created_at)))}</span>
+                  </div>
+                  ${detail ? `<div class="timeline-detail">${esc(detail)}</div>` : ''}
+                </div>
+              </div>`;
+            }).join('')}</div>`;
+          } catch {
+            container.innerHTML = '<div class="panel-loading">Unable to load audit trail.</div>';
+          }
         }
 
         async function openPanel(taskId) {
           state.selectedTaskId = taskId;
           state.failureReasonExpanded = false;
+          state.panelTab = 'overview';
           await Promise.all([loadHistory(taskId), loadFailureMeta(taskId)]);
           renderPanel();
           document.getElementById('panelBackdrop').classList.add('open');
@@ -1323,6 +1589,14 @@
           }
         });
 
+        document.getElementById('panelBody').addEventListener('click', (e) => {
+          const tabBtn = e.target.closest('[data-panel-tab]');
+          if (tabBtn) {
+            state.panelTab = tabBtn.dataset.panelTab;
+            renderPanel();
+          }
+        });
+
         document.getElementById('panelActions').addEventListener('click', (e) => {
           const btn = e.target.closest('button[data-action]');
           if (!btn || !state.selectedTaskId) return;
@@ -1333,7 +1607,7 @@
         switchView(initialView);
 
         if (window.__tasksPollTimer) clearInterval(window.__tasksPollTimer);
-        refreshAll().catch((err) => {
+        Promise.all([loadTaskTypes(), refreshAll()]).catch((err) => {
           console.error(err);
           alert('Failed to load tasks board.');
         });
