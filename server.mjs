@@ -8449,10 +8449,12 @@ function runUnifiedLogsPrune() {
   }
 }
 
-runUnifiedLogsIngestion();
-setInterval(() => {
+setTimeout(() => {
   runUnifiedLogsIngestion();
-}, 60_000);
+  setInterval(() => {
+    runUnifiedLogsIngestion();
+  }, 60_000);
+}, 5_000);
 
 runUnifiedLogsPrune();
 setInterval(() => {

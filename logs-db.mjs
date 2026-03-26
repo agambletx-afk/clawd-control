@@ -429,8 +429,8 @@ export async function ingestCronHealth() {
     let ingested = 0;
 
     for (const cron of cronEntries) {
-      const cronId = String(cron?.id || cron?.cron_id || cron?.name || cron?.job || 'unknown');
-      const newStatus = String(cron?.status || 'unknown');
+      const cronId = String(cron?.name || cron?.id || cron?.cron_id || cron?.job || 'unknown');
+      const newStatus = String(cron?.lastStatus || cron?.status || 'unknown');
       const oldStatus = Object.hasOwn(previousState, cronId) ? previousState[cronId] : null;
       nextState[cronId] = newStatus;
 
