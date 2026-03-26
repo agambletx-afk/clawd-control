@@ -72,6 +72,48 @@ main{padding:20px;max-width:1500px;margin:0 auto}
 .model-main{display:flex;align-items:center;gap:8px;min-width:0}.route-tier{font-size:.67rem;text-transform:uppercase;letter-spacing:.04em}.model-expando{cursor:pointer;color:var(--text-secondary)}
 .model-detail{margin:0 8px 6px;border:1px solid var(--border-subtle);border-radius:8px;padding:8px;background:var(--bg-elevated)}.cap-list{margin-top:6px;display:flex;gap:6px;flex-wrap:wrap}.cap-pill{border-radius:9999px;padding:2px 8px;font-size:.66rem;background:rgba(99,102,241,.18);color:var(--accent-blue)}
 
+.wl-card {
+  background: var(--bg-elevated, var(--bg-tertiary));
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: all 150ms;
+}
+.wl-card:hover { border-color: var(--border); }
+.wl-card.mismatch-unexpected { border-color: rgba(239,68,68,0.5); background: rgba(239,68,68,0.04); }
+.wl-card.mismatch-pinned { border-color: rgba(245,158,11,0.4); }
+.wl-label { font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-tertiary); margin-bottom: 4px; }
+.wl-model { font-family: var(--font-mono); font-size: 0.78rem; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 2px; }
+.wl-provider { font-size: 0.65rem; color: var(--text-secondary); margin-bottom: 4px; }
+.wl-status { display: flex; align-items: center; gap: 4px; font-size: 0.62rem; }
+.wl-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+.wl-dot.free { background: #2ecc71; }
+.wl-dot.paid-low { background: #f59e0b; }
+.wl-dot.paid-high { background: #ef4444; }
+.wl-editor {
+  margin-top: 8px;
+  padding: 10px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  display: none;
+}
+.wl-editor.open { display: block; }
+.wl-editor select, .wl-editor input {
+  background: var(--bg-input, var(--bg-secondary));
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  padding: 4px 8px;
+  font-size: 0.78rem;
+  font-family: var(--font-mono);
+  width: 100%;
+  margin-bottom: 6px;
+}
+.wl-editor .btn { margin-top: 4px; }
+.wl-save-status { font-size: 0.68rem; margin-top: 4px; }
+
 </style>
 </head>
 <body>
@@ -82,6 +124,12 @@ main{padding:20px;max-width:1500px;margin:0 auto}
   </div>
 
   <section class="grid5" id="statCards"></section>
+
+  <section class="card" id="workloadRoutingPanel" style="margin-bottom:12px">
+    <div class="panel-title"><i data-lucide="workflow"></i>Workload Routing</div>
+    <div class="panel-sub">Which model handles each type of work. Red means expensive model on cheap workload.</div>
+    <div id="workloadCards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:10px"></div>
+  </section>
 
   <section class="zone2">
     <div class="card" style="display:flex;flex-direction:column">
@@ -154,7 +202,7 @@ main{padding:20px;max-width:1500px;margin:0 auto}
 const providerColors={google:'#4285f4',openai:'#10a37f','openai-codex':'#10a37f',anthropic:'#d97706',groq:'#f97316',cerebras:'#06b6d4',mistral:'#6366f1',nvidia:'#76b900'};
 const taskDims=['reasoning','coding','conversation','instruction'];
 const dims=['tokenCount','reasoning','simple','system','agentic','domain','code','image','context'];
-let state={status:null,decisions:[],usage:null,modelUsage:{},cliUsage:null,outcomes:[],outcomeStats24h:null,outcomeTrends:null,outcomePeriod:'24h',provider:'all',selected:null,filtered:[],affinityMode:'aggregate',sentinel:{available:false,stale:false,age_seconds:null,status:null}};
+let state={status:null,decisions:[],usage:null,modelUsage:{},cliUsage:null,outcomes:[],outcomeStats24h:null,outcomeTrends:null,outcomePeriod:'24h',provider:'all',selected:null,filtered:[],affinityMode:'aggregate',sentinel:{available:false,stale:false,age_seconds:null,status:null},workloadRouting:null,workloadEditorOpen:null,workloadDrafts:{}};
 const $=(s)=>document.querySelector(s); const esc=(s)=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fmtAgo=(iso)=>{if(!iso)return '—'; const d=Math.floor((Date.now()-new Date(iso).getTime())/60000); if(d<1)return 'now'; if(d<60)return `${d}m ago`; const h=Math.floor(d/60); if(h<24)return `${h}h ago`; return `${Math.floor(h/24)}d ago`;};
 const scoreColor=(n)=>n<.3?'var(--accent-green)':(n<=.6?'var(--accent-amber)':'var(--accent-red)');
@@ -188,10 +236,10 @@ const shortDim=(d)=>({conversation:'Conv',coding:'Code',reasoning:'Reason',instr
 const titleDim=(d)=>d.charAt(0).toUpperCase()+d.slice(1);
 
 async function load(){
-  const [s,d,u,cli,outcomes,stats24h,sentinel]=await Promise.all([fetch('/api/cortex/status').then(r=>r.json()).catch(()=>({})),fetch('/api/cortex/decisions?limit=50').then(r=>r.json()).catch(()=>({decisions:[]})),fetch('/api/cortex/usage').then(r=>r.json()).catch(()=>({providers:{}})),fetch('/api/cli-usage').then(r=>r.json()).catch(()=>({})),fetch('/api/cortex/outcomes?limit=50').then(r=>r.json()).catch(()=>({outcomes:[]})),fetch('/api/cortex/outcomes/stats?period=24h').then(r=>r.json()).catch(()=>({summary:{},byModel:[],byWorkType:[]})),fetch('/api/cortex/sentinel').then(r=>r.json()).catch(()=>({available:false,stale:false,age_seconds:null,status:null}))]);
-  state.status=s; state.decisions=Array.isArray(d.decisions)?d.decisions:[]; state.usage=u; state.modelUsage=s?.providerQuota?.modelUsage||{}; state.cliUsage=cli; state.outcomes=Array.isArray(outcomes?.outcomes)?outcomes.outcomes:[]; state.outcomeStats24h=stats24h; state.sentinel=sentinel||{available:false,stale:false,age_seconds:null,status:null};
+  const [s,d,u,cli,outcomes,stats24h,sentinel,workloadRouting]=await Promise.all([fetch('/api/cortex/status').then(r=>r.json()).catch(()=>({})),fetch('/api/cortex/decisions?limit=50').then(r=>r.json()).catch(()=>({decisions:[]})),fetch('/api/cortex/usage').then(r=>r.json()).catch(()=>({providers:{}})),fetch('/api/cli-usage').then(r=>r.json()).catch(()=>({})),fetch('/api/cortex/outcomes?limit=50').then(r=>r.json()).catch(()=>({outcomes:[]})),fetch('/api/cortex/outcomes/stats?period=24h').then(r=>r.json()).catch(()=>({summary:{},byModel:[],byWorkType:[]})),fetch('/api/cortex/sentinel').then(r=>r.json()).catch(()=>({available:false,stale:false,age_seconds:null,status:null})),fetch('/api/workload-routing').then(r=>r.json()).catch(()=>null)]);
+  state.status=s; state.decisions=Array.isArray(d.decisions)?d.decisions:[]; state.usage=u; state.modelUsage=s?.providerQuota?.modelUsage||{}; state.cliUsage=cli; state.outcomes=Array.isArray(outcomes?.outcomes)?outcomes.outcomes:[]; state.outcomeStats24h=stats24h; state.sentinel=sentinel||{available:false,stale:false,age_seconds:null,status:null}; state.workloadRouting=workloadRouting&&typeof workloadRouting==='object'&&!workloadRouting.error?workloadRouting:null;
   await loadOutcomeTrends(state.outcomePeriod||'24h');
-  renderStats(); renderLadder(); renderSubscriptionStatus(); renderSentinel(); renderFilters(); renderDecisions(); renderScore(); renderOutcomeTrends(); renderSettings();
+  renderStats(); renderWorkloadRouting(); renderLadder(); renderSubscriptionStatus(); renderSentinel(); renderFilters(); renderDecisions(); renderScore(); renderOutcomeTrends(); renderSettings();
 }
 function getModelLastUsedMap(){const m={}; for(const r of state.decisions){const model=String(r.modelSelected||r.selectedModel||r.model||''); const t=r.ts||r.timestamp||r.time; if(model&&t&&(!m[model]||new Date(t)>new Date(m[model])))m[model]=t;} return m;}
 function getUsageForModel(model){const usage=state.modelUsage||{}; return usage[model]||usage[model.split('/').slice(1).join('/')]||usage[model.split('/').pop()]||{};}
@@ -202,12 +250,17 @@ function synthesizeProviderUsage(entries){const out={rpdUsed:0,rpdLimit:0,rpmUse
  for(const e of entries.filter(v=>v.enabled!==false)){const model=String(e.model||''); const mu=getUsageForModel(model); const last=mu.lastUsed||mu.lastRequest; if(last&&(!out.lastUsed||new Date(last)>new Date(out.lastUsed)))out.lastUsed=last;
   const rpdLimit=Number(mu.rpdLimit??e?.rateLimit?.rpd??0); if(rpdLimit>0){out.rpdLimit+=rpdLimit; out.rpdUsed+=Number(mu.rpd??mu.rpdUsed??0);} const rpmLimit=Number(mu.rpmLimit??e?.rateLimit?.rpm??0); if(rpmLimit>0){out.rpmLimit+=rpmLimit; out.rpmUsed+=Number(mu.rpm??mu.rpmUsed??0);} }
  return out;}
+function providerFromModel(model){return String(model||'').split('/')[0]||'unknown';}
+function normalizeCostTierFromProvider(provider){const p=String(provider||'').toLowerCase(); if(['openai','openai-codex','anthropic'].includes(p))return 'paid-high'; if(p==='nvidia')return 'paid-low'; return 'free';}
+function costTierForModel(model){if(!model)return 'free'; const rows=(state.outcomes||[]).filter(o=>String(o?.chosen_model||'')===String(model)); if(rows.length){const paid=rows.some(r=>String(r?.chosen_cost_tier||'').toLowerCase()==='paid'); if(paid)return ['openai','openai-codex','anthropic'].includes(providerFromModel(model))?'paid-high':'paid-low'; return 'free';} return normalizeCostTierFromProvider(providerFromModel(model));}
+function providerConcentration(){const cutoff=Date.now()-86400000; const recent=(state.outcomes||[]).filter(o=>toTsMs(o?.timestamp)>=cutoff); const total=recent.length||1; const map={}; recent.forEach(row=>{const p=providerFromModel(row?.chosen_model); if(!map[p])map[p]={count:0,paid:0}; map[p].count+=1; if(String(row?.chosen_cost_tier||'').toLowerCase()==='paid')map[p].paid+=1;}); const entries=Object.entries(map).sort((a,b)=>b[1].count-a[1].count); const count=entries.length; const top=entries.slice(0,3).map(([provider,v])=>`${provider} ${Math.round((v.count/total)*100)}% ${v.paid>0?'● paid':'● free'}`).join(' | ')||'No provider outcomes in the last 24h'; const singleTier=count===1?(entries[0][1].paid>0?'paid-high':'free'):'free'; const pinnedPaid=costTierForModel(state.workloadRouting?.primary?.model)==='paid-high'&&state.workloadRouting?.primary?.status==='pinned'; let badge={text:'no data',style:'color:var(--text-tertiary)'}; if(count>=3)badge={text:'diverse',style:'color:var(--accent-green)'}; else if(count===2)badge={text:'narrow',style:'color:var(--accent-amber)'}; else if(count===1&&singleTier==='free')badge={text:'single provider',style:'color:var(--accent-amber)'}; else if(count===1&&singleTier==='paid-high'&&!pinnedPaid)badge={text:'concentrated — paid',style:'color:#111827;background:var(--accent-amber);padding:1px 6px;border-radius:9999px'}; return {count,badge,tooltip:top};}
 function renderStats(){const ladder=Array.isArray(state.status?.ladder)?state.status.ladder:[]; const enabled=ladder.filter(m=>m?.enabled!==false); const pCount=new Set(enabled.map(e=>String(e.provider||e.model?.split('/')[0]||'unknown'))).size; const last20=state.decisions.slice(0,20); const avg=last20.length?last20.reduce((a,b)=>a+(Number(b.score||0)),0)/last20.length:0; const day=Date.now()-86400000; const today=state.decisions.filter(d=>new Date(d.ts||d.timestamp||d.time||0).getTime()>=day).length; const topFull=Object.entries(last20.reduce((a,d)=>{const m=String(d.modelSelected||d.selectedModel||d.model||'unknown'); a[m]=(a[m]||0)+1; return a;},{})).sort((a,b)=>b[1]-a[1])[0]?.[0]||'—'; const top=topFull.includes('/')?topFull.split('/').slice(1).join('/'):topFull;
   const os=state.outcomeStats24h?.summary||{}; const reward=Number(os?.avg_reward); const correction=Number(os?.correction_rate); const escalation=Number(os?.escalation_rate);
   const rewardVal=Number.isFinite(reward)?reward.toFixed(2):'—'; const corrVal=Number.isFinite(correction)?`${Math.round(correction*100)}%`:'—'; const escVal=Number.isFinite(escalation)?`${Math.round(escalation*100)}%`:'—';
   const rewardColor=!Number.isFinite(reward)?'var(--text-primary)':(reward>0.5?'var(--accent-green)':(reward>=0?'var(--accent-amber)':'var(--accent-red)'));
-  const cards=[['Active Models',enabled.length,'Models available for routing'],['Providers',pCount,'Connected inference providers'],['Avg Score',avg.toFixed(2),'Request complexity (0-1)'],['Routing Today',today,'Requests routed by Cortex'],['Top Model',top,'Most frequently selected'],['Workload Profile',workloadProfileLabel(),'Primary task type from last 50 decisions'],['Avg Reward (24h)',rewardVal,'How well routing decisions performed today',rewardColor],['Correction Rate (24h)',corrVal,'Responses that triggered user corrections'],['Escalation Rate (24h)',escVal,'Responses that needed a stronger model next turn']];
-  $('#statCards').innerHTML=cards.map(([l,v,s,c])=>`<div class='card'><div class='stat-label'>${l}</div><div class='stat-value' style='color:${c||'var(--text-primary)'}'>${v}</div><div class='stat-sub'>${s}</div></div>`).join('');
+  const concentration=providerConcentration();
+  const cards=[['Active Models',enabled.length,'Models available for routing'],['Providers',pCount,'Connected inference providers'],['Avg Score',avg.toFixed(2),'Request complexity (0-1)'],['Routing Today',today,'Requests routed by Cortex'],['Top Model',top,'Most frequently selected'],['Workload Profile',workloadProfileLabel(),'Primary task type from last 50 decisions'],['Provider Concentration',concentration.count,'Provider diversity — watch for unintentional paid-model concentration',null,concentration.badge,concentration.tooltip],['Avg Reward (24h)',rewardVal,'How well routing decisions performed today',rewardColor],['Correction Rate (24h)',corrVal,'Responses that triggered user corrections'],['Escalation Rate (24h)',escVal,'Responses that needed a stronger model next turn']];
+  $('#statCards').innerHTML=cards.map(([l,v,s,c,badge,tip])=>`<div class='card' title='${esc(tip||'')}'><div class='stat-label'>${l}</div><div class='stat-value mono' style='font-variant-numeric:tabular-nums;color:${c||'var(--text-primary)'}'>${v}</div><div class='stat-sub'>${s}</div>${badge?`<div class='pill' style='margin-top:6px;${badge.style||''}'>${badge.text}</div>`:''}</div>`).join('');
 }
 function renderLadder(){const ladder=Array.isArray(state.status?.ladder)?state.status.ladder:[]; const by={}; ladder.forEach(e=>{const p=String(e.provider||e.model?.split('/')[0]||'unknown'); (by[p]=by[p]||[]).push(e);}); const lastUsed=getModelLastUsedMap();
   $('#cortexLadder').innerHTML=Object.keys(by).sort().map(p=>{const rows=by[p]; const enabled=rows.filter(e=>e.enabled!==false); const disabled=rows.filter(e=>e.enabled===false); const summary=synthesizeProviderUsage(rows); const col=window._cortexDefaultCollapsed?(window._cortexCollapsed[p]!==false):(!!window._cortexCollapsed[p]); const isSub=['openai','openai-codex','anthropic'].includes(p);
@@ -290,6 +343,30 @@ const candidatesBlock=mode==='single'?`<div><div class='panel-title' style='font
  drawRadar(task,mode==='single'&&has?profile:null);
  $('#scoreExplain').textContent=mode==='single'&&has?`Affinity overlap for ${String(d.modelSelected||d.selectedModel||d.model||'—')}.`:`Aggregate workload profile from last ${aggregateCount} routing decisions.`;
 }
+
+function workloadModelRows(){const wr=state.workloadRouting||{}; const primary=wr?.primary?.model||null; const fb=Array.isArray(wr?.fallbacks?.models)?wr.fallbacks.models:[]; const hb=wr?.heartbeat||{}; return [
+ {key:'primary',label:'PRIMARY',model:primary,provider:providerFromModel(primary),status:wr?.primary?.status||'none',editable:true},
+ {key:'fallbacks',label:'FALLBACKS',model:fb.length?fb.join(', '):'none',provider:`${fb.length} model(s)`,status:fb.length?'configured':'none',editable:true},
+ {key:'heartbeat',label:'HEARTBEAT',model:hb?.model||'CORTEX routing',provider:hb?.model?providerFromModel(hb.model):'router',status:hb?.status||'disabled',every:hb?.every||'0m',editable:true},
+ {key:'compaction',label:'COMPACTION',model:'unavailable',provider:'requires upgrade',status:'unavailable',editable:false},
+ {key:'cron',label:'CRON',model:primary||'inherits primary',provider:providerFromModel(primary),status:'inherits_primary',editable:false}
+ ];}
+function workloadDotClass(model){const tier=costTierForModel(model); return tier==='paid-high'?'paid-high':(tier==='paid-low'?'paid-low':'free');}
+function toggleWorkloadEditor(key){state.workloadEditorOpen=state.workloadEditorOpen===key?null:key; renderWorkloadRouting();}
+async function saveWorkloadPatch(key,payload,prev){try{const res=await fetch('/api/workload-routing',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); const data=await res.json(); if(!res.ok)throw new Error(data?.error||'Save failed'); $('#wl-status-'+key).innerHTML=`<span style="color:var(--accent-green)">${esc(data?.message||'Config saved. Restart gateway to apply.')}</span>`; await load();}catch(e){state.workloadRouting=prev; $('#wl-status-'+key).innerHTML=`<span style="color:var(--accent-red)">${esc(e.message||'Save failed')}</span>`; renderWorkloadRouting();}}
+function renderEditor(row){const wr=state.workloadRouting||{}; const catalog=(Array.isArray(wr?.catalog)?wr.catalog:[]); const enabled=catalog.filter(c=>c.enabled!==false); const opt=(arr,val)=>arr.map(c=>`<option value='${esc(c.model)}' ${String(val)===String(c.model)?'selected':''}>${esc(c.model)}</option>`).join('');
+ if(row.key==='primary'){return `<div class='wl-editor ${state.workloadEditorOpen==='primary'?'open':''}'><select id='wl-primary'>${opt(enabled,row.model)}</select><button class='pill on btn' onclick='savePrimaryModel()'>Save</button><div class='wl-save-status' id='wl-status-primary'></div></div>`;}
+ if(row.key==='heartbeat'){return `<div class='wl-editor ${state.workloadEditorOpen==='heartbeat'?'open':''}'><select id='wl-heartbeat-model'><option value=''>CORTEX routing</option>${opt(catalog,wr?.heartbeat?.model||'')}</select><input id='wl-heartbeat-every' value='${esc(wr?.heartbeat?.every||'0m')}' /><button class='pill on btn' onclick='saveHeartbeatModel()'>Save</button><div class='wl-save-status' id='wl-status-heartbeat'></div></div>`;}
+ if(row.key==='fallbacks'){const current=Array.isArray(wr?.fallbacks?.models)?wr.fallbacks.models:[]; return `<div class='wl-editor ${state.workloadEditorOpen==='fallbacks'?'open':''}'><div class='panel-sub'>Ordered fallback chain</div>${current.map((m,i)=>`<div class='model-row'><div class='mono'>${esc(m)}</div><button class='pill' onclick='removeFallback(${i})'>x</button></div>`).join('')||"<div class='panel-sub'>No fallbacks configured.</div>"}<select id='wl-fallback-add'><option value=''>Select model to add</option>${opt(catalog,'')}</select><button class='pill btn' onclick='addFallback()'>Add</button><button class='pill on btn' onclick='saveFallbacks()'>Save</button><div class='wl-save-status' id='wl-status-fallbacks'></div></div>`;}
+ const msg=row.key==='compaction'?'requires OpenClaw upgrade':'inherits primary — per-cron overrides not yet available'; return `<div class='wl-editor ${state.workloadEditorOpen===row.key?'open':''}'><div class='panel-sub'>${msg}</div></div>`;
+}
+function renderWorkloadRouting(){const wrap=$('#workloadCards'); if(!wrap)return; const rows=workloadModelRows(); wrap.innerHTML=rows.map(r=>{const dot=workloadDotClass(r.model); const tier=costTierForModel(r.model); const shouldCheap=['heartbeat','compaction','cron'].includes(r.key); const mismatch=shouldCheap&&tier==='paid-high'?(r.status==='pinned'?'mismatch-pinned':'mismatch-unexpected'):''; const disabled=r.key==='heartbeat'&&String(r.every||'0m')==='0m'; const status=disabled?'disabled':r.status; return `<div><div class='wl-card ${mismatch}' onclick="toggleWorkloadEditor('${r.key}')"><div class='wl-label'>${r.label}</div><div class='wl-model mono'>${esc(r.model||'none')}</div><div class='wl-provider'>${esc(r.provider||'unknown')}</div><div class='wl-status'><span class='wl-dot ${disabled?'':dot}' style='${disabled?'background:#64748b':''}'></span><span class='mono' style='font-variant-numeric:tabular-nums'>${esc(status)}</span></div></div>${renderEditor(r)}</div>`;}).join('');}
+function savePrimaryModel(){const v=String($('#wl-primary')?.value||'').trim(); if(!v){$('#wl-status-primary').innerHTML="<span style='color:var(--accent-red)'>Primary cannot be empty.</span>"; return;} const prev=JSON.parse(JSON.stringify(state.workloadRouting||{})); state.workloadRouting.primary.model=v; renderWorkloadRouting(); saveWorkloadPatch('primary',{primary:v},prev);} 
+function saveHeartbeatModel(){const model=String($('#wl-heartbeat-model')?.value||''); const every=String($('#wl-heartbeat-every')?.value||'0m').trim(); const prev=JSON.parse(JSON.stringify(state.workloadRouting||{})); state.workloadRouting.heartbeat.model=model; state.workloadRouting.heartbeat.every=every||'0m'; renderWorkloadRouting(); if(costTierForModel(model)==='paid-high'&&model){$('#wl-status-heartbeat').innerHTML="<span style='color:var(--accent-amber)'>Warning: paid-high model pinned for heartbeat.</span>";} saveWorkloadPatch('heartbeat',{heartbeat_model:model,heartbeat_every:every||'0m'},prev);} 
+function addFallback(){const m=String($('#wl-fallback-add')?.value||''); if(!m)return; const wr=state.workloadRouting||{}; const current=Array.isArray(wr?.fallbacks?.models)?wr.fallbacks.models:[]; if(!current.includes(m))wr.fallbacks.models=[...current,m]; renderWorkloadRouting();}
+function removeFallback(i){const wr=state.workloadRouting||{}; const current=Array.isArray(wr?.fallbacks?.models)?wr.fallbacks.models:[]; wr.fallbacks.models=current.filter((_,idx)=>idx!==i); renderWorkloadRouting();}
+function saveFallbacks(){const wr=state.workloadRouting||{}; const arr=Array.isArray(wr?.fallbacks?.models)?wr.fallbacks.models:[]; const primary=wr?.primary?.model||''; if(arr.includes(primary)){ $('#wl-status-fallbacks').innerHTML="<span style='color:var(--accent-red)'>Fallback chain cannot contain primary model.</span>"; return; } const prev=JSON.parse(JSON.stringify(state.workloadRouting||{})); saveWorkloadPatch('fallbacks',{fallbacks:arr},prev);}
+
 async function toggleModel(encoded){await fetch(`/api/cortex/ladder/${encoded}/toggle`,{method:'PUT'}); await load();}
 function toggleSettings(){ $('#settingsBody').classList.toggle('open'); }
 function renderSettings(){const s=state.status||{}; const weights=s?.scoring?.weights||{}; const ladder=Array.isArray(s?.ladder)?s.ladder:[]; const pins=s?.agentPins||{}; const schedule=s?.schedule||{}; const quota=s?.quotaThresholds||{};

@@ -159,6 +159,16 @@ function readOpenClawConfig() {
   }
 }
 
+function writeOpenClawConfig(config) {
+  const bakPath = `${OPENCLAW_CONFIG_PATH}.bak`;
+  const tmpPath = `${OPENCLAW_CONFIG_PATH}.tmp`;
+  if (existsSync(OPENCLAW_CONFIG_PATH)) {
+    copyFileSync(OPENCLAW_CONFIG_PATH, bakPath);
+  }
+  writeFileSync(tmpPath, JSON.stringify(config, null, 2), 'utf8');
+  renameSync(tmpPath, OPENCLAW_CONFIG_PATH);
+}
+
 function getByPath(obj, path) {
   return path.reduce((acc, key) => (acc && typeof acc === 'object') ? acc[key] : undefined, obj);
 }
@@ -7210,6 +7220,134 @@ const server = createServer(async (req, res) => {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Failed to load cortex health' }));
     }
+    return;
+  }
+
+
+  if (path === '/api/workload-routing' && req.method === 'GET') {
+    try {
+      const config = readOpenClawConfig();
+      if (!config) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'openclaw.json not found' }));
+        return;
+      }
+      const defaults = config.agents?.defaults || {};
+      const cortexConfig = readCortexConfig();
+      const ladder = Array.isArray(cortexConfig?.ladder) ? cortexConfig.ladder : [];
+      const catalog = ladder
+        .filter((entry) => entry && typeof entry === 'object')
+        .map((entry) => ({
+          model: entry.model,
+          provider: entry.model?.split('/')[0] || 'unknown',
+          enabled: entry.enabled !== false,
+          tier: entry.tier || entry.costTier || null,
+        }));
+
+      const result = {
+        primary: {
+          model: defaults.model?.primary || null,
+          source: 'agents.defaults.model.primary',
+          status: defaults.model?.primary ? 'pinned' : 'none',
+        },
+        fallbacks: {
+          models: Array.isArray(defaults.model?.fallbacks) ? defaults.model.fallbacks : [],
+          source: 'agents.defaults.model.fallbacks',
+        },
+        heartbeat: {
+          model: defaults.heartbeat?.model || '',
+          every: defaults.heartbeat?.every || '0m',
+          activeHours: defaults.heartbeat?.activeHours || null,
+          status: defaults.heartbeat?.every === '0m'
+            ? 'disabled'
+            : defaults.heartbeat?.model
+              ? 'pinned'
+              : 'routed',
+        },
+        compaction: {
+          model: config.agents?.defaults?.compaction?.model || null,
+          mode: defaults.compaction?.mode || config.compaction?.mode || null,
+          status: 'unavailable',
+        },
+        cron: {
+          model: null,
+          status: 'inherits_primary',
+        },
+        catalog,
+      };
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+    } catch (e) {
+      console.error('[API] /api/workload-routing error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Internal server error' }));
+    }
+    return;
+  }
+
+  if (path === '/api/workload-routing' && req.method === 'PUT') {
+    readJsonBody(req).then((body) => {
+      try {
+        const config = readOpenClawConfig();
+        if (!config) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'openclaw.json not found' }));
+          return;
+        }
+
+        if (!config.agents) config.agents = {};
+        if (!config.agents.defaults) config.agents.defaults = {};
+        if (!config.agents.defaults.model) config.agents.defaults.model = {};
+        if (!config.agents.defaults.heartbeat) config.agents.defaults.heartbeat = {};
+
+        let changed = false;
+
+        if (Object.hasOwn(body, 'primary') && typeof body.primary === 'string') {
+          if (!body.primary) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Primary model cannot be empty' }));
+            return;
+          }
+          config.agents.defaults.model.primary = body.primary;
+          changed = true;
+        }
+
+        if (Object.hasOwn(body, 'fallbacks') && Array.isArray(body.fallbacks)) {
+          config.agents.defaults.model.fallbacks = body.fallbacks;
+          changed = true;
+        }
+
+        if (Object.hasOwn(body, 'heartbeat_model') && typeof body.heartbeat_model === 'string') {
+          config.agents.defaults.heartbeat.model = body.heartbeat_model;
+          changed = true;
+        }
+
+        if (Object.hasOwn(body, 'heartbeat_every') && typeof body.heartbeat_every === 'string') {
+          config.agents.defaults.heartbeat.every = body.heartbeat_every;
+          changed = true;
+        }
+
+        if (!changed) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'No valid fields to update' }));
+          return;
+        }
+
+        writeOpenClawConfig(config);
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, message: 'Config saved. Restart gateway to apply.' }));
+      } catch (e) {
+        console.error('[API] PUT /api/workload-routing error:', e.message);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Failed to write config' }));
+      }
+    }).catch((e) => {
+      const code = e.message === 'Payload too large' ? 413 : 400;
+      res.writeHead(code, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    });
     return;
   }
 
