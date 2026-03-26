@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { existsSync, readFileSync, statSync } from 'fs';
+import { existsSync, readFileSync, statSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
 import { createHash, randomBytes } from 'crypto';
@@ -1814,6 +1814,231 @@ export function updatePipelineInstance(id, data = {}) {
   const setClause = fields.map((key) => `${key} = @${key}`).join(', ');
   conn.prepare(`UPDATE pipeline_instances SET ${setClause} WHERE id = @id`).run(updates);
   return getPipelineInstance(id);
+}
+
+
+
+const KILL_SWITCHES_PATH = '/home/openclaw/.openclaw/workspace/kill-switches.json';
+const KILL_SWITCH_CACHE_TTL_MS = 10_000;
+const DEFAULT_KILL_SWITCHES = {
+  pipeline_auto_advance: {
+    active: false,
+    reason: null,
+    activated_at: null,
+    activated_by: null,
+  },
+};
+let killSwitchCache = null;
+let killSwitchCacheAt = 0;
+
+function cloneDefaultKillSwitches() {
+  return JSON.parse(JSON.stringify(DEFAULT_KILL_SWITCHES));
+}
+
+function normalizeKillSwitches(raw) {
+  const defaults = cloneDefaultKillSwitches();
+  if (!raw || typeof raw !== 'object') return defaults;
+  if (raw.pipeline_auto_advance && typeof raw.pipeline_auto_advance === 'object') {
+    defaults.pipeline_auto_advance = {
+      active: raw.pipeline_auto_advance.active === true,
+      reason: raw.pipeline_auto_advance.reason == null ? null : String(raw.pipeline_auto_advance.reason),
+      activated_at: raw.pipeline_auto_advance.activated_at == null ? null : String(raw.pipeline_auto_advance.activated_at),
+      activated_by: raw.pipeline_auto_advance.activated_by == null ? null : String(raw.pipeline_auto_advance.activated_by),
+    };
+  }
+  return defaults;
+}
+
+export function getKillSwitches() {
+  const now = Date.now();
+  if (killSwitchCache && (now - killSwitchCacheAt) < KILL_SWITCH_CACHE_TTL_MS) {
+    return killSwitchCache;
+  }
+
+  let parsed = cloneDefaultKillSwitches();
+  try {
+    if (!existsSync(KILL_SWITCHES_PATH)) {
+      writeFileSync(KILL_SWITCHES_PATH, `${JSON.stringify(DEFAULT_KILL_SWITCHES, null, 2)}\n`, 'utf8');
+      killSwitchCache = parsed;
+      killSwitchCacheAt = now;
+      return parsed;
+    }
+    const raw = readFileSync(KILL_SWITCHES_PATH, 'utf8');
+    parsed = normalizeKillSwitches(JSON.parse(raw));
+  } catch {
+    parsed = cloneDefaultKillSwitches();
+  }
+
+  killSwitchCache = parsed;
+  killSwitchCacheAt = now;
+  return parsed;
+}
+
+export function isAutoAdvanceKilled() {
+  const killSwitches = getKillSwitches();
+  return killSwitches?.pipeline_auto_advance?.active === true;
+}
+
+class AutoAdvanceAbortError extends Error {
+  constructor(result) {
+    super(result?.reason || 'auto_advance_aborted');
+    this.name = 'AutoAdvanceAbortError';
+    this.result = result;
+  }
+}
+
+function addAutoAdvanceAudit(taskId, reason, details = {}) {
+  addAuditEntry({
+    task_id: taskId,
+    action: 'auto_advance_skipped',
+    actor: 'system',
+    details: {
+      reason,
+      ...details,
+    },
+  });
+}
+
+export function tryAutoAdvance(taskId, newStatus) {
+  if (newStatus !== 'done') {
+    addAutoAdvanceAudit(taskId, 'not_done', { new_status: newStatus });
+    return { advanced: false, reason: 'not_done' };
+  }
+
+  if (isAutoAdvanceKilled()) {
+    addAutoAdvanceAudit(taskId, 'kill_switch');
+    return { advanced: false, reason: 'kill_switch' };
+  }
+
+  const conn = getDb();
+  const task = getTaskById(taskId);
+  if (!task) {
+    addAutoAdvanceAudit(taskId, 'task_not_found');
+    return { advanced: false, reason: 'task_not_found' };
+  }
+  if (!task.group_id) {
+    addAutoAdvanceAudit(taskId, 'not_pipeline');
+    return { advanced: false, reason: 'not_pipeline' };
+  }
+  if (task.step_order == null) {
+    addAutoAdvanceAudit(taskId, 'no_step_order', { pipeline_id: task.group_id });
+    return { advanced: false, reason: 'no_step_order' };
+  }
+
+  const instance = getPipelineInstance(task.group_id);
+  if (!instance || instance.status !== 'active') {
+    addAutoAdvanceAudit(taskId, 'pipeline_not_active', { pipeline_id: task.group_id, pipeline_status: instance?.status || null });
+    return { advanced: false, reason: 'pipeline_not_active' };
+  }
+  if (Number(instance.auto_advance_enabled) !== 1) {
+    addAutoAdvanceAudit(taskId, 'auto_advance_disabled', { pipeline_id: instance.id });
+    return { advanced: false, reason: 'auto_advance_disabled' };
+  }
+
+  let steps = [];
+  try {
+    const parsed = JSON.parse(instance.step_snapshot || '[]');
+    steps = Array.isArray(parsed) ? parsed : [];
+  } catch {
+    steps = [];
+  }
+  const currentStepOrder = Number(task.step_order);
+  const nextStepOrder = currentStepOrder + 1;
+  const nextStep = steps.find((step) => Number(step?.order) === nextStepOrder);
+  if (!nextStep) {
+    addAutoAdvanceAudit(taskId, 'last_step', { pipeline_id: instance.id, step_order: currentStepOrder });
+    return { advanced: false, reason: 'last_step' };
+  }
+  if (nextStep.completion_mode !== 'auto_advance') {
+    addAutoAdvanceAudit(taskId, 'manual_step', { pipeline_id: instance.id, next_step_order: nextStepOrder, completion_mode: nextStep.completion_mode || null });
+    return { advanced: false, reason: 'manual_step' };
+  }
+  if (nextStep.step_type === 'human') {
+    addAutoAdvanceAudit(taskId, 'human_step', { pipeline_id: instance.id, next_step_order: nextStepOrder });
+    return { advanced: false, reason: 'human_step' };
+  }
+
+  const expectedVersion = Number(instance.version) || 0;
+  const nowEpoch = nowEpochSeconds();
+
+  const tx = conn.transaction(() => {
+    const currentVersionRow = conn.prepare('SELECT version FROM pipeline_instances WHERE id = ?').get(instance.id);
+    if (!currentVersionRow) {
+      throw new AutoAdvanceAbortError({ advanced: false, reason: 'pipeline_not_active' });
+    }
+    const actualVersion = Number(currentVersionRow.version) || 0;
+    if (actualVersion !== expectedVersion) {
+      throw new AutoAdvanceAbortError({ advanced: false, reason: 'version_mismatch', pipeline_id: instance.id, expected_version: expectedVersion, actual_version: actualVersion });
+    }
+
+    const downstreamTask = conn.prepare('SELECT * FROM tasks WHERE group_id = ? AND step_order = ? LIMIT 1').get(instance.id, nextStepOrder);
+    if (!downstreamTask) {
+      throw new AutoAdvanceAbortError({ advanced: false, reason: 'downstream_not_found', pipeline_id: instance.id, next_step_order: nextStepOrder });
+    }
+    if (downstreamTask.status !== 'proposed' || downstreamTask.claimed_by != null) {
+      const detail = downstreamTask.status !== 'proposed'
+        ? `Downstream task ${downstreamTask.id} is ${downstreamTask.status}`
+        : `Downstream task ${downstreamTask.id} is already claimed`;
+      throw new AutoAdvanceAbortError({
+        advanced: false,
+        reason: 'precondition_failed',
+        detail,
+        downstream_task_id: downstreamTask.id,
+        downstream_status: downstreamTask.status,
+        downstream_claimed_by: downstreamTask.claimed_by,
+      });
+    }
+
+    conn.prepare("UPDATE tasks SET status = ?, updated_at = datetime('now'), last_activity_at = ? WHERE id = ?")
+      .run('backlog', nowEpoch, downstreamTask.id);
+
+    const newVersion = expectedVersion + 1;
+    conn.prepare('UPDATE pipeline_instances SET version = ?, current_step = ? WHERE id = ?')
+      .run(newVersion, nextStepOrder, instance.id);
+
+    conn.prepare(`
+      INSERT INTO task_audit (task_id, action, from_status, to_status, actor, details, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+    `).run(
+      downstreamTask.id,
+      'auto_advanced',
+      'proposed',
+      'backlog',
+      'system',
+      JSON.stringify({ pipeline_id: instance.id, step_order: nextStepOrder, version: newVersion }),
+    );
+
+    conn.prepare("INSERT INTO task_history (task_id, actor, action, detail, timestamp) VALUES (?, ?, ?, ?, datetime('now'))")
+      .run(downstreamTask.id, 'system', 'status_changed', 'proposed -> backlog (auto-advance)');
+
+    return {
+      advanced: true,
+      downstream_task_id: downstreamTask.id,
+      from_status: 'proposed',
+      to_status: 'backlog',
+      pipeline_id: instance.id,
+      new_version: newVersion,
+    };
+  });
+
+  try {
+    return tx.immediate();
+  } catch (error) {
+    if (error instanceof AutoAdvanceAbortError) {
+      addAutoAdvanceAudit(taskId, error.result.reason, {
+        pipeline_id: instance.id,
+        next_step_order: nextStepOrder,
+        ...Object.fromEntries(Object.entries(error.result).filter(([key]) => key !== 'advanced' && key !== 'reason')),
+      });
+      return error.result;
+    }
+    addAutoAdvanceAudit(taskId, 'transaction_failed', {
+      pipeline_id: instance.id,
+      next_step_order: nextStepOrder,
+      error: error.message,
+    });
+    return { advanced: false, reason: 'transaction_failed', error: error.message };
+  }
 }
 
 export function createTaskSession({ task_id, session_id, link_type, created_by } = {}) {

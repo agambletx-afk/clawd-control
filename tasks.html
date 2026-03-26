@@ -56,6 +56,10 @@
       color: var(--text-tertiary);
       margin-bottom: 16px;
     }
+    .pipeline-instance-list { display: flex; flex-direction: column; gap: 8px; }
+    .pipeline-instance-row { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--text-secondary); }
+    .pipeline-instance-name { font-weight: 600; color: var(--text-primary); }
+    .pipeline-auto-badge { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; padding: 1px 6px; border-radius: 999px; border: 1px solid rgba(74,222,128,0.45); color: #4ade80; background: rgba(74,222,128,0.12); }
     .funnel-row {
       display: flex;
       align-items: center;
@@ -883,6 +887,11 @@
         <div class="pipeline-subtitle">Most common state changes across all tasks</div>
         <div class="pipeline-transitions" id="pipelineTransitions"></div>
       </div>
+      <div class="pipeline-section">
+        <div class="pipeline-title">Pipeline Instances</div>
+        <div class="pipeline-subtitle">Active instances with auto-advance indicator</div>
+        <div class="pipeline-instance-list" id="pipelineInstances"></div>
+      </div>
     </div>
 
 
@@ -1130,13 +1139,52 @@
           }
         }
 
+        function renderPipelineInstances(tasks, pipelines) {
+          const el = document.getElementById('pipelineInstances');
+          if (!el) return;
+          const grouped = new Map();
+          (tasks || []).forEach((task) => {
+            if (!task.group_id) return;
+            if (!grouped.has(task.group_id)) grouped.set(task.group_id, []);
+            grouped.get(task.group_id).push(task);
+          });
+          const instances = Array.from(grouped.entries()).map(([pipelineId, groupedTasks]) => {
+            const pipeline = (pipelines || []).find((p) => p.id === pipelineId);
+            return {
+              id: pipelineId,
+              name: groupedTasks[0]?.group_name || pipeline?.name || pipelineId,
+              taskCount: groupedTasks.length,
+              autoEnabled: Number(pipeline?.auto_advance_enabled) === 1,
+            };
+          }).sort((a, b) => a.name.localeCompare(b.name));
+
+          if (!instances.length) {
+            el.innerHTML = '<div style="color:var(--text-tertiary);font-size:0.78rem">No pipeline-linked tasks yet.</div>';
+            return;
+          }
+
+          el.innerHTML = instances.map((pipeline) => `
+            <div class="pipeline-instance-row">
+              <span class="pipeline-instance-name">${esc(pipeline.name)}</span>
+              ${pipeline.autoEnabled ? '<span class="pipeline-auto-badge">auto</span>' : ''}
+              <span style="color:var(--text-tertiary)">${pipeline.taskCount} task${pipeline.taskCount === 1 ? '' : 's'}</span>
+            </div>
+          `).join('');
+        }
+
         async function renderPipelines() {
           try {
-            const res = await fetch('/api/tasks', { credentials: 'same-origin' });
-            const data = await res.json();
-            const tasks = Array.isArray(data) ? data : (Array.isArray(data.tasks) ? data.tasks : []);
+            const [tasksRes, pipelinesRes] = await Promise.all([
+              fetch('/api/tasks', { credentials: 'same-origin' }),
+              fetch('/api/pipelines', { credentials: 'same-origin' }),
+            ]);
+            const tasksData = await tasksRes.json();
+            const pipelinesData = await pipelinesRes.json();
+            const tasks = Array.isArray(tasksData) ? tasksData : (Array.isArray(tasksData.tasks) ? tasksData.tasks : []);
+            const pipelines = Array.isArray(pipelinesData?.pipelines) ? pipelinesData.pipelines : [];
             renderPipelineFunnel(tasks);
             renderPipelineSources(tasks);
+            renderPipelineInstances(tasks, pipelines);
             await renderPipelineTransitions();
           } catch {
             document.getElementById('pipelinesView').innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-tertiary)">Unable to load pipeline data.</div>';
