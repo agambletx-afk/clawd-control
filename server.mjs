@@ -7314,6 +7314,118 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (path === '/api/cortex/workload-tokens' && req.method === 'GET') {
+    try {
+      const period = url.searchParams.get('period') || '24h';
+      const periodMap = { '24h': 1, '3d': 3, '7d': 7 };
+      const days = periodMap[period] || 1;
+      const cutoff = new Date(Date.now() - days * 86400000).toISOString();
+
+      if (!existsSync(OUTCOME_DB_PATH)) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ workloads: [], period, has_token_data: false, total_turns: 0, total_tokens: 0 }));
+        return;
+      }
+
+      const db = openSqlite(OUTCOME_DB_PATH, { readonly: true });
+      let rows;
+      try {
+        rows = db.prepare(
+          'SELECT timestamp, chosen_provider, chosen_model, chosen_cost_tier, tokens_in, tokens_out, estimated_cost_usd, policy_input FROM outcome_records WHERE timestamp >= ? ORDER BY timestamp ASC'
+        ).all(cutoff);
+      } finally {
+        db.close();
+      }
+
+      const openclawConfig = readOpenClawConfig();
+      const heartbeatModel = openclawConfig?.agents?.defaults?.heartbeat?.model || '';
+      const heartbeatDisabled = openclawConfig?.agents?.defaults?.heartbeat?.every === '0m';
+
+      const classified = rows.map((row) => {
+        let workloadClass = 'primary';
+        if (heartbeatModel && String(row.chosen_model || '').includes(heartbeatModel)) {
+          workloadClass = 'heartbeat';
+        }
+        if (row.policy_input) {
+          try {
+            const policy = JSON.parse(row.policy_input);
+            const workType = String(policy.workType || '').toLowerCase();
+            if (workType === 'heartbeat' || workType === 'health_check') workloadClass = 'heartbeat';
+            else if (workType === 'compaction' || workType === 'compact') workloadClass = 'compaction';
+            else if (workType === 'cron' || workType === 'scheduled') workloadClass = 'cron';
+          } catch {
+            // ignore parse errors
+          }
+        }
+
+        const tokensIn = Number(row.tokens_in) || 0;
+        const tokensOut = Number(row.tokens_out) || 0;
+        const totalTokens = tokensIn + tokensOut;
+        const cost = Number(row.estimated_cost_usd) || 0;
+
+        return {
+          workloadClass,
+          provider: row.chosen_provider,
+          model: row.chosen_model,
+          costTier: row.chosen_cost_tier || 'free',
+          tokens: totalTokens,
+          tokensIn,
+          tokensOut,
+          cost,
+          timestamp: row.timestamp,
+        };
+      });
+
+      const validClasses = ['primary', 'heartbeat', 'compaction', 'cron', 'unknown'];
+      const agg = {};
+      for (const cls of validClasses) {
+        agg[cls] = { workloadClass: cls, turns: 0, tokens: 0, tokensIn: 0, tokensOut: 0, cost: 0, providers: {} };
+      }
+
+      let hasTokenData = false;
+      for (const item of classified) {
+        const bucket = agg[item.workloadClass] || agg.unknown;
+        bucket.turns += 1;
+        bucket.tokens += item.tokens;
+        bucket.tokensIn += item.tokensIn;
+        bucket.tokensOut += item.tokensOut;
+        bucket.cost += item.cost;
+        if (item.tokens > 0) hasTokenData = true;
+        const providerKey = item.provider || 'unknown';
+        if (!bucket.providers[providerKey]) bucket.providers[providerKey] = { turns: 0, tokens: 0 };
+        bucket.providers[providerKey].turns += 1;
+        bucket.providers[providerKey].tokens += item.tokens;
+      }
+
+      const totalTurns = classified.length;
+      const totalTokens = classified.reduce((sum, item) => sum + item.tokens, 0);
+      const workloads = validClasses
+        .map((cls) => ({
+          ...agg[cls],
+          pctTurns: totalTurns > 0 ? agg[cls].turns / totalTurns : 0,
+          pctTokens: totalTokens > 0 ? agg[cls].tokens / totalTokens : 0,
+          confidence: cls === 'heartbeat' || cls === 'primary' ? 'reliable' : 'estimated',
+        }))
+        .filter((row) => row.turns > 0);
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        workloads,
+        period,
+        has_token_data: hasTokenData,
+        total_turns: totalTurns,
+        total_tokens: totalTokens,
+        heartbeat_model: heartbeatModel || null,
+        heartbeat_disabled: heartbeatDisabled,
+      }));
+    } catch (e) {
+      console.error('[API] /api/cortex/workload-tokens error:', e.message);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ workloads: [], period: '24h', has_token_data: false, total_turns: 0, total_tokens: 0 }));
+    }
+    return;
+  }
+
 
   if (path === '/api/cortex/usage' && req.method === 'GET') {
     try {
