@@ -28,16 +28,27 @@
     }
 
     .section {
-      background: var(--bg-secondary);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 14px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 16px;
       margin-bottom: 14px;
+      min-width: 0;
     }
 
     .section h2 {
-      font-size: 1rem;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 0;
+    }
+
+    .panel-subtitle {
+      margin-top: 2px;
       margin-bottom: 10px;
+      font-size: 12px;
+      font-weight: 400;
+      color: var(--text-secondary);
     }
 
     .version-check-banner {
@@ -90,10 +101,21 @@
       background: transparent;
       color: inherit;
       border-radius: 6px;
-      padding: 2px 6px;
+      width: 28px;
+      height: 28px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       cursor: pointer;
       font-size: 0.82rem;
       line-height: 1;
+    }
+
+    .icon-btn [data-lucide] {
+      width: 14px;
+      height: 14px;
+      color: var(--text-secondary);
+      stroke-width: 2;
     }
 
     .icon-btn:hover { background: var(--surface-hover); }
@@ -247,6 +269,21 @@
 
     .verification-toggle {
       margin-left: 8px;
+    }
+
+    .verification-toggle.btn {
+      min-width: 32px;
+      min-height: 28px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .verification-toggle [data-lucide] {
+      width: 14px;
+      height: 14px;
+      color: var(--text-secondary);
     }
 
     .row {
@@ -538,12 +575,15 @@
 
     .gateway-events-panel {
       border: 1px solid var(--border-subtle);
-      border-radius: 10px;
-      background: var(--bg-tertiary);
+      border-radius: var(--radius-md);
+      background: var(--bg-surface);
       overflow: hidden;
     }
 
     .gateway-events-header {
+      width: 100%;
+      border: none;
+      background: transparent;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -551,6 +591,7 @@
       padding: 10px 12px;
       cursor: pointer;
       user-select: none;
+      color: inherit;
     }
 
     .gateway-events-meta { display: inline-flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 0.78rem; }
@@ -560,8 +601,9 @@
     .gateway-events-list { max-height: 280px; overflow-y: auto; padding: 8px; display: grid; gap: 6px; }
     .gateway-event-row { display: grid; grid-template-columns: 70px 24px 1fr; gap: 8px; align-items: start; padding: 6px 8px; border-radius: 8px; }
     .gateway-event-row.recent { background: rgba(56, 189, 248, 0.09); }
-    .gateway-event-time { font-size: 0.72rem; color: var(--text-secondary); white-space: nowrap; }
-    .gateway-event-icon { font-size: 0.95rem; line-height: 1; text-align: center; }
+    .gateway-event-time { font-size: 0.72rem; color: var(--text-secondary); white-space: nowrap; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+    .gateway-event-icon { line-height: 1; text-align: center; display: inline-flex; align-items: center; justify-content: center; }
+    .gateway-event-icon [data-lucide] { width: 14px; height: 14px; color: var(--text-secondary); }
     .gateway-event-msg { font-size: 0.8rem; color: var(--text-primary); }
     .gateway-event-msg.alert { color: #ef4444; }
 
@@ -603,6 +645,140 @@
       display: grid;
       gap: 12px;
       min-width: 0;
+    }
+
+    .ops-summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .ops-summary-card {
+      position: relative;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      background: var(--bg-surface);
+      padding: 12px 12px 12px 14px;
+      min-height: 130px;
+      overflow: hidden;
+      display: grid;
+      gap: 6px;
+      align-content: start;
+    }
+
+    .ops-summary-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      width: 3px;
+      background: #ef4444;
+    }
+
+    .ops-summary-label {
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+      font-weight: 600;
+    }
+
+    .ops-summary-value {
+      font-size: 28px;
+      font-weight: 700;
+      line-height: 1.1;
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .ops-summary-value.green { color: var(--accent-green); }
+    .ops-summary-value.amber { color: var(--accent-amber); }
+    .ops-summary-value.red { color: var(--accent-red); }
+    .ops-summary-value.tertiary { color: var(--text-tertiary); }
+    .ops-summary-value.error { color: var(--accent-amber); }
+
+    .ops-summary-sub,
+    .ops-summary-meta,
+    .ops-summary-attention {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .ops-summary-meta,
+    .ops-summary-attention,
+    .ops-summary-stale {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .ops-summary-attention {
+      justify-self: start;
+      font-size: 11px;
+      padding: 2px 8px;
+      border: 1px solid color-mix(in srgb, var(--accent-amber) 40%, transparent);
+      border-radius: var(--radius-full);
+      color: var(--accent-amber);
+      background: color-mix(in srgb, var(--accent-amber) 14%, transparent);
+    }
+
+    .ops-summary-stale {
+      font-size: 12px;
+      color: var(--text-tertiary);
+      margin-left: 6px;
+    }
+
+    .ops-summary-placeholder {
+      width: 70%;
+      height: 30px;
+      border-radius: 6px;
+      background: linear-gradient(90deg, var(--bg-tertiary) 20%, var(--bg-elevated) 50%, var(--bg-tertiary) 80%);
+      background-size: 200% 100%;
+      animation: pulse-slide 1.4s ease-in-out infinite;
+    }
+
+    @keyframes pulse-slide {
+      0% { background-position: 200% 0; opacity: 0.65; }
+      50% { opacity: 1; }
+      100% { background-position: -200% 0; opacity: 0.65; }
+    }
+
+    .collapsible-body.collapsed {
+      display: none;
+    }
+
+    .section-header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .section .muted,
+    #versionCheckSummary,
+    .version-check-release,
+    .verification-meta,
+    .verification-counts,
+    #backupStats strong,
+    #backupRows td:nth-child(2),
+    #backupRows td:nth-child(3),
+    #logRows td:nth-child(1),
+    #logRows td:nth-child(6),
+    #gatewayEventsCount,
+    .gateway-event-time,
+    .version-check-summary {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+
+    button:focus-visible,
+    select:focus-visible,
+    input:focus-visible,
+    [tabindex]:focus-visible {
+      outline: 2px solid var(--border-focus);
+      outline-offset: 2px;
     }
 
     .ops-logs-health-grid {
@@ -842,6 +1018,7 @@
     }
 
     @media (max-width: 1024px) {
+      .ops-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .ops-log-main {
         grid-template-columns: 84px 12px auto minmax(0, 1fr);
       }
@@ -857,6 +1034,7 @@
     }
 
     @media (max-width: 760px) {
+      .ops-summary-grid { grid-template-columns: 1fr; }
       .ops-logs-health-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .ops-log-detail { margin-left: 0; }
     }
@@ -896,16 +1074,19 @@
           <span>Version check unavailable</span>
         </div>
         <div class="version-check-actions">
-          <button id="versionRefreshBtn" class="icon-btn" title="Refresh version check" aria-label="Refresh version check">↻</button>
-          <button id="versionToggleBtn" class="icon-btn" title="Show release details" aria-label="Show release details">▾</button>
+          <button id="versionRefreshBtn" class="icon-btn" title="Refresh version check" aria-label="Refresh version check"><i data-lucide="refresh-cw"></i></button>
+          <button id="versionToggleBtn" class="icon-btn" title="Show release details" aria-label="Toggle release details" aria-expanded="false"><i data-lucide="chevron-down"></i></button>
         </div>
       </div>
       <div id="versionCheckDetails" class="version-check-details"></div>
     </section>
 
+    <div id="opsSummaryCards" class="ops-summary-grid" aria-label="Operations health summary"></div>
+
     <!-- Service Controls -->
     <section class="section">
       <h2>Service Controls</h2>
+      <p class="panel-subtitle">Whether the core control plane is up right now.</p>
       <div id="serviceCards" class="services"></div>
       <div style="margin-top: 10px;">
         <button id="freshSessionBtn" class="btn btn-outline-red">Fresh Session</button>
@@ -917,9 +1098,10 @@
         <h2 style="margin-bottom: 0;">Deployment Verification</h2>
         <div>
           <button id="verificationRunBtn" class="btn btn-green">Run Verification</button>
-          <button id="verificationToggleBtn" class="btn verification-toggle">Show Details</button>
+          <button id="verificationToggleBtn" class="btn verification-toggle" aria-label="Toggle verification details" aria-expanded="false"><i data-lucide="chevron-down"></i></button>
         </div>
       </div>
+      <p class="panel-subtitle">Confirms the running build matches expected state.</p>
       <div id="verificationSummary"></div>
       <div id="verificationDetails" class="verification-details"></div>
     </section>
@@ -927,6 +1109,7 @@
     <!-- Cron Jobs -->
     <section class="section">
       <h2>Cron Jobs</h2>
+      <p class="panel-subtitle">Missed or failing jobs quietly break automation.</p>
       <table>
         <thead>
           <tr>
@@ -944,6 +1127,7 @@
     <!-- Backups -->
     <section class="section">
       <h2>Backups</h2>
+      <p class="panel-subtitle">Create, restore, and manage recovery snapshots.</p>
       <div class="row" id="backupStats"></div>
       <div class="row" style="margin: 10px 0;">
         <button id="createBackupBtn" class="btn btn-green">Create Backup</button>
@@ -973,14 +1157,15 @@
     <!-- Gateway Events -->
     <section class="section">
       <div id="gatewayEventsPanel" class="gateway-events-panel" aria-label="Gateway events">
-        <div id="gatewayEventsHeader" class="gateway-events-header" role="button" tabindex="0">
+        <button id="gatewayEventsHeader" class="gateway-events-header" aria-label="Toggle gateway events" aria-expanded="false">
           <h2 style="margin:0;">Gateway Events</h2>
           <div class="gateway-events-meta">
             <span id="gatewayEventsCount" class="gateway-events-count">0 in last 24h</span>
-            <span id="gatewayEventsChevron">▾</span>
+            <span id="gatewayEventsChevron"><i data-lucide="chevron-down"></i></span>
           </div>
-        </div>
-        <div id="gatewayEventsBody" class="gateway-events-body">
+        </button>
+        <p class="panel-subtitle" style="padding:0 12px 8px; margin:0;">Restarts and disconnects that explain current health.</p>
+        <div id="gatewayEventsBody" class="gateway-events-body collapsible-body collapsed">
           <div id="gatewayEventsList" class="gateway-events-list">
             <div class="muted">Loading gateway events…</div>
           </div>
@@ -990,33 +1175,39 @@
 
     <!-- Activity Log -->
     <section class="section">
-      <h2>Activity Log</h2>
-      <div class="row inputs" style="margin-bottom: 8px;">
-        <select id="logCategory">
-          <option value="">All</option>
-          <option>service</option>
-          <option>cron</option>
-          <option>backup</option>
-          <option>cleanup</option>
-          <option>session</option>
-        </select>
+      <div class="section-header-row">
+        <h2>Activity Log</h2>
+        <button id="activityLogToggleBtn" class="icon-btn" aria-label="Toggle activity log" aria-expanded="false"><i data-lucide="chevron-down"></i></button>
       </div>
-      <table>
-        <thead>
-          <tr>
-            <th>Timestamp</th>
-            <th>Category</th>
-            <th>Action</th>
-            <th>Target</th>
-            <th>Status</th>
-            <th>Duration</th>
-            <th>Detail</th>
-          </tr>
-        </thead>
-        <tbody id="logRows"></tbody>
-      </table>
-      <div style="margin-top: 10px;">
-        <button id="loadMoreLogBtn" class="btn">Load more</button>
+      <p class="panel-subtitle">Recent operator actions that changed system state.</p>
+      <div id="activityLogBody" class="collapsible-body collapsed">
+        <div class="row inputs" style="margin-bottom: 8px;">
+          <select id="logCategory">
+            <option value="">All</option>
+            <option>service</option>
+            <option>cron</option>
+            <option>backup</option>
+            <option>cleanup</option>
+            <option>session</option>
+          </select>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Category</th>
+              <th>Action</th>
+              <th>Target</th>
+              <th>Status</th>
+              <th>Duration</th>
+              <th>Detail</th>
+            </tr>
+          </thead>
+          <tbody id="logRows"></tbody>
+        </table>
+        <div style="margin-top: 10px;">
+          <button id="loadMoreLogBtn" class="btn">Load more</button>
+        </div>
       </div>
     </section>
     <div id="toast" class="toast"></div>
@@ -1077,7 +1268,13 @@
       verificationError: '',
       verificationCategoryExpanded: {},
       gatewayEventsOpen: false,
+      activityLogOpen: false,
       gatewayEvents: [],
+      opsSummary: {
+        loading: true,
+        lastSuccessCards: null,
+        lastMeta: null
+      },
       opsView: 'health',
       opsLogs: {
         initialized: false,
@@ -1151,6 +1348,149 @@
       return payload;
     }
 
+    function renderLucideIcons() {
+      if (window.lucide && typeof window.lucide.createIcons === 'function') {
+        window.lucide.createIcons();
+      }
+    }
+
+    function setChevronIcon(buttonId, expanded) {
+      const btn = $(buttonId);
+      if (!btn) return;
+      btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+      const icon = btn.querySelector('[data-lucide]');
+      if (icon) icon.setAttribute('data-lucide', expanded ? 'chevron-up' : 'chevron-down');
+      renderLucideIcons();
+    }
+
+    function setOpsSummaryLoading() {
+      const el = $('opsSummaryCards');
+      if (!el) return;
+      const labels = ['SERVICES', 'JOBS', 'RECOVERY'];
+      el.innerHTML = labels.map((label) => `
+        <article class="ops-summary-card">
+          <div class="ops-summary-label">${label}</div>
+          <div class="ops-summary-placeholder" aria-hidden="true"></div>
+          <div class="ops-summary-sub">&nbsp;</div>
+        </article>
+      `).join('');
+    }
+
+    function opsStatusColor(status) {
+      if (status === 'green') return 'green';
+      if (status === 'amber') return 'amber';
+      if (status === 'red') return 'red';
+      return '';
+    }
+
+    function summaryErrorText(sourceName) {
+      const fallback = state.opsSummary.lastMeta || {};
+      const last = fallback.source_last_success_at || fallback.last_success_at || 'unknown';
+      return `Failed to reach ${sourceName}. Last success: ${last}.`;
+    }
+
+    function renderSummaryCard(config) {
+      const staleSuffix = config.stale ? '<span class="ops-summary-stale">(stale)</span>' : '';
+      return `<article class="ops-summary-card">
+        <div class="ops-summary-label">${esc(config.label)}</div>
+        <div class="ops-summary-value ${esc(config.valueClass || '')}">${esc(config.value)}${staleSuffix}</div>
+        ${config.attention ? `<div class="ops-summary-attention">${esc(config.attention)}</div>` : ''}
+        ${config.meta ? `<div class="ops-summary-meta">${esc(config.meta)}</div>` : ''}
+        <div class="ops-summary-sub">${esc(config.subtitle)}</div>
+      </article>`;
+    }
+
+    function renderOpsSummaryCards(opsCards = {}, staleByCard = {}, errorAll = false) {
+      const root = $('opsSummaryCards');
+      if (!root) return;
+      const services = opsCards.services || null;
+      const jobs = opsCards.jobs || null;
+      const recovery = opsCards.recovery || null;
+
+      const servicesCard = errorAll || !services ? {
+        label: 'SERVICES',
+        value: 'Error',
+        valueClass: 'error',
+        subtitle: summaryErrorText('service health')
+      } : {
+        label: 'SERVICES',
+        value: (services.down_count || 0) > 0 ? `${services.down_count} down` : `${services.up_count || 0}/${services.total_count || 0} up`,
+        valueClass: (services.down_count || 0) > 0 ? 'red' : 'green',
+        meta: (services.down_names || []).length ? (services.down_names || []).join(', ') : `${services.up_count || 0} online`,
+        subtitle: 'Whether the core control plane is up right now.',
+        stale: staleByCard.services
+      };
+
+      const jobsStatus = jobs?.scheduler?.status || jobs?.status || 'amber';
+      const schedulerHealthy = jobsStatus === 'green';
+      const failingCount = Number(jobs?.attention?.failing_count || 0);
+      const jobsCard = errorAll || !jobs ? {
+        label: 'JOBS',
+        value: 'Error',
+        valueClass: 'error',
+        subtitle: summaryErrorText('cron health')
+      } : {
+        label: 'JOBS',
+        value: (jobs.missed_count || 0) > 0 ? `${jobs.missed_count} missed` : `${jobs.fired_count || 0}/${jobs.total_count || 0} fired`,
+        valueClass: (jobs.missed_count || 0) > 0 ? 'red' : opsStatusColor(jobsStatus || 'green'),
+        attention: schedulerHealthy && failingCount > 0 ? `${failingCount} failing` : '',
+        meta: jobs.last_run_age || '',
+        subtitle: 'Missed or failing jobs quietly break automation.',
+        stale: staleByCard.jobs
+      };
+
+      const snapshots = Number(recovery?.snapshot_count || 0);
+      const recoveryCard = errorAll || !recovery ? {
+        label: 'RECOVERY',
+        value: 'Error',
+        valueClass: 'error',
+        subtitle: summaryErrorText('backup list')
+      } : snapshots === 0 ? {
+        label: 'RECOVERY',
+        value: 'None',
+        valueClass: 'tertiary',
+        meta: '0 snapshots',
+        subtitle: 'No recovery points exist.',
+        stale: staleByCard.recovery
+      } : {
+        label: 'RECOVERY',
+        value: recovery.freshness || 'Unknown',
+        valueClass: opsStatusColor(recovery.status || 'amber'),
+        meta: `${snapshots} snapshots${recovery.age_label ? ` · ${recovery.age_label}` : ''}`,
+        subtitle: 'Shows whether recovery points are fresh enough to trust.',
+        stale: staleByCard.recovery
+      };
+
+      root.innerHTML = [servicesCard, jobsCard, recoveryCard].map(renderSummaryCard).join('');
+    }
+
+    async function loadOpsSummaryCards() {
+      try {
+        const data = await api('/api/overview/summarizer');
+        const cards = data.operations_cards || {};
+        const staleByCard = {
+          services: !!cards.services?.source_error && !!state.opsSummary.lastSuccessCards?.services,
+          jobs: !!cards.jobs?.source_error && !!state.opsSummary.lastSuccessCards?.jobs,
+          recovery: !!cards.recovery?.source_error && !!state.opsSummary.lastSuccessCards?.recovery
+        };
+        const effectiveCards = {
+          services: staleByCard.services ? state.opsSummary.lastSuccessCards.services : cards.services,
+          jobs: staleByCard.jobs ? state.opsSummary.lastSuccessCards.jobs : cards.jobs,
+          recovery: staleByCard.recovery ? state.opsSummary.lastSuccessCards.recovery : cards.recovery
+        };
+        const previous = state.opsSummary.lastSuccessCards || {};
+        state.opsSummary.lastSuccessCards = {
+          services: cards.services && !cards.services.source_error ? cards.services : previous.services,
+          jobs: cards.jobs && !cards.jobs.source_error ? cards.jobs : previous.jobs,
+          recovery: cards.recovery && !cards.recovery.source_error ? cards.recovery : previous.recovery
+        };
+        state.opsSummary.lastMeta = data;
+        renderOpsSummaryCards(effectiveCards, staleByCard, false);
+      } catch {
+        renderOpsSummaryCards({}, {}, true);
+      }
+    }
+
     function getVersionCheckView(data = {}) {
       const status = data.status || 'check_failed';
       const installed = data.current_version || data.installed_version || 'unknown';
@@ -1159,7 +1499,7 @@
       if (status === 'up_to_date') {
         return {
           color: 'version-green',
-          message: `✅ OpenClaw ${installed} is up to date`
+          message: `OpenClaw ${installed} is up to date`
         };
       }
 
@@ -1167,18 +1507,18 @@
         if (data.has_security_patch) {
           return {
             color: 'version-red',
-            message: `🚨 ${installed} → ${latest} (${data.versions_behind || '?'} behind) security update available`
+            message: `${installed} → ${latest} (${data.versions_behind || '?'} behind) security update available`
           };
         }
         if (data.has_breaking_changes) {
           return {
             color: 'version-yellow',
-            message: `⚠️ ${installed} → ${latest} (${data.versions_behind || '?'} behind) includes breaking changes`
+            message: `${installed} → ${latest} (${data.versions_behind || '?'} behind) includes breaking changes`
           };
         }
         return {
           color: 'version-yellow',
-          message: `⬆️ ${installed} → ${latest} (${data.versions_behind || '?'} behind)`
+          message: `${installed} → ${latest} (${data.versions_behind || '?'} behind)`
         };
       }
 
@@ -1208,7 +1548,7 @@
 
       $('versionCheckDetails').innerHTML = detailRows || '<div class="muted">No intermediate releases listed.</div>';
       $('versionCheckDetails').classList.toggle('open', state.versionCheckExpanded);
-      $('versionToggleBtn').textContent = state.versionCheckExpanded ? '▴' : '▾';
+      setChevronIcon('versionToggleBtn', state.versionCheckExpanded);
     }
 
     async function loadVersionCheck() {
@@ -1219,7 +1559,8 @@
     async function refreshVersionCheck(btn) {
       if (!btn) return;
       btn.disabled = true;
-      btn.innerHTML = '<span class="spin">↻</span>';
+      btn.innerHTML = '<span class="spin"><i data-lucide="refresh-cw"></i></span>';
+      renderLucideIcons();
       try {
         const data = await api('/api/ops/version-check/refresh', { method: 'POST' });
         renderVersionCheck(data);
@@ -1229,7 +1570,8 @@
         toast(error.message);
       } finally {
         btn.disabled = false;
-        btn.textContent = '↻';
+        btn.innerHTML = '<i data-lucide="refresh-cw"></i>';
+        renderLucideIcons();
       }
     }
 
@@ -1241,10 +1583,10 @@
     }
 
     function statusSymbol(status) {
-      if (status === 'pass') return '✅';
-      if (status === 'fail') return '❌';
-      if (status === 'warn') return '⚠️';
-      return '➖';
+      if (status === 'pass') return '[PASS]';
+      if (status === 'fail') return '[FAIL]';
+      if (status === 'warn') return '[WARN]';
+      return '[SKIP]';
     }
 
     function formatDuration(durationMs) {
@@ -1260,12 +1602,12 @@
       const toggleBtn = $('verificationToggleBtn');
 
       runBtn.disabled = state.verificationRunning;
-      runBtn.innerHTML = state.verificationRunning ? '<span class="spin">↻</span> Verifying deployment...' : 'Run Verification';
+      runBtn.innerHTML = state.verificationRunning ? '<span class="spin"><i data-lucide="refresh-cw"></i></span> Verifying deployment...' : 'Run Verification';
 
       if (!data.available || !data.results) {
         summaryEl.innerHTML = '<div class="muted">No verification results found. Click Run Verification to check deployment health.</div>';
         detailsEl.innerHTML = '';
-        toggleBtn.textContent = 'Show Details';
+        setChevronIcon('verificationToggleBtn', false);
         toggleBtn.disabled = true;
         detailsEl.classList.remove('open');
         return;
@@ -1281,7 +1623,7 @@
           if (!(name in state.verificationCategoryExpanded)) state.verificationCategoryExpanded[name] = true;
         }
       });
-      const staleBadge = data.stale ? '<span class="verification-stale">⚠️ stale</span>' : '';
+      const staleBadge = data.stale ? '<span class="verification-stale">stale</span>' : '';
       summaryEl.innerHTML = `
         <div class="verification-meta">
           <span>Last run: ${esc(rel(results.timestamp))} ${staleBadge}</span>
@@ -1324,7 +1666,8 @@
 
       detailsEl.innerHTML = detailHtml;
       detailsEl.classList.toggle('open', state.verificationExpanded);
-      toggleBtn.textContent = state.verificationExpanded ? 'Hide Details' : 'Show Details';
+      setChevronIcon('verificationToggleBtn', state.verificationExpanded);
+      renderLucideIcons();
 
       summaryEl.querySelectorAll('[data-category]').forEach((btn) => {
         btn.onclick = (event) => {
@@ -1623,11 +1966,11 @@
 
     function gatewayEventIcon(message) {
       const msg = String(message || '').toLowerCase();
-      if (msg.includes('restart')) return '🔄';
-      if (msg.includes('reaper') || msg.includes('killed')) return '🧹';
-      if (msg.includes('disk')) return '💾';
-      if (msg.includes('lock')) return '🔓';
-      return '📡';
+      if (msg.includes('restart')) return 'refresh-cw';
+      if (msg.includes('reaper') || msg.includes('killed')) return 'broom';
+      if (msg.includes('disk')) return 'hard-drive';
+      if (msg.includes('lock')) return 'unlock';
+      return 'radio';
     }
 
     function renderGatewayEvents() {
@@ -1657,15 +2000,18 @@
           const alert = /restart|critical/i.test(msg);
           return `<div class="gateway-event-row ${recent ? 'recent' : ''}" title="${esc(ts || '')}">
             <span class="gateway-event-time">${esc(eventTime)}</span>
-            <span class="gateway-event-icon">${gatewayEventIcon(msg)}</span>
+            <span class="gateway-event-icon"><i data-lucide="${gatewayEventIcon(msg)}"></i></span>
             <span class="gateway-event-msg ${alert ? 'alert' : ''}">${esc(msg)}</span>
           </div>`;
         }).join('');
       }
 
       body.classList.toggle('open', state.gatewayEventsOpen);
+      body.classList.toggle('collapsed', !state.gatewayEventsOpen);
       body.style.maxHeight = state.gatewayEventsOpen ? `${body.scrollHeight}px` : '0';
-      chevron.textContent = state.gatewayEventsOpen ? '▴' : '▾';
+      $('gatewayEventsHeader').setAttribute('aria-expanded', state.gatewayEventsOpen ? 'true' : 'false');
+      chevron.innerHTML = `<i data-lucide="${state.gatewayEventsOpen ? 'chevron-up' : 'chevron-down'}"></i>`;
+      renderLucideIcons();
     }
 
     async function loadGatewayEvents() {
@@ -1738,6 +2084,8 @@
       });
       if (view === 'logs') {
         ensureOpsLogsLoaded();
+      } else {
+        loadOpsSummaryCards().catch(() => {});
       }
     }
 
@@ -2058,6 +2406,24 @@
       $('manifestModal').setAttribute('aria-hidden', 'true');
     }
 
+    function applyCollapsibleState() {
+      const gatewayBody = $('gatewayEventsBody');
+      const activityBody = $('activityLogBody');
+      if (gatewayBody) {
+        gatewayBody.classList.toggle('collapsed', !state.gatewayEventsOpen);
+      }
+      if (activityBody) {
+        activityBody.classList.toggle('collapsed', !state.activityLogOpen);
+      }
+      setChevronIcon('activityLogToggleBtn', state.activityLogOpen);
+    }
+
+    function initPanelCollapseState() {
+      state.gatewayEventsOpen = localStorage.getItem('ops_gateway_events_open') === 'true';
+      state.activityLogOpen = localStorage.getItem('ops_activity_log_open') === 'true';
+      applyCollapsibleState();
+    }
+
     async function initOpsTab() {
       const initRoot = $('serviceCards');
       if (!initRoot || window.__opsInitRoot === initRoot) return;
@@ -2065,12 +2431,15 @@
 
       setupOpsSubNav();
       initOpsLogsView();
+      initPanelCollapseState();
+      setOpsSummaryLoading();
+      renderLucideIcons();
 
       $('freshSessionBtn').onclick = handleFreshSession;
       $('versionCheckBanner').onclick = () => {
         state.versionCheckExpanded = !state.versionCheckExpanded;
         $('versionCheckDetails').classList.toggle('open', state.versionCheckExpanded);
-        $('versionToggleBtn').textContent = state.versionCheckExpanded ? '▴' : '▾';
+        setChevronIcon('versionToggleBtn', state.versionCheckExpanded);
       };
       $('versionRefreshBtn').onclick = (event) => {
         event.stopPropagation();
@@ -2080,7 +2449,7 @@
         event.stopPropagation();
         state.versionCheckExpanded = !state.versionCheckExpanded;
         $('versionCheckDetails').classList.toggle('open', state.versionCheckExpanded);
-        $('versionToggleBtn').textContent = state.versionCheckExpanded ? '▴' : '▾';
+        setChevronIcon('versionToggleBtn', state.versionCheckExpanded);
       };
       $('verificationRunBtn').onclick = (event) => {
         event.stopPropagation();
@@ -2090,19 +2459,18 @@
         event.stopPropagation();
         state.verificationExpanded = !state.verificationExpanded;
         $('verificationDetails').classList.toggle('open', state.verificationExpanded);
-        $('verificationToggleBtn').textContent = state.verificationExpanded ? 'Hide Details' : 'Show Details';
+        setChevronIcon('verificationToggleBtn', state.verificationExpanded);
       };
       $('cleanupBtn').onclick = handleCleanup;
       $('gatewayEventsHeader').onclick = () => {
         state.gatewayEventsOpen = !state.gatewayEventsOpen;
+        localStorage.setItem('ops_gateway_events_open', state.gatewayEventsOpen ? 'true' : 'false');
         renderGatewayEvents();
       };
-      $('gatewayEventsHeader').onkeydown = (event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          state.gatewayEventsOpen = !state.gatewayEventsOpen;
-          renderGatewayEvents();
-        }
+      $('activityLogToggleBtn').onclick = () => {
+        state.activityLogOpen = !state.activityLogOpen;
+        localStorage.setItem('ops_activity_log_open', state.activityLogOpen ? 'true' : 'false');
+        applyCollapsibleState();
       };
       $('loadMoreLogBtn').onclick = () => loadLog(true);
       $('logCategory').onchange = async (event) => {
@@ -2118,10 +2486,12 @@
       };
 
       try {
-        await Promise.all([loadServices(), loadVersionCheck(), loadVerification(), loadCrons(), loadBackups(), loadGatewayEvents()]);
+        await Promise.all([loadOpsSummaryCards(), loadServices(), loadVersionCheck(), loadVerification(), loadCrons(), loadBackups(), loadGatewayEvents()]);
+        applyCollapsibleState();
         await resetLogs();
         if (window.__opsServicesRefreshTimer) clearInterval(window.__opsServicesRefreshTimer);
         window.__opsServicesRefreshTimer = setInterval(() => {
+          loadOpsSummaryCards().catch((error) => toast(error.message));
           loadServices().catch((error) => toast(error.message));
           loadVersionCheck().catch((error) => toast(error.message));
           loadVerification().catch((error) => toast(error.message));
