@@ -310,6 +310,12 @@
       background: var(--bg-tertiary);
     }
 
+    .ops-service-card {
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      background: var(--bg-surface);
+    }
+
     .dot {
       width: 10px;
       height: 10px;
@@ -608,7 +614,7 @@
     .gateway-event-msg.alert { color: #ef4444; }
 
 
-    .ops-sub-nav {
+    .sub-nav {
       display: flex;
       gap: 2px;
       background: var(--bg-input, var(--bg-tertiary));
@@ -618,7 +624,7 @@
       width: fit-content;
     }
 
-    .ops-sub-nav-btn {
+    .sub-nav-btn {
       padding: 6px 16px;
       border-radius: 9999px;
       border: none;
@@ -631,9 +637,9 @@
       white-space: nowrap;
     }
 
-    .ops-sub-nav-btn:hover { color: var(--text-primary); }
+    .sub-nav-btn:hover { color: var(--text-primary); }
 
-    .ops-sub-nav-btn.active {
+    .sub-nav-btn.active {
       background: var(--surface);
       color: var(--text-primary);
       font-weight: 600;
@@ -1059,155 +1065,218 @@
       <p class="subtitle">Infrastructure health, jobs, recovery, and learning.</p>
     </div>
 
-    <div class="ops-sub-nav" id="opsSubNav" role="tablist" aria-label="Operations views">
-      <button class="ops-sub-nav-btn active" data-view="health" role="tab" aria-selected="true">Health</button>
-      <button class="ops-sub-nav-btn" data-view="logs" role="tab" aria-selected="false">Logs</button>
+    <div class="sub-nav" id="opsSubNav" role="tablist" aria-label="Operations views">
+      <button class="sub-nav-btn active" data-view="health" role="tab" aria-selected="true">Health</button>
+      <button class="sub-nav-btn" data-view="jobs" role="tab" aria-selected="false">Jobs</button>
+      <button class="sub-nav-btn" data-view="recovery" role="tab" aria-selected="false">Recovery</button>
+      <button class="sub-nav-btn" data-view="checks" role="tab" aria-selected="false">Checks</button>
+      <button class="sub-nav-btn" data-view="logs" role="tab" aria-selected="false">Logs</button>
     </div>
 
     <div id="ops-health-view">
-    <section id="versionCheckBanner" class="version-check-banner" aria-label="OpenClaw version check">
-      <div class="version-check-main">
-        <div id="versionCheckSummary" class="version-check-summary">
-          <span class="version-check-dot version-gray"></span>
-          <span>Version check unavailable</span>
+      <section id="versionCheckBanner" class="version-check-banner" aria-label="OpenClaw version check">
+        <div class="version-check-main">
+          <div id="versionCheckSummary" class="version-check-summary">
+            <span class="version-check-dot version-gray"></span>
+            <span>Version check unavailable</span>
+          </div>
+          <div class="version-check-actions">
+            <button id="versionRefreshBtn" class="icon-btn" title="Refresh version check" aria-label="Refresh version check"><i data-lucide="refresh-cw"></i></button>
+            <button id="versionToggleBtn" class="icon-btn" title="Show release details" aria-label="Toggle release details" aria-expanded="false"><i data-lucide="chevron-down"></i></button>
+          </div>
         </div>
-        <div class="version-check-actions">
-          <button id="versionRefreshBtn" class="icon-btn" title="Refresh version check" aria-label="Refresh version check"><i data-lucide="refresh-cw"></i></button>
-          <button id="versionToggleBtn" class="icon-btn" title="Show release details" aria-label="Toggle release details" aria-expanded="false"><i data-lucide="chevron-down"></i></button>
+        <div id="versionCheckDetails" class="version-check-details"></div>
+      </section>
+
+      <div id="opsSummaryCards" class="ops-summary-grid" aria-label="Operations health summary"></div>
+
+      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px;">
+        <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+          <i data-lucide="server" style="width:16px;height:16px;color:var(--text-secondary);"></i>
+          <div>
+            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;">Service Controls</h2>
+            <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Whether the core control plane is up right now.</p>
+          </div>
         </div>
-      </div>
-      <div id="versionCheckDetails" class="version-check-details"></div>
-    </section>
-
-    <div id="opsSummaryCards" class="ops-summary-grid" aria-label="Operations health summary"></div>
-
-    <!-- Service Controls -->
-    <section class="section">
-      <h2>Service Controls</h2>
-      <p class="panel-subtitle">Whether the core control plane is up right now.</p>
-      <div id="serviceCards" class="services"></div>
-      <div style="margin-top: 10px;">
-        <button id="freshSessionBtn" class="btn btn-outline-red">Fresh Session</button>
-      </div>
-    </section>
-
-    <section class="section" aria-label="Deployment verification results">
-      <div class="verification-header">
-        <h2 style="margin-bottom: 0;">Deployment Verification</h2>
-        <div>
-          <button id="verificationRunBtn" class="btn btn-green">Run Verification</button>
-          <button id="verificationToggleBtn" class="btn verification-toggle" aria-label="Toggle verification details" aria-expanded="false"><i data-lucide="chevron-down"></i></button>
+        <div id="serviceCards" class="services"></div>
+        <div style="margin-top: 10px;">
+          <button id="freshSessionBtn" class="btn btn-outline-red">Fresh Session</button>
         </div>
-      </div>
-      <p class="panel-subtitle">Confirms the running build matches expected state.</p>
-      <div id="verificationSummary"></div>
-      <div id="verificationDetails" class="verification-details"></div>
-    </section>
+      </section>
 
-    <!-- Cron Jobs -->
-    <section class="section">
-      <h2>Cron Jobs</h2>
-      <p class="panel-subtitle">Missed or failing jobs quietly break automation.</p>
-      <table>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Schedule</th>
-            <th>Command</th>
-            <th>Source</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody id="cronRows"></tbody>
-      </table>
-    </section>
-
-    <!-- Backups -->
-    <section class="section">
-      <h2>Backups</h2>
-      <p class="panel-subtitle">Create, restore, and manage recovery snapshots.</p>
-      <div class="row" id="backupStats"></div>
-      <div class="row" style="margin: 10px 0;">
-        <button id="createBackupBtn" class="btn btn-green">Create Backup</button>
-      </div>
-      <table>
-        <thead>
-          <tr>
-            <th>Filename</th>
-            <th>Size</th>
-            <th>Age</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody id="backupRows"></tbody>
-      </table>
-      <div class="row inputs" style="margin-top: 10px;">
-        <span class="muted">Keep last</span>
-        <input id="maxBackups" type="number" value="10" min="1" style="width: 80px;" />
-        <span class="muted">older than</span>
-        <input id="maxAgeDays" type="number" value="30" min="1" style="width: 80px;" />
-        <span class="muted">days</span>
-        <button id="cleanupBtn" class="btn btn-amber">Run Cleanup</button>
-      </div>
-    </section>
-
-
-    <!-- Gateway Events -->
-    <section class="section">
-      <div id="gatewayEventsPanel" class="gateway-events-panel" aria-label="Gateway events">
-        <button id="gatewayEventsHeader" class="gateway-events-header" aria-label="Toggle gateway events" aria-expanded="false">
-          <h2 style="margin:0;">Gateway Events</h2>
-          <div class="gateway-events-meta">
-            <span id="gatewayEventsCount" class="gateway-events-count">0 in last 24h</span>
+      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px;">
+        <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+          <i data-lucide="radio" style="width:16px;height:16px;color:var(--text-secondary);"></i>
+          <div>
+            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;">Gateway Events</h2>
+            <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Live gateway events from the OpenClaw process.</p>
+          </div>
+        </div>
+        <div id="gatewayEventsPanel" class="gateway-events-panel" aria-label="Gateway events">
+          <button id="gatewayEventsHeader" class="gateway-events-header" aria-label="Toggle gateway events" aria-expanded="false">
+            <div class="gateway-events-meta">
+              <span id="gatewayEventsCount" class="gateway-events-count">0 in last 24h</span>
+            </div>
             <span id="gatewayEventsChevron"><i data-lucide="chevron-down"></i></span>
-          </div>
-        </button>
-        <p class="panel-subtitle" style="padding:0 12px 8px; margin:0;">Restarts and disconnects that explain current health.</p>
-        <div id="gatewayEventsBody" class="gateway-events-body collapsible-body collapsed">
-          <div id="gatewayEventsList" class="gateway-events-list">
-            <div class="muted">Loading gateway events…</div>
+          </button>
+          <div id="gatewayEventsBody" class="gateway-events-body collapsible-body collapsed">
+            <div id="gatewayEventsList" class="gateway-events-list">
+              <div class="muted">Loading gateway events…</div>
+            </div>
           </div>
         </div>
-      </div>
-    </section>
+      </section>
+    </div>
 
-    <!-- Activity Log -->
-    <section class="section">
-      <div class="section-header-row">
-        <h2>Activity Log</h2>
-        <button id="activityLogToggleBtn" class="icon-btn" aria-label="Toggle activity log" aria-expanded="false"><i data-lucide="chevron-down"></i></button>
-      </div>
-      <p class="panel-subtitle">Recent operator actions that changed system state.</p>
-      <div id="activityLogBody" class="collapsible-body collapsed">
-        <div class="row inputs" style="margin-bottom: 8px;">
-          <select id="logCategory">
-            <option value="">All</option>
-            <option>service</option>
-            <option>cron</option>
-            <option>backup</option>
-            <option>cleanup</option>
-            <option>session</option>
-          </select>
+    <div id="ops-jobs-view" style="display:none;">
+      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px;">
+        <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+          <i data-lucide="clock" style="width:16px;height:16px;color:var(--text-secondary);"></i>
+          <div>
+            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;">Cron Jobs</h2>
+            <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Scheduled automation. Missed or failing jobs quietly break the system.</p>
+          </div>
         </div>
         <table>
           <thead>
             <tr>
-              <th>Timestamp</th>
-              <th>Category</th>
-              <th>Action</th>
-              <th>Target</th>
-              <th>Status</th>
-              <th>Duration</th>
-              <th>Detail</th>
+              <th>Name</th>
+              <th>Schedule</th>
+              <th>Command</th>
+              <th>Source</th>
+              <th>Actions</th>
             </tr>
           </thead>
-          <tbody id="logRows"></tbody>
+          <tbody id="cronRows"></tbody>
         </table>
-        <div style="margin-top: 10px;">
-          <button id="loadMoreLogBtn" class="btn">Load more</button>
+      </section>
+    </div>
+
+    <div id="ops-recovery-view" style="display:none;">
+      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px;">
+        <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+          <i data-lucide="archive" style="width:16px;height:16px;color:var(--text-secondary);"></i>
+          <div>
+            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;">Backups</h2>
+            <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Create, restore, and manage recovery snapshots.</p>
+          </div>
         </div>
-      </div>
-    </section>
+        <div class="row" id="backupStats"></div>
+        <div class="row" style="margin: 10px 0;">
+          <button id="createBackupBtn" class="btn btn-green">Create Backup</button>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Filename</th>
+              <th>Size</th>
+              <th>Age</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="backupRows"></tbody>
+        </table>
+        <div class="row inputs" style="margin-top: 10px;">
+          <span class="muted">Keep last</span>
+          <input id="maxBackups" type="number" value="10" min="1" style="width: 80px;" />
+          <span class="muted">older than</span>
+          <input id="maxAgeDays" type="number" value="30" min="1" style="width: 80px;" />
+          <span class="muted">days</span>
+          <button id="cleanupBtn" class="btn btn-amber">Run Cleanup</button>
+        </div>
+      </section>
+    </div>
+
+    <div id="ops-checks-view" style="display:none;">
+      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px;" aria-label="Deployment verification results">
+        <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+          <i data-lucide="shield-check" style="width:16px;height:16px;color:var(--text-secondary);"></i>
+          <div>
+            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;">Deployment Verification</h2>
+            <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Confirms the running build matches expected state.</p>
+          </div>
+        </div>
+        <div class="verification-header">
+          <div></div>
+          <div>
+            <button id="verificationRunBtn" class="btn btn-green">Run Verification</button>
+            <button id="verificationToggleBtn" class="btn verification-toggle" aria-label="Toggle verification details" aria-expanded="false"><i data-lucide="chevron-down"></i></button>
+          </div>
+        </div>
+        <div id="verificationSummary"></div>
+        <div id="verificationDetails" class="verification-details"></div>
+      </section>
+
+      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px;">
+        <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+          <i data-lucide="scroll-text" style="width:16px;height:16px;color:var(--text-secondary);"></i>
+          <div>
+            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;">Activity Log</h2>
+            <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Timestamped record of operator and system actions.</p>
+          </div>
+          <button id="activityLogToggleBtn" class="icon-btn" aria-label="Toggle activity log" aria-expanded="false" style="margin-left:auto;"><i data-lucide="chevron-down"></i></button>
+        </div>
+        <div id="activityLogBody" class="collapsible-body collapsed">
+          <div class="row inputs" style="margin-bottom: 8px;">
+            <select id="logCategory">
+              <option value="">All</option>
+              <option>service</option>
+              <option>cron</option>
+              <option>backup</option>
+              <option>cleanup</option>
+              <option>session</option>
+            </select>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Timestamp</th>
+                <th>Category</th>
+                <th>Action</th>
+                <th>Target</th>
+                <th>Status</th>
+                <th>Duration</th>
+                <th>Detail</th>
+              </tr>
+            </thead>
+            <tbody id="logRows"></tbody>
+          </table>
+          <div style="margin-top: 10px;">
+            <button id="loadMoreLogBtn" class="btn">Load more</button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div id="ops-logs-view" class="ops-logs-view" style="display:none;">
+      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px;">
+        <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+          <i data-lucide="file-text" style="width:16px;height:16px;color:var(--text-secondary);"></i>
+          <div>
+            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;">Unified Logs Viewer</h2>
+            <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Aggregated logs from task audit, ops log, security hooks, cron health, and WATCHER.</p>
+          </div>
+        </div>
+        <div id="opsLogsHealthStale" class="ops-logs-stale" style="display:none;"></div>
+        <div id="opsLogsHealthGrid" class="ops-logs-health-grid"></div>
+        <div class="ops-logs-filter-bar" style="margin-top:12px;">
+          <select id="opsLogSourceFilter" aria-label="Log source filter"></select>
+          <div id="opsLogSeverityGroup" class="ops-severity-group" aria-label="Log severity filter"></div>
+          <select id="opsLogRangeFilter" aria-label="Log time range filter"></select>
+          <input id="opsLogAgentFilter" type="text" placeholder="Agent filter..." aria-label="Agent filter" />
+        </div>
+        <div id="opsLogsStale" class="ops-logs-stale" style="margin: 8px 0 6px; display:none;"></div>
+        <div id="opsLogsListShell" class="ops-logs-list-shell">
+          <div id="opsLogsList" class="ops-logs-list-state">Loading logs...</div>
+        </div>
+        <div class="ops-logs-pagination" style="margin-top: 10px;">
+          <button id="opsLogsPrevBtn" class="btn">Previous</button>
+          <span id="opsLogsPageInfo">Showing 0-0 of 0 entries</span>
+          <button id="opsLogsNextBtn" class="btn">Next</button>
+        </div>
+      </section>
+    </div>
+
     <div id="toast" class="toast"></div>
 
     <div id="manifestModal" class="manifest-modal-backdrop" aria-hidden="true">
@@ -1222,36 +1291,6 @@
           <button id="manifestCloseBtnBottom" class="btn">Close</button>
         </div>
       </div>
-    </div>
-    </div>
-
-    <div id="ops-logs-view" class="ops-logs-view" style="display:none;">
-      <section class="section">
-        <h2 style="margin-bottom: 8px;">Unified Logs Viewer</h2>
-        <div id="opsLogsHealthStale" class="ops-logs-stale" style="display:none;"></div>
-        <div id="opsLogsHealthGrid" class="ops-logs-health-grid"></div>
-      </section>
-
-      <section class="section" style="padding: 0; background: transparent; border: none; margin-bottom: 0;">
-        <div class="ops-logs-filter-bar">
-          <select id="opsLogSourceFilter" aria-label="Log source filter"></select>
-          <div id="opsLogSeverityGroup" class="ops-severity-group" aria-label="Log severity filter"></div>
-          <select id="opsLogRangeFilter" aria-label="Log time range filter"></select>
-          <input id="opsLogAgentFilter" type="text" placeholder="Agent filter..." aria-label="Agent filter" />
-        </div>
-      </section>
-
-      <section class="section" style="padding: 0; background: transparent; border: none;">
-        <div id="opsLogsStale" class="ops-logs-stale" style="margin-bottom: 6px; display:none;"></div>
-        <div id="opsLogsListShell" class="ops-logs-list-shell">
-          <div id="opsLogsList" class="ops-logs-list-state">Loading logs...</div>
-        </div>
-        <div class="ops-logs-pagination" style="margin-top: 10px;">
-          <button id="opsLogsPrevBtn" class="btn">Previous</button>
-          <span id="opsLogsPageInfo">Showing 0-0 of 0 entries</span>
-          <button id="opsLogsNextBtn" class="btn">Next</button>
-        </div>
-      </section>
     </div>
   </main>
 
@@ -1326,11 +1365,15 @@
     // Format relative time from ISO timestamp.
     const rel = (iso) => {
       if (!iso) return '—';
-      const delta = (Date.now() - new Date(iso).getTime()) / 1000;
-      if (delta < 60) return `${Math.floor(delta)}s ago`;
-      if (delta < 3600) return `${Math.floor(delta / 60)}m ago`;
-      if (delta < 86400) return `${Math.floor(delta / 3600)}h ago`;
-      return `${Math.floor(delta / 86400)}d ago`;
+      const ts = new Date(iso).getTime();
+      if (Number.isNaN(ts)) return '—';
+      const delta = (Date.now() - ts) / 1000;
+      if (Math.abs(delta) < 1) return 'just now';
+      const seconds = Math.abs(delta);
+      if (seconds < 60) return `${Math.floor(seconds)}s ago`;
+      if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+      if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+      return `${Math.floor(seconds / 86400)}d ago`;
     };
 
     // Perform JSON API request.
@@ -1720,7 +1763,7 @@
       const data = await api('/api/ops/services/status');
       const html = data.services.map((service) => {
         return `
-          <div class="card">
+          <div class="card ops-service-card">
             <div class="row" style="justify-content: space-between;">
               <strong>${service.name}</strong>
               <span>
@@ -2064,59 +2107,63 @@
       await loadLog(false);
     }
 
+    const VALID_OPS_VIEWS = new Set(['health', 'jobs', 'recovery', 'checks', 'logs']);
+
     function getOpsViewFromHash() {
       const raw = (location.hash || '').replace(/^#/, '');
-      return raw === 'logs' ? 'logs' : 'health';
+      return VALID_OPS_VIEWS.has(raw) ? raw : 'health';
     }
 
     function renderOpsSubNav() {
-      const view = state.opsView;
-      const healthView = $('ops-health-view');
-      const logsView = $('ops-logs-view');
-      if (healthView) healthView.style.display = view === 'health' ? '' : 'none';
-      if (logsView) logsView.style.display = view === 'logs' ? '' : 'none';
-      document.querySelectorAll('#opsSubNav .ops-sub-nav-btn').forEach((btn) => {
+      const view = VALID_OPS_VIEWS.has(state.opsView) ? state.opsView : 'health';
+      state.opsView = view;
+      ['health', 'jobs', 'recovery', 'checks', 'logs'].forEach((name) => {
+        const el = $(`ops-${name}-view`);
+        if (el) el.style.display = name === view ? '' : 'none';
+      });
+      document.querySelectorAll('#opsSubNav .sub-nav-btn').forEach((btn) => {
         const active = btn.dataset.view === view;
         btn.classList.toggle('active', active);
         btn.setAttribute('aria-selected', active ? 'true' : 'false');
       });
       if (view === 'logs') {
         ensureOpsLogsLoaded();
-      } else {
+      }
+      if (view === 'health') {
         loadOpsSummaryCards().catch(() => {});
       }
+      setTimeout(renderLucideIcons, 50);
     }
 
-    function setOpsView(view) {
-      const resolved = view === 'logs' ? 'logs' : 'health';
+    function setOpsView(view, updateHash = true) {
+      const resolved = VALID_OPS_VIEWS.has(view) ? view : 'health';
       state.opsView = resolved;
-      if (location.hash !== `#${resolved}`) {
-        location.hash = resolved;
-        return;
-      }
       renderOpsSubNav();
+      if (updateHash && location.hash !== `#${resolved}`) {
+        history.pushState({ view: resolved }, '', `#${resolved}`);
+      }
     }
 
     function setupOpsSubNav() {
       state.opsView = getOpsViewFromHash();
-      if (!location.hash || !['#health', '#logs'].includes(location.hash)) {
-        location.hash = '#health';
+      if (!location.hash || !VALID_OPS_VIEWS.has(location.hash.replace(/^#/, ''))) {
+        history.replaceState({ view: 'health' }, '', '#health');
+        state.opsView = 'health';
       }
       const nav = $('opsSubNav');
       if (nav && !nav.dataset.bound) {
         nav.dataset.bound = '1';
         nav.addEventListener('click', (event) => {
-          const btn = event.target.closest('.ops-sub-nav-btn');
+          const btn = event.target.closest('.sub-nav-btn');
           if (!btn) return;
           setOpsView(btn.dataset.view);
         });
       }
       if (!window.__opsHashHandlerBound) {
         window.__opsHashHandlerBound = true;
-        window.addEventListener('hashchange', () => {
-          state.opsView = getOpsViewFromHash();
-          renderOpsSubNav();
-        });
+        const syncFromLocation = () => setOpsView(getOpsViewFromHash(), false);
+        window.addEventListener('hashchange', syncFromLocation);
+        window.addEventListener('popstate', syncFromLocation);
       }
       renderOpsSubNav();
     }
