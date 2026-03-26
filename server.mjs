@@ -5645,6 +5645,26 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (path === '/api/tasks/transitions' && req.method === 'GET') {
+    try {
+      const db = getDb();
+      const transitions = db.prepare(`
+        SELECT action, COUNT(*) as count
+        FROM task_history
+        GROUP BY action
+        ORDER BY count DESC
+        LIMIT 10
+      `).all();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ transitions }));
+    } catch (e) {
+      console.error('[API] /api/tasks/transitions error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Internal server error' }));
+    }
+    return;
+  }
+
   if (path === '/api/tasks/next' && req.method === 'GET') {
     try {
       getDb();

@@ -9,6 +9,169 @@
     .page-header h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; color: var(--text-primary); text-shadow: 0 0 8px rgba(99, 102, 241, 0.5); }
     .page-header .subtitle { font-size: 13px; font-weight: 400; color: var(--text-secondary); margin-top: 4px; }
 
+
+    .sub-nav {
+      display: flex;
+      gap: 2px;
+      background: var(--bg-input, var(--bg-tertiary));
+      border-radius: 9999px;
+      padding: 3px;
+      margin-bottom: 16px;
+      width: fit-content;
+    }
+    .sub-nav-btn {
+      padding: 6px 16px;
+      border-radius: 9999px;
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 150ms;
+      white-space: nowrap;
+    }
+    .sub-nav-btn:hover { color: var(--text-primary); }
+    .sub-nav-btn.active {
+      background: var(--surface);
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    .pipeline-section {
+      background: var(--surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md, 10px);
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    .pipeline-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+    }
+    .pipeline-subtitle {
+      font-size: 0.7rem;
+      color: var(--text-tertiary);
+      margin-bottom: 16px;
+    }
+    .funnel-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .funnel-label {
+      width: 90px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-align: right;
+      flex-shrink: 0;
+    }
+    .funnel-bar-track {
+      flex: 1;
+      height: 24px;
+      background: var(--bg-primary);
+      border-radius: 4px;
+      overflow: hidden;
+      position: relative;
+    }
+    .funnel-bar {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 500ms ease;
+      min-width: 2px;
+    }
+    .funnel-count {
+      width: 40px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      color: var(--text-primary);
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    .funnel-bar.proposed { background: #f59e0b; }
+    .funnel-bar.backlog { background: #6366f1; }
+    .funnel-bar.in_progress { background: #3b82f6; }
+    .funnel-bar.review { background: #a855f7; }
+    .funnel-bar.done { background: #22c55e; }
+    .funnel-bar.archive { background: var(--text-tertiary); opacity: 0.5; }
+
+    .source-grid {
+      display: grid;
+      grid-template-columns: 90px repeat(6, 1fr);
+      gap: 1px;
+      background: var(--border-subtle);
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .source-cell {
+      background: var(--bg-secondary);
+      padding: 8px;
+      font-size: 0.72rem;
+      text-align: center;
+    }
+    .source-cell.header {
+      background: var(--bg-primary);
+      font-weight: 700;
+      color: var(--text-tertiary);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-size: 0.62rem;
+    }
+    .source-cell.label {
+      text-align: right;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+    .source-cell .count {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .transition-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 0;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .transition-row:last-child { border-bottom: none; }
+    .transition-label {
+      flex: 1;
+      font-size: 0.78rem;
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+    .transition-count {
+      font-size: 0.78rem;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      color: var(--text-secondary);
+    }
+    .transition-bar-track {
+      width: 120px;
+      height: 6px;
+      background: var(--bg-primary);
+      border-radius: 3px;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .transition-bar {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 3px;
+    }
+
     .btn {
       border: 1px solid var(--border);
       border-radius: var(--radius-sm);
@@ -426,15 +589,21 @@
       <button class="btn btn-primary" id="newTaskBtn">+ New Task</button>
     </div>
 
-    <section class="stats-bar" id="statsBar">
-      <div class="stat"><div class="k">Total Tasks</div><div class="v" id="statTotal">0</div></div>
-      <div class="stat"><div class="k">Completion Rate</div><div class="v" id="statCompletion">0%</div></div>
-      <div class="stat"><div class="k">Token Spend</div><div class="v" id="statTokens">0</div></div>
-      <div class="stat stuck-alert"><div class="k">Stuck (&gt;24h)</div><div class="v" id="statStuck">0</div></div>
-    </section>
+    <div class="sub-nav" id="tasksSubNav">
+      <button class="sub-nav-btn active" data-view="board">Board</button>
+      <button class="sub-nav-btn" data-view="pipelines">Pipelines</button>
+    </div>
 
-    <div class="board-wrap">
-      <section class="board">
+    <div id="boardView">
+      <section class="stats-bar" id="statsBar">
+        <div class="stat"><div class="k">Total Tasks</div><div class="v" id="statTotal">0</div></div>
+        <div class="stat"><div class="k">Completion Rate</div><div class="v" id="statCompletion">0%</div></div>
+        <div class="stat"><div class="k">Token Spend</div><div class="v" id="statTokens">0</div></div>
+        <div class="stat stuck-alert"><div class="k">Stuck (&gt;24h)</div><div class="v" id="statStuck">0</div></div>
+      </section>
+
+      <div class="board-wrap">
+        <section class="board">
         <div class="column" data-status="proposed">
           <div class="column-header"><span>Proposed</span><span id="count-proposed">0</span></div>
           <div class="column-body" id="col-proposed"></div>
@@ -460,6 +629,25 @@
           <div class="column-body" id="col-archive"></div>
         </div>
       </section>
+    </div>
+    </div>
+
+    <div id="pipelinesView" style="display:none">
+      <div class="pipeline-section">
+        <div class="pipeline-title">Status Funnel</div>
+        <div class="pipeline-subtitle">How tasks flow through the system</div>
+        <div class="pipeline-funnel" id="pipelineFunnel"></div>
+      </div>
+      <div class="pipeline-section">
+        <div class="pipeline-title">Source Breakdown</div>
+        <div class="pipeline-subtitle">Where tasks originate and where they end up</div>
+        <div class="pipeline-sources" id="pipelineSources"></div>
+      </div>
+      <div class="pipeline-section">
+        <div class="pipeline-title">Transition Activity</div>
+        <div class="pipeline-subtitle">Most common state changes across all tasks</div>
+        <div class="pipeline-transitions" id="pipelineTransitions"></div>
+      </div>
     </div>
 
     <div class="panel-backdrop" id="panelBackdrop"></div>
@@ -557,6 +745,114 @@
         };
         const esc = (s) => String(s ?? '').replace(/[&<>\"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
         function normalizeStatus(s) { return (s || '').toLowerCase().replace(/[- ]/g, '_'); }
+
+
+        function switchView(view) {
+          document.querySelectorAll('.sub-nav-btn').forEach((btn) => {
+            btn.classList.toggle('active', btn.dataset.view === view);
+          });
+          document.getElementById('boardView').style.display = view === 'board' ? '' : 'none';
+          document.getElementById('pipelinesView').style.display = view === 'pipelines' ? '' : 'none';
+          if (location.hash !== `#${view}`) {
+            location.hash = view;
+          }
+          if (view === 'pipelines') {
+            renderPipelines();
+          }
+        }
+
+        function renderPipelineFunnel(tasks) {
+          const stages = ['proposed', 'backlog', 'in_progress', 'review', 'done', 'archive'];
+          const labels = { proposed: 'Proposed', backlog: 'Backlog', in_progress: 'In Progress', review: 'Review', done: 'Done', archive: 'Archive' };
+          const counts = {};
+          stages.forEach((s) => { counts[s] = 0; });
+          tasks.forEach((t) => { if (counts[t.status] !== undefined) counts[t.status] += 1; });
+          const max = Math.max(...Object.values(counts), 1);
+
+          document.getElementById('pipelineFunnel').innerHTML = stages.map((s) =>
+            `<div class="funnel-row">
+              <span class="funnel-label">${labels[s]}</span>
+              <div class="funnel-bar-track">
+                <div class="funnel-bar ${s}" style="width:${(counts[s] / max) * 100}%"></div>
+              </div>
+              <span class="funnel-count">${counts[s]}</span>
+            </div>`
+          ).join('');
+        }
+
+        function renderPipelineSources(tasks) {
+          const stages = ['proposed', 'backlog', 'in_progress', 'review', 'done', 'archive'];
+          const shortLabels = { proposed: 'Prop', backlog: 'Back', in_progress: 'In Prog', review: 'Review', done: 'Done', archive: 'Arch' };
+          const sources = ['agent', 'dashboard'];
+          const sourceLabels = { agent: 'Agent', dashboard: 'Dashboard' };
+
+          const grid = {};
+          sources.forEach((s) => {
+            grid[s] = {};
+            stages.forEach((st) => {
+              grid[s][st] = 0;
+            });
+          });
+          tasks.forEach((t) => {
+            const src = sources.includes(t.source) ? t.source : 'dashboard';
+            if (grid[src][t.status] !== undefined) grid[src][t.status] += 1;
+          });
+
+          const headerRow = '<div class="source-cell header"></div>' + stages.map((s) => `<div class="source-cell header">${shortLabels[s]}</div>`).join('');
+          const dataRows = sources.map((src) =>
+            `<div class="source-cell label">${sourceLabels[src]}</div>` +
+            stages.map((s) => `<div class="source-cell"><span class="count">${grid[src][s]}</span></div>`).join('')
+          ).join('');
+
+          document.getElementById('pipelineSources').innerHTML = `<div class="source-grid">${headerRow}${dataRows}</div>`;
+        }
+
+        async function renderPipelineTransitions() {
+          try {
+            const res = await fetch('/api/tasks/transitions', { credentials: 'same-origin' });
+            const data = await res.json();
+            const items = data.transitions || [];
+            if (items.length === 0) {
+              document.getElementById('pipelineTransitions').innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-tertiary);font-size:0.78rem">No transitions recorded.</div>';
+              return;
+            }
+            const max = items[0].count || 1;
+            const labels = {
+              status_changed: 'Status Changed',
+              created: 'Created',
+              updated: 'Updated',
+              transition_rejected: 'Transition Rejected',
+              review_entered: 'Entered Review',
+              auto_approved: 'Auto Approved',
+              comment: 'Comment Added',
+              dispatch: 'Dispatched',
+            };
+            document.getElementById('pipelineTransitions').innerHTML = items.map((t) =>
+              `<div class="transition-row">
+                <span class="transition-label">${labels[t.action] || t.action}</span>
+                <div class="transition-bar-track">
+                  <div class="transition-bar" style="width:${(t.count / max) * 100}%"></div>
+                </div>
+                <span class="transition-count">${t.count}</span>
+              </div>`
+            ).join('');
+          } catch {
+            document.getElementById('pipelineTransitions').innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-tertiary);font-size:0.78rem">Unable to load transitions.</div>';
+          }
+        }
+
+        async function renderPipelines() {
+          try {
+            const res = await fetch('/api/tasks', { credentials: 'same-origin' });
+            const data = await res.json();
+            const tasks = Array.isArray(data) ? data : (Array.isArray(data.tasks) ? data.tasks : []);
+            renderPipelineFunnel(tasks);
+            renderPipelineSources(tasks);
+            await renderPipelineTransitions();
+          } catch {
+            document.getElementById('pipelinesView').innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-tertiary)">Unable to load pipeline data.</div>';
+          }
+        }
 
         function notify(message, tone = 'success') {
           const wrap = document.getElementById('toastWrap');
@@ -997,6 +1293,11 @@
         });
         document.getElementById('taskForm').addEventListener('submit', submitCreateTask);
 
+        document.getElementById('tasksSubNav').addEventListener('click', (e) => {
+          const btn = e.target.closest('.sub-nav-btn');
+          if (btn) switchView(btn.dataset.view);
+        });
+
         document.getElementById('panelBackdrop').addEventListener('click', closePanel);
         document.getElementById('closePanelBtn').addEventListener('click', closePanel);
         document.getElementById('commentBtn').addEventListener('click', postComment);
@@ -1028,13 +1329,18 @@
           runAction(state.selectedTaskId, btn.dataset.action);
         });
 
+        const initialView = location.hash === '#pipelines' ? 'pipelines' : 'board';
+        switchView(initialView);
+
         if (window.__tasksPollTimer) clearInterval(window.__tasksPollTimer);
         refreshAll().catch((err) => {
           console.error(err);
           alert('Failed to load tasks board.');
         });
         window.__tasksPollTimer = setInterval(() => {
-          refreshAll().catch((err) => console.error('Tasks auto-refresh failed:', err));
+          refreshAll().then(() => {
+            if (location.hash === '#pipelines') renderPipelines();
+          }).catch((err) => console.error('Tasks auto-refresh failed:', err));
         }, 10000);
       }
 
