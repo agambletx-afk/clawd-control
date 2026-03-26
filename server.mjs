@@ -67,6 +67,7 @@ import {
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 
 import { logAction, getLog, getLogStats, pruneLog } from './ops-log-db.mjs';
+import { queryLogs, getIngestHealth, pruneOldLogs, runIngestionCycle } from './logs-db.mjs';
 import { storeChecks, getHistory as getSecurityHistory, getTransitions } from './security-db.mjs';
 import { recordRun, getHistory as getWatcherHistory, getTrends as getWatcherTrends, getJobStats, pruneOldRuns } from './watcher-db.mjs';
 import { createSnapshot, listSnapshots, getSnapshotManifest, restoreSnapshot, deleteSnapshot, enforceRetention } from './ops-backup.mjs';
@@ -138,6 +139,7 @@ const proxyApiCache = {
 };
 
 const memoryApiCache = new Map();
+let lastLogsIngestionCycle = null;
 
 function getMemoryCached(cacheKey, ttlMs, computeFn) {
   const now = Date.now();
@@ -8244,6 +8246,52 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (path === '/api/logs' && req.method === 'GET') {
+    try {
+      const requestedLimit = parseInt(url.searchParams.get('limit') || '50', 10);
+      const requestedOffset = parseInt(url.searchParams.get('offset') || '0', 10);
+      const limit = Math.max(1, Math.min(200, Number.isFinite(requestedLimit) ? requestedLimit : 50));
+      const offset = Math.max(0, Number.isFinite(requestedOffset) ? requestedOffset : 0);
+
+      const { rows, total } = queryLogs({
+        source: url.searchParams.get('source') || null,
+        agent: url.searchParams.get('agent') || null,
+        severity: url.searchParams.get('severity') || null,
+        after: url.searchParams.get('after') || null,
+        before: url.searchParams.get('before') || null,
+        task_id: url.searchParams.get('task_id') || null,
+        session_id: url.searchParams.get('session_id') || null,
+        limit,
+        offset,
+      });
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ rows, total, limit, offset }));
+    } catch (e) {
+      console.error('[API] /api/logs error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to load logs' }));
+    }
+    return;
+  }
+
+  if (path === '/api/logs/health' && req.method === 'GET') {
+    try {
+      const sources = getIngestHealth();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        sources,
+        last_cycle: lastLogsIngestionCycle,
+        retention_days: 30,
+      }));
+    } catch (e) {
+      console.error('[API] /api/logs/health error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to load logs health' }));
+    }
+    return;
+  }
+
   if (path === '/api/host') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(collector.hostMetrics));
@@ -8383,6 +8431,33 @@ async function login(e) {
 </html>`;
 
 const BIND = process.argv.find((_, i, a) => a[i - 1] === '--bind') || '127.0.0.1';
+
+async function runUnifiedLogsIngestion() {
+  try {
+    lastLogsIngestionCycle = await runIngestionCycle();
+  } catch (e) {
+    console.error('[logs] ingestion cycle failed:', e.message);
+  }
+}
+
+function runUnifiedLogsPrune() {
+  try {
+    const deleted = pruneOldLogs(30);
+    console.log(`[logs] prune deleted ${deleted} rows`);
+  } catch (e) {
+    console.error('[logs] prune failed:', e.message);
+  }
+}
+
+runUnifiedLogsIngestion();
+setInterval(() => {
+  runUnifiedLogsIngestion();
+}, 60_000);
+
+runUnifiedLogsPrune();
+setInterval(() => {
+  runUnifiedLogsPrune();
+}, 24 * 60 * 60 * 1000);
 
 server.listen(PORT, BIND, () => {
   console.log(`🏰 Clawd Control v2.0`);
