@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import { existsSync, readFileSync, statSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
+import { createHash } from 'crypto';
 
 const DB_PATH = join(new URL('.', import.meta.url).pathname, 'tasks.db');
 
@@ -1056,6 +1057,90 @@ export function resetTaskRetries(id) {
   });
 
   return tx();
+}
+
+export function createArtifact(data) {
+  const conn = getDb();
+  const {
+    task_id, artifact_type, content, created_by, transition, checkpoint_id,
+  } = data;
+  if (!task_id || !artifact_type || !content || !created_by || !transition) {
+    throw new Error('Missing required artifact fields');
+  }
+  const hash = createHash('sha256').update(content).digest('hex');
+  const stmt = conn.prepare(`
+    INSERT INTO task_artifacts (task_id, artifact_type, content, content_hash, created_by, transition, checkpoint_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+  const result = stmt.run(task_id, artifact_type, content, hash, created_by, transition, checkpoint_id || null);
+  return conn.prepare('SELECT * FROM task_artifacts WHERE id = ?').get(result.lastInsertRowid);
+}
+
+export function getArtifacts(taskId, transition) {
+  const conn = getDb();
+  if (transition) {
+    return conn.prepare('SELECT * FROM task_artifacts WHERE task_id = ? AND transition = ? ORDER BY created_at ASC').all(taskId, transition);
+  }
+  return conn.prepare('SELECT * FROM task_artifacts WHERE task_id = ? ORDER BY created_at ASC').all(taskId);
+}
+
+export function getArtifactsByCheckpoint(checkpointId) {
+  const conn = getDb();
+  return conn.prepare('SELECT * FROM task_artifacts WHERE checkpoint_id = ? ORDER BY created_at ASC').all(checkpointId);
+}
+
+export function addAuditEntry(data) {
+  const conn = getDb();
+  const {
+    task_id, action, from_status, to_status, actor, checkpoint_id, details,
+  } = data;
+  const stmt = conn.prepare(`
+    INSERT INTO task_audit (task_id, action, from_status, to_status, actor, checkpoint_id, details)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+  stmt.run(
+    task_id,
+    action,
+    from_status || null,
+    to_status || null,
+    actor,
+    checkpoint_id || null,
+    details ? JSON.stringify(details) : null,
+  );
+}
+
+export function getAuditTrail(taskId) {
+  const conn = getDb();
+  return conn.prepare('SELECT * FROM task_audit WHERE task_id = ? ORDER BY created_at ASC').all(taskId);
+}
+
+export function checkArtifactGate(taskId, transition, taskType) {
+  const config = getTaskTypeConfig(taskType);
+  if (!config) return {
+    passed: true, missing: [], required: [],
+  };
+
+  let requiredTypes = [];
+  if (transition === 'in_progress->review') {
+    requiredTypes = config.review_artifacts || [];
+  } else if (transition === 'review->done') {
+    requiredTypes = config.done_artifacts || [];
+  }
+
+  if (requiredTypes.length === 0) return {
+    passed: true, missing: [], required: [],
+  };
+
+  const existing = getArtifacts(taskId, transition);
+  const existingTypes = new Set(existing.map((a) => a.artifact_type));
+  const missing = requiredTypes.filter((t) => !existingTypes.has(t));
+
+  return {
+    passed: missing.length === 0,
+    missing,
+    required: requiredTypes,
+    submitted: [...existingTypes],
+  };
 }
 
 export function getTaskTypeConfigs() {

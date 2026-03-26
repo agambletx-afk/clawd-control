@@ -31,9 +31,16 @@ import {
   recordFailure,
   getTaskFailures,
   resetTaskRetries,
+  createArtifact,
+  getArtifacts,
+  addAuditEntry,
+  getAuditTrail,
+  checkArtifactGate,
   getStaleTasks,
   getOverdueTasks,
   validateTransition,
+  getTaskTypeConfigs,
+  getTaskTypeConfig,
   createGoal,
   getGoalById,
   getAllGoals,
@@ -5665,6 +5672,117 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (path.match(/^\/api\/tasks\/\d+\/artifacts$/) && req.method === 'POST') {
+    readJsonBody(req).then((body) => {
+      const taskId = Number(path.split('/')[3]);
+      const task = getTaskById(taskId);
+      if (!task) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Task not found' }));
+        return;
+      }
+      if (!body.artifact_type || !body.content || !body.transition || !body.created_by) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Missing required fields: artifact_type, content, transition, created_by' }));
+        return;
+      }
+      const validTransitions = ['in_progress->review', 'review->done'];
+      if (!validTransitions.includes(body.transition)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid transition. Must be: in_progress->review or review->done' }));
+        return;
+      }
+      try {
+        const artifact = createArtifact({
+          task_id: taskId,
+          artifact_type: body.artifact_type,
+          content: typeof body.content === 'string' ? body.content : JSON.stringify(body.content),
+          created_by: body.created_by,
+          transition: body.transition,
+        });
+        addAuditEntry({
+          task_id: taskId,
+          action: 'artifact_submitted',
+          actor: body.created_by,
+          details: { artifact_type: body.artifact_type, artifact_id: artifact.id, transition: body.transition },
+        });
+        res.writeHead(201, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ artifact }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    }).catch((e) => {
+      const code = e.message === 'Payload too large' ? 413 : 400;
+      res.writeHead(code, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    });
+    return;
+  }
+
+  if (path.match(/^\/api\/tasks\/\d+\/artifacts$/) && req.method === 'GET') {
+    const taskId = Number(path.split('/')[3]);
+    const task = getTaskById(taskId);
+    if (!task) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Task not found' }));
+      return;
+    }
+    const transition = url.searchParams.get('transition') || null;
+    const artifacts = getArtifacts(taskId, transition);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ artifacts }));
+    return;
+  }
+
+  if (path.match(/^\/api\/tasks\/\d+\/audit$/) && req.method === 'GET') {
+    const taskId = Number(path.split('/')[3]);
+    const task = getTaskById(taskId);
+    if (!task) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Task not found' }));
+      return;
+    }
+    const trail = getAuditTrail(taskId);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ audit: trail }));
+    return;
+  }
+
+  if (path === '/api/task-types' && req.method === 'GET') {
+    const configs = getTaskTypeConfigs();
+    if (!configs) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ types: {} }));
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(configs));
+    return;
+  }
+
+  if (path.match(/^\/api\/tasks\/\d+\/artifact-gate$/) && req.method === 'GET') {
+    const taskId = Number(path.split('/')[3]);
+    const task = getTaskById(taskId);
+    if (!task) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Task not found' }));
+      return;
+    }
+    const transition = url.searchParams.get('transition');
+    if (!transition) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'transition query parameter required' }));
+      return;
+    }
+    const gate = checkArtifactGate(taskId, transition, task.task_type);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      task_id: taskId, task_type: task.task_type, transition, ...gate,
+    }));
+    return;
+  }
+
   if (path === '/api/tasks/next' && req.method === 'GET') {
     try {
       getDb();
@@ -6045,6 +6163,19 @@ const server = createServer(async (req, res) => {
           'requested_via',
           'accepted_at',
           'user_notified_at',
+          'task_type',
+          'original_intent',
+          'active_intent',
+          'active_intent_version',
+          'acceptance_criteria',
+          'scoped_contribution',
+          'non_goals',
+          'claimed_by',
+          'claimed_at',
+          'claim_expires_at',
+          'parent_checkpoint_id',
+          'parent_intent_version',
+          'stale_dependency',
         ]);
         const requestedKeys = Object.keys(body);
         const hasInvalidField = requestedKeys.some((key) => !allowedFields.has(key));
@@ -6067,6 +6198,21 @@ const server = createServer(async (req, res) => {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'handoff_payload must be <= 2000 chars' }));
           return;
+        }
+
+        // Trivial guardrail
+        if (body.task_type === 'trivial' && current.task_type !== 'trivial') {
+          const conn = getDb();
+          const hasChildren = conn.prepare("SELECT COUNT(*) as count FROM tasks WHERE depends_on LIKE '%' || ? || '%'").get(String(taskId));
+          const dependencyIds = parseDependsOnIds(current.depends_on);
+          if ((hasChildren?.count || 0) > 0 || dependencyIds.length > 0 || current.goal_id) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+              error: 'trivial_guardrail',
+              message: 'Tasks with children or goal linkage cannot be marked trivial',
+            }));
+            return;
+          }
         }
 
         const source = typeof body.source === 'string' && body.source.trim() ? body.source.trim() : 'human';
@@ -6111,6 +6257,40 @@ const server = createServer(async (req, res) => {
           }
         }
 
+        // Artifact gate enforcement (Phase 2)
+        if (Object.hasOwn(body, 'status') && targetStatus !== current.status) {
+          let gateTransition = null;
+          if (current.status === 'in_progress' && targetStatus === 'review') {
+            gateTransition = 'in_progress->review';
+          } else if (current.status === 'review' && targetStatus === 'done') {
+            gateTransition = 'review->done';
+          }
+          if (gateTransition) {
+            const gate = checkArtifactGate(taskId, gateTransition, current.task_type);
+            if (!gate.passed) {
+              addAuditEntry({
+                task_id: taskId,
+                action: 'gate_rejected',
+                from_status: current.status,
+                to_status: targetStatus,
+                actor: source || 'unknown',
+                details: { transition: gateTransition, missing: gate.missing, required: gate.required },
+              });
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({
+                error: 'artifact_gate_failed',
+                message: `Missing required artifacts for ${gateTransition}`,
+                task_type: current.task_type,
+                transition: gateTransition,
+                missing_artifacts: gate.missing,
+                required_artifacts: gate.required,
+                submitted_artifacts: gate.submitted,
+              }));
+              return;
+            }
+          }
+        }
+
         const updateBody = { ...body };
         delete updateBody.source;
         if (Object.hasOwn(updateBody, 'status') && targetStatus !== current.status) {
@@ -6121,6 +6301,14 @@ const server = createServer(async (req, res) => {
 
         if (current.status !== targetStatus) {
           addHistory(taskId, 'system', 'status_changed', `${current.status} -> ${targetStatus}`);
+          addAuditEntry({
+            task_id: taskId,
+            action: 'status_changed',
+            from_status: current.status,
+            to_status: targetStatus,
+            actor: source || 'unknown',
+            details: { transitioned_by: source },
+          });
         }
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
