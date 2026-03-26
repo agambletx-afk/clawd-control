@@ -1,32 +1,56 @@
 {
-  "version": 1,
+  "version": 2,
   "types": {
     "investigation": {
       "label": "Investigation",
       "color": "#3b82f6",
-      "review_artifacts": ["evidence_packet", "author_alignment"],
-      "done_artifacts": ["resolution", "alignment_review"],
+      "review_artifacts": [
+        "evidence_packet",
+        "author_alignment"
+      ],
+      "done_artifacts": [
+        "resolution",
+        "alignment_review"
+      ],
       "description": "Troubleshooting, RCA, research"
     },
     "feature": {
       "label": "Feature",
       "color": "#7c3aed",
-      "review_artifacts": ["brief_or_code", "target_verification", "dependencies_checked", "author_alignment"],
-      "done_artifacts": ["deployment_verification", "alignment_review"],
+      "review_artifacts": [
+        "brief_or_code",
+        "target_verification",
+        "dependencies_checked",
+        "author_alignment"
+      ],
+      "done_artifacts": [
+        "deployment_verification",
+        "alignment_review"
+      ],
       "description": "Briefs, implementations, new capabilities"
     },
     "bug_fix": {
       "label": "Bug Fix",
       "color": "#ef4444",
-      "review_artifacts": ["evidence", "hypothesis", "changes"],
-      "done_artifacts": ["verification"],
+      "review_artifacts": [
+        "evidence",
+        "hypothesis",
+        "changes"
+      ],
+      "done_artifacts": [
+        "verification"
+      ],
       "description": "Fixing broken behavior"
     },
     "operational": {
       "label": "Operational",
       "color": "#6b7280",
-      "review_artifacts": ["changes"],
-      "done_artifacts": ["verification"],
+      "review_artifacts": [
+        "changes"
+      ],
+      "done_artifacts": [
+        "verification"
+      ],
       "description": "Config, maintenance, cleanup"
     },
     "trivial": {
@@ -36,5 +60,9 @@
       "done_artifacts": [],
       "description": "Board hygiene, typos, status updates"
     }
+  },
+  "composition": {
+    "review_artifact": "composition_review",
+    "description": "Reviewer assesses whether child tasks compose into the intended goal outcome"
   }
 }
