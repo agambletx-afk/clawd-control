@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import { existsSync, readFileSync, statSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
-import { createHash } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 
 const DB_PATH = join(new URL('.', import.meta.url).pathname, 'tasks.db');
 
@@ -405,6 +405,42 @@ export function getDb() {
 
     CREATE INDEX IF NOT EXISTS idx_handoffs_task ON task_handoffs(task_id);
     CREATE INDEX IF NOT EXISTS idx_handoffs_status ON task_handoffs(status);
+
+    CREATE TABLE IF NOT EXISTS workflow_templates (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      steps TEXT NOT NULL,
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS pipeline_instances (
+      id TEXT PRIMARY KEY,
+      template_id TEXT,
+      name TEXT NOT NULL,
+      status TEXT DEFAULT 'active',
+      current_step INTEGER,
+      auto_advance_enabled INTEGER DEFAULT 0,
+      step_count INTEGER NOT NULL,
+      step_snapshot TEXT NOT NULL,
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      completed_at TEXT,
+      version INTEGER DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS task_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      task_id TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      link_type TEXT NOT NULL DEFAULT 'primary',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      created_by TEXT
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_task_session ON task_sessions(task_id, session_id);
   `);
 
 
@@ -1515,4 +1551,304 @@ export function getTaskTypeConfig(typeName) {
   const configs = getTaskTypeConfigs();
   if (!configs || !configs.types) return null;
   return configs.types[typeName] || null;
+}
+
+
+const VALID_TEMPLATE_STEP_TYPES = new Set(['agent', 'human', 'system']);
+const VALID_PIPELINE_STATUSES = new Set(['active', 'paused', 'completed', 'failed']);
+const VALID_TASK_SESSION_LINK_TYPES = new Set(['primary', 'secondary', 'research', 'handoff']);
+
+function makePrefixedId(prefix) {
+  return `${prefix}${randomBytes(4).toString('hex')}`;
+}
+
+function normalizeTemplateSteps(stepsInput) {
+  let parsed = stepsInput;
+  if (typeof stepsInput === 'string') {
+    try {
+      parsed = JSON.parse(stepsInput);
+    } catch {
+      throw new Error('steps must be valid JSON');
+    }
+  }
+  if (!Array.isArray(parsed) || parsed.length < 1) {
+    throw new Error('steps must be a non-empty array');
+  }
+  return parsed.map((step, index) => {
+    if (!step || typeof step !== 'object') {
+      throw new Error(`step at index ${index} must be an object`);
+    }
+    const order = Number.parseInt(step.order, 10);
+    if (!Number.isInteger(order)) {
+      throw new Error(`step at index ${index} requires integer order`);
+    }
+    const name = typeof step.name === 'string' ? step.name.trim() : '';
+    if (!name) {
+      throw new Error(`step at index ${index} requires name`);
+    }
+    const stepType = typeof step.step_type === 'string' ? step.step_type.trim() : '';
+    if (!VALID_TEMPLATE_STEP_TYPES.has(stepType)) {
+      throw new Error(`step at index ${index} has invalid step_type`);
+    }
+    const out = {
+      order,
+      name,
+      step_type: stepType,
+      completion_mode: typeof step.completion_mode === 'string' && step.completion_mode.trim() ? step.completion_mode.trim() : 'manual_only',
+    };
+    if (Object.hasOwn(step, 'agent')) out.agent = step.agent == null ? null : String(step.agent).trim() || null;
+    if (Object.hasOwn(step, 'description')) out.description = step.description == null ? '' : String(step.description);
+    return out;
+  });
+}
+
+function parseJsonArrayField(value, fieldName) {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== 'string') return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    throw new Error(`Invalid ${fieldName} JSON`);
+  }
+}
+
+function parseTemplateRow(row) {
+  if (!row) return null;
+  return { ...row, steps: parseJsonArrayField(row.steps, 'steps') };
+}
+
+function parsePipelineRow(row) {
+  if (!row) return null;
+  return { ...row, step_snapshot: parseJsonArrayField(row.step_snapshot, 'step_snapshot') };
+}
+
+export function createTemplate({ name, description, steps, created_by } = {}) {
+  const conn = getDb();
+  const cleanName = typeof name === 'string' ? name.trim() : '';
+  if (!cleanName) throw new Error('name is required');
+  const normalizedSteps = normalizeTemplateSteps(steps);
+  const actor = typeof created_by === 'string' && created_by.trim() ? created_by.trim() : 'system';
+  const id = makePrefixedId('tmpl_');
+  const now = new Date().toISOString();
+  conn.prepare(`
+    INSERT INTO workflow_templates (id, name, description, steps, created_by, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(id, cleanName, description == null ? null : String(description), JSON.stringify(normalizedSteps), actor, now, now);
+  return parseTemplateRow(conn.prepare('SELECT * FROM workflow_templates WHERE id = ?').get(id));
+}
+
+export function getTemplateById(id) {
+  const conn = getDb();
+  const row = conn.prepare('SELECT * FROM workflow_templates WHERE id = ?').get(id);
+  return parseTemplateRow(row);
+}
+
+export function getAllTemplates() {
+  const conn = getDb();
+  const rows = conn.prepare('SELECT * FROM workflow_templates ORDER BY datetime(created_at) DESC').all();
+  return rows.map(parseTemplateRow);
+}
+
+export function updateTemplate(id, data = {}) {
+  const conn = getDb();
+  const current = conn.prepare('SELECT * FROM workflow_templates WHERE id = ?').get(id);
+  if (!current) return null;
+  const activeRef = conn.prepare("SELECT id FROM pipeline_instances WHERE template_id = ? AND status = 'active' LIMIT 1").get(id);
+  if (activeRef) throw new Error('Cannot update template with active pipeline instances');
+  const updates = {};
+  if (Object.hasOwn(data, 'name')) {
+    const cleanName = typeof data.name === 'string' ? data.name.trim() : '';
+    if (!cleanName) throw new Error('name must be a non-empty string');
+    updates.name = cleanName;
+  }
+  if (Object.hasOwn(data, 'description')) {
+    updates.description = data.description == null ? null : String(data.description);
+  }
+  if (Object.hasOwn(data, 'steps')) {
+    updates.steps = JSON.stringify(normalizeTemplateSteps(data.steps));
+  }
+  const fields = Object.keys(updates);
+  if (!fields.length) return parseTemplateRow(current);
+  updates.id = id;
+  updates.updated_at = new Date().toISOString();
+  const setClause = fields.map((key) => `${key} = @${key}`).join(', ');
+  conn.prepare(`UPDATE workflow_templates SET ${setClause}, updated_at = @updated_at WHERE id = @id`).run(updates);
+  return getTemplateById(id);
+}
+
+export function deleteTemplate(id) {
+  const conn = getDb();
+  const anyRef = conn.prepare('SELECT id FROM pipeline_instances WHERE template_id = ? LIMIT 1').get(id);
+  if (anyRef) throw new Error('Cannot delete template with pipeline instances');
+  const result = conn.prepare('DELETE FROM workflow_templates WHERE id = ?').run(id);
+  if (!result.changes) return { deleted: false };
+  return { deleted: true };
+}
+
+export function instantiatePipeline({ template_id, name, created_by } = {}) {
+  const conn = getDb();
+  const template = conn.prepare('SELECT * FROM workflow_templates WHERE id = ?').get(template_id);
+  if (!template) throw new Error('Template not found');
+  const templateParsed = parseTemplateRow(template);
+  const pipelineName = typeof name === 'string' && name.trim() ? name.trim() : templateParsed.name;
+  if (!pipelineName) throw new Error('name is required');
+  const actor = typeof created_by === 'string' && created_by.trim() ? created_by.trim() : 'system';
+  const steps = normalizeTemplateSteps(templateParsed.steps).sort((a, b) => a.order - b.order);
+  const instanceId = makePrefixedId('pipe_');
+  const snapshotJson = JSON.stringify(steps);
+
+  const taskColumns = new Set(conn.prepare('PRAGMA table_info(tasks)').all().map((row) => row.name));
+  const supportsGroupFields = taskColumns.has('group_id') && taskColumns.has('group_name') && taskColumns.has('step_order');
+
+  const tx = conn.transaction(() => {
+    conn.prepare(`
+      INSERT INTO pipeline_instances (
+        id, template_id, name, status, current_step, auto_advance_enabled, step_count, step_snapshot, created_by, created_at, version
+      ) VALUES (?, ?, ?, 'active', 1, 0, ?, ?, ?, datetime('now'), 0)
+    `).run(instanceId, templateParsed.id, pipelineName, steps.length, snapshotJson, actor);
+
+    const tasks = [];
+    let previousTaskId = null;
+    for (let i = 0; i < steps.length; i += 1) {
+      const step = steps[i];
+      const nowEpoch = nowEpochSeconds();
+      let result;
+      if (supportsGroupFields) {
+        result = conn.prepare(`
+          INSERT INTO tasks (
+            title, description, status, priority, assigned_agent, depends_on, created_by, source,
+            last_activity_at, task_type, group_id, group_name, step_order
+          ) VALUES (?, ?, 'proposed', 'medium', ?, ?, ?, 'dashboard', ?, 'operational', ?, ?, ?)
+        `).run(
+          `${pipelineName} — ${step.name}`,
+          step.description || '',
+          step.agent || null,
+          previousTaskId ? String(previousTaskId) : null,
+          actor,
+          nowEpoch,
+          instanceId,
+          pipelineName,
+          step.order,
+        );
+      } else {
+        result = conn.prepare(`
+          INSERT INTO tasks (
+            title, description, status, priority, assigned_agent, depends_on, created_by, source,
+            last_activity_at, task_type
+          ) VALUES (?, ?, 'proposed', 'medium', ?, ?, ?, 'dashboard', ?, 'operational')
+        `).run(
+          `${pipelineName} — ${step.name}`,
+          step.description || '',
+          step.agent || null,
+          previousTaskId ? String(previousTaskId) : null,
+          actor,
+          nowEpoch,
+        );
+      }
+      const taskId = Number(result.lastInsertRowid);
+      conn.prepare('INSERT INTO task_history (task_id, actor, action, detail) VALUES (?, ?, ?, ?)')
+        .run(taskId, actor, 'created', 'pipeline-instantiation');
+      tasks.push(conn.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId));
+      previousTaskId = taskId;
+    }
+
+    return {
+      instance: parsePipelineRow(conn.prepare('SELECT * FROM pipeline_instances WHERE id = ?').get(instanceId)),
+      tasks,
+    };
+  });
+
+  return tx();
+}
+
+export function getPipelineInstance(id) {
+  const conn = getDb();
+  const row = conn.prepare('SELECT * FROM pipeline_instances WHERE id = ?').get(id);
+  return parsePipelineRow(row);
+}
+
+export function listPipelineInstances({ status, template_id, limit = 20, offset = 0 } = {}) {
+  const conn = getDb();
+  const clauses = [];
+  const params = [];
+  if (typeof status === 'string' && VALID_PIPELINE_STATUSES.has(status)) {
+    clauses.push('status = ?');
+    params.push(status);
+  }
+  if (typeof template_id === 'string' && template_id.trim()) {
+    clauses.push('template_id = ?');
+    params.push(template_id.trim());
+  }
+  const lim = Number.isInteger(Number(limit)) ? Math.max(1, Math.min(200, Number(limit))) : 20;
+  const off = Number.isInteger(Number(offset)) ? Math.max(0, Number(offset)) : 0;
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+  const rows = conn.prepare(`
+    SELECT * FROM pipeline_instances
+    ${where}
+    ORDER BY datetime(created_at) DESC
+    LIMIT ? OFFSET ?
+  `).all(...params, lim, off);
+  return rows.map(parsePipelineRow);
+}
+
+export function updatePipelineInstance(id, data = {}) {
+  const conn = getDb();
+  const current = conn.prepare('SELECT * FROM pipeline_instances WHERE id = ?').get(id);
+  if (!current) return null;
+  const updates = {};
+  if (Object.hasOwn(data, 'status')) {
+    const status = typeof data.status === 'string' ? data.status.trim() : '';
+    if (!VALID_PIPELINE_STATUSES.has(status)) throw new Error('Invalid status');
+    updates.status = status;
+    if (status === 'completed') {
+      updates.completed_at = new Date().toISOString();
+    }
+  }
+  if (Object.hasOwn(data, 'auto_advance_enabled')) {
+    updates.auto_advance_enabled = Number(data.auto_advance_enabled) ? 1 : 0;
+  }
+  const fields = Object.keys(updates);
+  if (!fields.length) return parsePipelineRow(current);
+  updates.id = id;
+  const setClause = fields.map((key) => `${key} = @${key}`).join(', ');
+  conn.prepare(`UPDATE pipeline_instances SET ${setClause} WHERE id = @id`).run(updates);
+  return getPipelineInstance(id);
+}
+
+export function createTaskSession({ task_id, session_id, link_type, created_by } = {}) {
+  const conn = getDb();
+  const taskId = task_id == null ? '' : String(task_id).trim();
+  const sessionId = session_id == null ? '' : String(session_id).trim();
+  if (!taskId) throw new Error('task_id is required');
+  if (!sessionId) throw new Error('session_id is required');
+  const normalizedLinkType = typeof link_type === 'string' && VALID_TASK_SESSION_LINK_TYPES.has(link_type) ? link_type : 'primary';
+  conn.prepare(`
+    INSERT INTO task_sessions (task_id, session_id, link_type, created_by)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(task_id, session_id) DO UPDATE SET
+      link_type = excluded.link_type,
+      created_by = excluded.created_by
+  `).run(taskId, sessionId, normalizedLinkType, created_by == null ? null : String(created_by));
+  return conn.prepare('SELECT * FROM task_sessions WHERE task_id = ? AND session_id = ?').get(taskId, sessionId);
+}
+
+export function getTaskSessions(task_id) {
+  const conn = getDb();
+  const taskId = task_id == null ? '' : String(task_id).trim();
+  if (!taskId) throw new Error('task_id is required');
+  return conn.prepare('SELECT * FROM task_sessions WHERE task_id = ? ORDER BY datetime(created_at) ASC, id ASC').all(taskId);
+}
+
+export function getSessionTasks(session_id) {
+  const conn = getDb();
+  const sessionId = session_id == null ? '' : String(session_id).trim();
+  if (!sessionId) throw new Error('session_id is required');
+  return conn.prepare(`
+    SELECT ts.*, t.title, t.status, t.priority, t.assigned_agent, t.created_at AS task_created_at
+    FROM task_sessions ts
+    LEFT JOIN tasks t ON CAST(t.id AS TEXT) = ts.task_id
+    WHERE ts.session_id = ?
+    ORDER BY datetime(ts.created_at) ASC, ts.id ASC
+  `).all(sessionId);
 }
