@@ -1936,11 +1936,15 @@ export function tryAutoAdvance(taskId, newStatus) {
   }
 
   let steps = [];
-  try {
-    const parsed = JSON.parse(instance.step_snapshot || '[]');
-    steps = Array.isArray(parsed) ? parsed : [];
-  } catch {
-    steps = [];
+  if (Array.isArray(instance.step_snapshot)) {
+    steps = instance.step_snapshot;
+  } else {
+    try {
+      const parsed = JSON.parse(instance.step_snapshot || '[]');
+      steps = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      steps = [];
+    }
   }
   const currentStepOrder = Number(task.step_order);
   const nextStepOrder = currentStepOrder + 1;
