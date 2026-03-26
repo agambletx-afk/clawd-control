@@ -3407,6 +3407,129 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (path === '/api/overview/actions' && req.method === 'GET') {
+    const fetchedAt = new Date().toISOString();
+    const truncateText = (value, maxLen) => {
+      const text = String(value ?? '');
+      if (text.length <= maxLen) return text;
+      return `${text.slice(0, Math.max(0, maxLen - 1)).trimEnd()}…`;
+    };
+    const fetchLocalJson = (endpointPath, timeoutMs = 500) => new Promise((resolve, reject) => {
+      const request = http.get({
+        hostname: '127.0.0.1',
+        port: 3100,
+        path: endpointPath,
+        timeout: timeoutMs,
+      }, (resp) => {
+        if (resp.statusCode && resp.statusCode >= 400) {
+          resp.resume();
+          reject(new Error(`status ${resp.statusCode}`));
+          return;
+        }
+        let data = '';
+        resp.on('data', chunk => { data += chunk; });
+        resp.on('end', () => {
+          try {
+            resolve(JSON.parse(data || '{}'));
+          } catch (err) {
+            reject(err);
+          }
+        });
+      });
+      request.on('timeout', () => request.destroy(new Error('timeout')));
+      request.on('error', reject);
+    });
+
+    try {
+      const tasksDb = openSqlite('/home/openclaw/clawd-control/tasks.db', { readonly: true, fileMustExist: true });
+      const tasks = (() => {
+        try {
+          const rows = tasksDb.prepare(`
+            SELECT id, title, status, priority, created_by, updated_at
+            FROM tasks
+            WHERE status IN ('review', 'proposed')
+            ORDER BY
+              CASE priority WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 WHEN 'low' THEN 4 ELSE 5 END,
+              updated_at DESC
+            LIMIT 20
+          `).all();
+          return rows.map((row) => ({
+            source: 'tasks',
+            type: row.status,
+            severity: String(row.priority || '').toLowerCase() === 'critical' ? 'red' : 'amber',
+            title: truncateText(`Task #${row.id}: ${String(row.title || '')}`, 60),
+            detail: truncateText(
+              `Priority: ${String(row.priority || 'unknown')}. ${row.status === 'proposed' ? `Proposed by: ${String(row.created_by || 'unknown')}` : 'Awaiting review'}.`,
+              100,
+            ),
+            link: '/tasks.html',
+            timestamp: row.updated_at || null,
+          }));
+        } finally {
+          tasksDb.close();
+        }
+      })();
+
+      const sources = await Promise.race([
+        Promise.allSettled([
+          fetchLocalJson('/api/security/health', 500),
+          fetchLocalJson('/api/watcher/health', 500),
+        ]),
+        new Promise((resolve) => setTimeout(() => resolve([{ status: 'rejected' }, { status: 'rejected' }]), 2000)),
+      ]);
+
+      const securityItems = sources[0]?.status === 'fulfilled'
+        ? (Array.isArray(sources[0].value?.checks) ? sources[0].value.checks : [])
+          .filter((check) => check?.status === 'red')
+          .map((check) => ({
+            source: 'security',
+            type: 'failure',
+            severity: 'red',
+            title: truncateText(`Security: ${String(check.name || 'Unnamed check')}`, 60),
+            detail: truncateText(String(check.message || check.detail || 'No details'), 100),
+            link: '/security.html',
+            timestamp: check.checked_at || null,
+          }))
+        : [];
+
+      const watcherFailed = sources[1]?.status === 'fulfilled'
+        ? (Array.isArray(sources[1].value?.results?.system_crons) ? sources[1].value.results.system_crons : [])
+          .filter((cron) => cron?.status === 'failed')
+        : [];
+      const watcherSeverity = watcherFailed.length >= 3 ? 'red' : 'amber';
+      const cronItems = watcherFailed.map((cron) => ({
+        source: 'crons',
+        type: 'failure',
+        severity: watcherSeverity,
+        title: truncateText(`Cron failed: ${String(cron.id || 'unknown')}`, 60),
+        detail: truncateText(String(cron.message || 'No details'), 100),
+        link: '/ops.html',
+        timestamp: cron.finished_at || cron.last_seen || null,
+      }));
+
+      const severityRank = { red: 0, amber: 1 };
+      const items = [...tasks, ...securityItems, ...cronItems].sort((a, b) => {
+        const sDiff = (severityRank[a.severity] ?? 99) - (severityRank[b.severity] ?? 99);
+        if (sDiff !== 0) return sDiff;
+        const aTs = Date.parse(a.timestamp || '') || 0;
+        const bTs = Date.parse(b.timestamp || '') || 0;
+        return bTs - aTs;
+      });
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        items,
+        count: items.length,
+        fetched_at: fetchedAt,
+      }));
+    } catch (e) {
+      console.error('[API] /api/overview/actions error:', e.message);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ items: [], count: 0, fetched_at: fetchedAt }));
+    }
+    return;
+  }
+
   if (path === '/api/cli-usage' && req.method === 'GET') {
     try {
       const payload = loadCliUsage();
