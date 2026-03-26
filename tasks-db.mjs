@@ -1,9 +1,13 @@
 import Database from 'better-sqlite3';
+import { existsSync, readFileSync, statSync } from 'fs';
+import { homedir } from 'os';
 import { join } from 'path';
 
 const DB_PATH = join(new URL('.', import.meta.url).pathname, 'tasks.db');
 
 let db;
+let taskTypeConfigCache = null;
+let taskTypeConfigMtime = 0;
 
 const VALID_STATUSES = new Set(['proposed', 'backlog', 'in_progress', 'review', 'done', 'archive', 'failed']);
 const VALID_PRIORITIES = new Set(['critical', 'high', 'medium', 'low']);
@@ -295,6 +299,69 @@ export function getDb() {
 
     CREATE INDEX IF NOT EXISTS idx_goals_status ON goals(status);
     CREATE INDEX IF NOT EXISTS idx_goals_created_at ON goals(created_at);
+
+    CREATE TABLE IF NOT EXISTS task_artifacts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      task_id INTEGER NOT NULL,
+      checkpoint_id TEXT,
+      artifact_type TEXT NOT NULL,
+      content TEXT NOT NULL,
+      content_hash TEXT NOT NULL,
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      transition TEXT NOT NULL,
+      FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_artifacts_task ON task_artifacts(task_id);
+    CREATE INDEX IF NOT EXISTS idx_artifacts_checkpoint ON task_artifacts(checkpoint_id);
+
+    CREATE TABLE IF NOT EXISTS task_checkpoints (
+      id TEXT PRIMARY KEY,
+      task_id INTEGER NOT NULL,
+      transition TEXT NOT NULL,
+      artifact_ids TEXT NOT NULL,
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      status TEXT DEFAULT 'active',
+      superseded_by TEXT,
+      superseded_at TEXT,
+      FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_checkpoints_task ON task_checkpoints(task_id);
+    CREATE INDEX IF NOT EXISTS idx_checkpoints_status ON task_checkpoints(status);
+
+    CREATE TABLE IF NOT EXISTS task_intent_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      task_id INTEGER NOT NULL,
+      version INTEGER NOT NULL,
+      intent TEXT NOT NULL,
+      acceptance_criteria TEXT,
+      changed_by TEXT NOT NULL,
+      changed_at TEXT NOT NULL DEFAULT (datetime('now')),
+      change_reason TEXT NOT NULL,
+      previous_version INTEGER,
+      FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_intent_history_task ON task_intent_history(task_id);
+
+    CREATE TABLE IF NOT EXISTS task_audit (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      task_id INTEGER NOT NULL,
+      action TEXT NOT NULL,
+      from_status TEXT,
+      to_status TEXT,
+      actor TEXT NOT NULL,
+      checkpoint_id TEXT,
+      details TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_audit_task ON task_audit(task_id);
+    CREATE INDEX IF NOT EXISTS idx_audit_created ON task_audit(created_at);
   `);
 
 
@@ -335,6 +402,19 @@ export function getDb() {
   if (!taskColumns.has('user_notified_at')) {
     db.exec('ALTER TABLE tasks ADD COLUMN user_notified_at DATETIME');
   }
+  try { db.exec('ALTER TABLE tasks ADD COLUMN task_type TEXT DEFAULT \'operational\''); } catch {}
+  try { db.exec('ALTER TABLE tasks ADD COLUMN original_intent TEXT'); } catch {}
+  try { db.exec('ALTER TABLE tasks ADD COLUMN active_intent TEXT'); } catch {}
+  try { db.exec('ALTER TABLE tasks ADD COLUMN active_intent_version INTEGER DEFAULT 1'); } catch {}
+  try { db.exec('ALTER TABLE tasks ADD COLUMN acceptance_criteria TEXT'); } catch {}
+  try { db.exec('ALTER TABLE tasks ADD COLUMN scoped_contribution TEXT'); } catch {}
+  try { db.exec('ALTER TABLE tasks ADD COLUMN non_goals TEXT'); } catch {}
+  try { db.exec('ALTER TABLE tasks ADD COLUMN claimed_by TEXT'); } catch {}
+  try { db.exec('ALTER TABLE tasks ADD COLUMN claimed_at TEXT'); } catch {}
+  try { db.exec('ALTER TABLE tasks ADD COLUMN claim_expires_at TEXT'); } catch {}
+  try { db.exec('ALTER TABLE tasks ADD COLUMN parent_checkpoint_id TEXT'); } catch {}
+  try { db.exec('ALTER TABLE tasks ADD COLUMN parent_intent_version INTEGER'); } catch {}
+  try { db.exec('ALTER TABLE tasks ADD COLUMN stale_dependency INTEGER DEFAULT 0'); } catch {}
 
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_tasks_last_activity ON tasks(last_activity_at);
@@ -976,4 +1056,28 @@ export function resetTaskRetries(id) {
   });
 
   return tx();
+}
+
+export function getTaskTypeConfigs() {
+  const configPath = join(homedir(), '.openclaw', 'workspace', 'task-type-configs.json');
+  if (!existsSync(configPath)) return null;
+
+  try {
+    const stat = statSync(configPath);
+    if (taskTypeConfigCache && stat.mtimeMs === taskTypeConfigMtime) {
+      return taskTypeConfigCache;
+    }
+    const raw = readFileSync(configPath, 'utf8');
+    taskTypeConfigCache = JSON.parse(raw);
+    taskTypeConfigMtime = stat.mtimeMs;
+    return taskTypeConfigCache;
+  } catch {
+    return null;
+  }
+}
+
+export function getTaskTypeConfig(typeName) {
+  const configs = getTaskTypeConfigs();
+  if (!configs || !configs.types) return null;
+  return configs.types[typeName] || null;
 }
