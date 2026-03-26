@@ -609,34 +609,32 @@
 
 
     .ops-sub-nav {
-      display: inline-flex;
-      align-items: center;
+      display: flex;
       gap: 2px;
-      background: var(--bg-input);
+      background: var(--bg-input, var(--bg-tertiary));
       border-radius: 9999px;
       padding: 3px;
-      margin-bottom: var(--gap-lg);
-      overflow-x: auto;
-      max-width: 100%;
+      margin-bottom: 16px;
+      width: fit-content;
     }
 
     .ops-sub-nav-btn {
+      padding: 6px 16px;
+      border-radius: 9999px;
       border: none;
       background: transparent;
       color: var(--text-secondary);
-      border-radius: 9999px;
-      padding: 6px 16px;
-      cursor: pointer;
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 500;
+      cursor: pointer;
+      transition: all 150ms;
       white-space: nowrap;
-      transition: background 0.2s ease, color 0.2s ease;
     }
 
     .ops-sub-nav-btn:hover { color: var(--text-primary); }
 
     .ops-sub-nav-btn.active {
-      background: var(--bg-elevated);
+      background: var(--surface);
       color: var(--text-primary);
       font-weight: 600;
     }
@@ -2433,7 +2431,7 @@
       initOpsLogsView();
       initPanelCollapseState();
       setOpsSummaryLoading();
-      renderLucideIcons();
+      setTimeout(renderLucideIcons, 50);
 
       $('freshSessionBtn').onclick = handleFreshSession;
       $('versionCheckBanner').onclick = () => {
@@ -2504,6 +2502,7 @@
 
     window.initOpsTab = initOpsTab;
     initOpsTab();
+    renderLucideIcons();
   </script>
 </body>
 </html>
