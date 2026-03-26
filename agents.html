@@ -7,9 +7,15 @@
 </head>
 <body>
     <main class="main">
-        <div class="page-header">
-            <h1>Agents</h1>
-            <p class="subtitle">Agent fleet status and per-agent workspace.</p>
+        <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+            <div>
+                <h1>Agents</h1>
+                <p class="subtitle">Agent fleet status and per-agent workspace.</p>
+            </div>
+            <a href="/create.html" class="btn-new-agent">
+                <i data-lucide="plus" style="width:14px;height:14px"></i>
+                New Agent
+            </a>
         </div>
 
         <div class="agent-cards-grid" id="agentCardsGrid">
@@ -29,21 +35,53 @@
                 grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
                 gap: 20px;
             }
+            .btn-new-agent {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                padding: 6px 14px;
+                border-radius: 9999px;
+                background: var(--surface);
+                border: 1px solid var(--border-subtle);
+                color: var(--text-secondary);
+                font-size: 13px;
+                font-weight: 500;
+                text-decoration: none;
+                transition: all 150ms;
+                white-space: nowrap;
+                flex-shrink: 0;
+            }
+            .btn-new-agent:hover {
+                border-color: #f59e0b;
+                color: var(--text-primary);
+            }
+
             .card {
-                background: var(--bg-secondary);
-                border: 1px solid var(--border);
-                border-radius: var(--radius-lg);
-                padding: 24px;
-                box-shadow: var(--shadow-sm);
+                background: var(--surface);
+                border: 1px solid var(--border-subtle);
+                border-radius: var(--radius-md, 10px);
+                padding: 16px;
                 display: flex;
                 flex-direction: column;
+                transition: all 150ms;
+                text-decoration: none;
+                color: inherit;
+            }
+            .card:hover {
+                border-color: var(--border);
+                transform: translateY(-1px);
+                box-shadow: var(--shadow-md);
             }
             .card-title { font-size: 1.25rem; font-weight: 600; margin-bottom: 20px; color: var(--text-primary); }
             .agent-header {
-                display: flex; align-items: center; gap: 12px; margin-bottom: 15px;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                margin-bottom: 12px;
             }
-            .agent-header .agent-emoji { font-size: 2.5rem; line-height: 1; }
-            .agent-header .agent-name { font-size: 1.6rem; font-weight: 700; color: var(--text-primary); }
+            .agent-header .agent-emoji { font-size: 1.8rem; line-height: 1; }
+            .agent-header .agent-name { font-size: 1.1rem; font-weight: 700; color: var(--text-primary); }
+            .agent-header .agent-name-wrap { display: inline-flex; align-items: center; }
             .agent-details-list {
                 list-style: none; padding: 0; margin: 0;
             }
@@ -54,8 +92,14 @@
             }
             .agent-details-list li:last-child { border-bottom: none; }
             .agent-details-list .label { color: var(--text-secondary); }
-            .agent-details-list .value { color: var(--text-primary); text-align: right; }
+            .agent-details-list .value { color: var(--text-primary); text-align: right; font-variant-numeric: tabular-nums; }
             .agent-details-list .value.small-text { font-size: 0.8rem; }
+            .empty-state {
+                text-align: center;
+                padding: 60px 24px;
+                color: var(--text-secondary);
+                font-size: 0.85rem;
+            }
         </style>
 
         <script>
@@ -83,14 +127,16 @@
                     grid.innerHTML = ''; // Clear loading message
 
                     if (!Array.isArray(agents) || agents.length === 0) {
-                        grid.innerHTML = '<div class="card"><h2 class="card-title">No agents found.</h2></div>';
+                        grid.innerHTML = '<div class="empty-state"><p>No agents configured</p></div>';
                         return;
                     }
 
                     for (const agent of agents) {
-                        const agentCard = document.createElement('div');
+                        const agentCard = document.createElement('a');
                         agentCard.className = 'card';
                         agentCard.id = `agent-card-${agent.id}`;
+                        agentCard.href = `/agent/${encodeURIComponent(agent.id)}`;
+                        agentCard.style.cursor = 'pointer';
 
                         const formatDuration = (ms) => {
                             if (ms === undefined || ms === null || isNaN(ms)) return '--';
@@ -106,10 +152,14 @@
                             return parts.join(' ');
                         };
 
+                        const statusDot = agent.activeSessionId
+                            ? '<span style="width:8px;height:8px;border-radius:50%;background:#22c55e;display:inline-block;margin-left:6px;flex-shrink:0"></span>'
+                            : '<span style="width:8px;height:8px;border-radius:50%;background:var(--text-tertiary);display:inline-block;margin-left:6px;flex-shrink:0"></span>';
+
                         agentCard.innerHTML = `
                             <div class="agent-header">
                                 <span class="agent-emoji">${agent.emoji || '🤖'}</span>
-                                <span class="agent-name">${agent.name || agent.id}</span>
+                                <span class="agent-name-wrap"><span class="agent-name">${agent.name || agent.id}</span>${statusDot}</span>
                             </div>
                             <ul class="agent-details-list">
                                 <li><span class="label">Model:</span> <span class="value">${agent.model || 'N/A'}</span></li>
@@ -140,5 +190,6 @@
         </script>
     </main>
     <script src="/layout.js"></script>
+    <script>if (window.lucide) lucide.createIcons();</script>
 </body>
 </html>
