@@ -187,6 +187,80 @@
   margin-top: 2px;
 }
 
+/* ── Activity Feed ─────────────────────── */
+.activity-feed {
+  margin-bottom: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.activity-feed-header {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.activity-feed-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+}
+.activity-feed-list {
+  max-height: 320px;
+  overflow-y: auto;
+}
+.activity-feed-empty {
+  padding: 20px;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--text-tertiary);
+}
+.activity-event {
+  display: grid;
+  grid-template-columns: 60px 1fr;
+  gap: 10px;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 0.76rem;
+}
+.activity-event:last-child { border-bottom: none; }
+.activity-event-time {
+  font-size: 0.65rem;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  padding-top: 1px;
+}
+.activity-event-body {}
+.activity-event-title {
+  color: var(--text-primary);
+  font-weight: 500;
+  line-height: 1.3;
+}
+.activity-event-detail {
+  font-size: 0.68rem;
+  color: var(--text-tertiary);
+  margin-top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 500px;
+}
+.activity-event-source {
+  display: inline-block;
+  font-size: 0.6rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary);
+  background: var(--bg-primary);
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
 /* ── Fleet Health Breakdown ────────────── */
 .fleet-breakdown {
   display: flex; align-items: center; gap: 12px;
@@ -472,6 +546,15 @@
     </div>
   </div>
 
+  <div class="activity-feed fade-up" style="animation-delay:.35s" id="activityFeed">
+    <div class="activity-feed-header">
+      <span class="activity-feed-title">Recent Activity</span>
+    </div>
+    <div class="activity-feed-list" id="activityFeedList">
+      <div class="activity-feed-empty">Loading…</div>
+    </div>
+  </div>
+
   <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
     <button class="ctrl-btn" onclick="fleetClearCooldowns()" title="Clear all API cooldowns across all agents" style="font-size:0.68rem">
       <i data-lucide="timer-reset"></i> Clear All Cooldowns
@@ -534,15 +617,17 @@ document.addEventListener('DOMContentLoaded', () => {
   setView(viewMode);
   renderSummarizerCards();
   renderActionQueue();
+  renderActivityFeed();
   setInterval(renderSummarizerCards, 60000);
   setInterval(renderActionQueue, 60000);
+  setInterval(renderActivityFeed, 60000);
 });
 
 // ═══════════════════════════════════════════
 // SSE EVENT LISTENERS (from layout.js)
 // ═══════════════════════════════════════════
 
-document.addEventListener('layout:snapshot', () => { renderAll(); renderSummarizerCards(); renderActionQueue(); });
+document.addEventListener('layout:snapshot', () => { renderAll(); renderSummarizerCards(); renderActionQueue(); renderActivityFeed(); });
 document.addEventListener('layout:agent-update', (e) => {
   renderAgent(e.detail.id);
   renderStats();
@@ -701,6 +786,38 @@ async function renderActionQueue() {
   } catch {
     list.innerHTML = '<div class="action-queue-empty">Unable to load actions.</div>';
     if (countEl) countEl.textContent = '0';
+  }
+}
+
+async function renderActivityFeed() {
+  const list = document.getElementById('activityFeedList');
+  if (!list) return;
+  try {
+    const res = await fetch('/api/overview/activity?limit=15', { cache: 'no-store', credentials: 'same-origin' });
+    if (!res.ok) throw new Error('activity fetch failed');
+    const data = await res.json();
+    const events = Array.isArray(data.events) ? data.events : [];
+
+    if (events.length === 0) {
+      list.innerHTML = '<div class="activity-feed-empty">No recent activity.</div>';
+      return;
+    }
+
+    list.innerHTML = events.map(ev => {
+      const timeStr = ev.timestamp ? timeAgo(new Date(ev.timestamp).getTime()) : '';
+      const src = escapeHtml(ev.source || '');
+      const title = escapeHtml(ev.title || '');
+      const detail = ev.detail ? escapeHtml(ev.detail) : '';
+      return `<div class="activity-event">
+        <span class="activity-event-time">${escapeHtml(timeStr)}</span>
+        <div class="activity-event-body">
+          <div class="activity-event-title"><span class="activity-event-source">${src}</span>${title}</div>
+          ${detail ? `<div class="activity-event-detail">${detail}</div>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+  } catch {
+    if (list) list.innerHTML = '<div class="activity-feed-empty">Unable to load activity.</div>';
   }
 }
 
