@@ -611,12 +611,11 @@
     .ops-sub-nav {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
-      background: var(--bg-surface);
-      border: 1px solid var(--border-subtle);
-      border-radius: var(--radius-md);
-      padding: 4px;
-      margin-bottom: 14px;
+      gap: 2px;
+      background: var(--bg-input);
+      border-radius: 9999px;
+      padding: 3px;
+      margin-bottom: var(--gap-lg);
       overflow-x: auto;
       max-width: 100%;
     }
@@ -625,11 +624,11 @@
       border: none;
       background: transparent;
       color: var(--text-secondary);
-      border-radius: 4px;
-      padding: 6px 12px;
+      border-radius: 9999px;
+      padding: 6px 16px;
       cursor: pointer;
-      font-size: 0.78rem;
-      font-weight: 600;
+      font-size: 13px;
+      font-weight: 500;
       white-space: nowrap;
       transition: background 0.2s ease, color 0.2s ease;
     }
@@ -639,6 +638,7 @@
     .ops-sub-nav-btn.active {
       background: var(--bg-elevated);
       color: var(--text-primary);
+      font-weight: 600;
     }
 
     .ops-logs-view {
@@ -1414,9 +1414,9 @@
         subtitle: summaryErrorText('service health')
       } : {
         label: 'SERVICES',
-        value: (services.down_count || 0) > 0 ? `${services.down_count} down` : `${services.up_count || 0}/${services.total_count || 0} up`,
-        valueClass: (services.down_count || 0) > 0 ? 'red' : 'green',
-        meta: (services.down_names || []).length ? (services.down_names || []).join(', ') : `${services.up_count || 0} online`,
+        value: (services.down_names || []).length > 0 ? `${(services.down_names || []).length} down` : `${services.up || 0}/${services.total || 0} up`,
+        valueClass: (services.down_names || []).length > 0 ? 'red' : 'green',
+        meta: (services.down_names || []).length ? (services.down_names || []).join(', ') : `${services.up || 0} online`,
         subtitle: 'Whether the core control plane is up right now.',
         stale: staleByCard.services
       };
@@ -1431,8 +1431,8 @@
         subtitle: summaryErrorText('cron health')
       } : {
         label: 'JOBS',
-        value: (jobs.missed_count || 0) > 0 ? `${jobs.missed_count} missed` : `${jobs.fired_count || 0}/${jobs.total_count || 0} fired`,
-        valueClass: (jobs.missed_count || 0) > 0 ? 'red' : opsStatusColor(jobsStatus || 'green'),
+        value: ((jobs.scheduler_health || {}).missed || 0) > 0 ? `${(jobs.scheduler_health || {}).missed} missed` : `${(jobs.scheduler_health || {}).fired || 0}/${(jobs.scheduler_health || {}).total || 0} fired`,
+        valueClass: ((jobs.scheduler_health || {}).missed || 0) > 0 ? 'red' : opsStatusColor(jobs.status || 'green'),
         attention: schedulerHealthy && failingCount > 0 ? `${failingCount} failing` : '',
         meta: jobs.last_run_age || '',
         subtitle: 'Missed or failing jobs quietly break automation.',
