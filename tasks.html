@@ -172,6 +172,75 @@
       border-radius: 3px;
     }
 
+    .queue-section {
+      margin-bottom: 16px;
+    }
+    .queue-section-title {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-tertiary);
+      margin-bottom: 8px;
+    }
+    .queue-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .queue-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: var(--surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 150ms;
+    }
+    .queue-item:hover {
+      border-color: var(--border);
+      transform: translateY(-1px);
+    }
+    .queue-item-id {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      color: var(--text-tertiary);
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+    .queue-item-title {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      flex: 1;
+      min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .queue-item-age {
+      font-size: 0.65rem;
+      color: var(--text-tertiary);
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      flex-shrink: 0;
+    }
+    .queue-item-empty {
+      padding: 12px;
+      text-align: center;
+      font-size: 0.78rem;
+      color: var(--text-tertiary);
+      font-style: italic;
+    }
+    .queue-empty {
+      text-align: center;
+      padding: 60px 24px;
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+    }
+
     .btn {
       border: 1px solid var(--border);
       border-radius: var(--radius-sm);
@@ -731,6 +800,7 @@
     <div class="sub-nav" id="tasksSubNav">
       <button class="sub-nav-btn active" data-view="board">Board</button>
       <button class="sub-nav-btn" data-view="pipelines">Pipelines</button>
+      <button class="sub-nav-btn" data-view="queue">My Queue</button>
     </div>
 
     <div id="boardView">
@@ -786,6 +856,28 @@
         <div class="pipeline-title">Transition Activity</div>
         <div class="pipeline-subtitle">Most common state changes across all tasks</div>
         <div class="pipeline-transitions" id="pipelineTransitions"></div>
+      </div>
+    </div>
+
+    <div id="queueView" style="display:none">
+      <div class="queue-section" id="queueReview">
+        <div class="queue-section-title">Awaiting Review</div>
+        <div class="queue-list" id="queueReviewList"></div>
+      </div>
+      <div class="queue-section" id="queueProposed">
+        <div class="queue-section-title">Proposals to Approve</div>
+        <div class="queue-list" id="queueProposedList"></div>
+      </div>
+      <div class="queue-section" id="queueStale">
+        <div class="queue-section-title">Stale Dependencies</div>
+        <div class="queue-list" id="queueStaleList"></div>
+      </div>
+      <div class="queue-section" id="queueIntentChanged">
+        <div class="queue-section-title">Intent Changes</div>
+        <div class="queue-list" id="queueIntentList"></div>
+      </div>
+      <div class="queue-empty" id="queueEmpty" style="display:none">
+        Nothing needs your attention.
       </div>
     </div>
 
@@ -904,11 +996,15 @@
           });
           document.getElementById('boardView').style.display = view === 'board' ? '' : 'none';
           document.getElementById('pipelinesView').style.display = view === 'pipelines' ? '' : 'none';
+          document.getElementById('queueView').style.display = view === 'queue' ? '' : 'none';
           if (location.hash !== `#${view}`) {
             location.hash = view;
           }
           if (view === 'pipelines') {
             renderPipelines();
+          }
+          if (view === 'queue') {
+            renderQueue();
           }
         }
 
@@ -1003,6 +1099,54 @@
           } catch {
             document.getElementById('pipelinesView').innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-tertiary)">Unable to load pipeline data.</div>';
           }
+        }
+
+        function renderQueue() {
+          const tasks = state.tasks || [];
+
+          const reviewTasks = tasks.filter((t) => t.status === 'review');
+          const proposedTasks = tasks.filter((t) => t.status === 'proposed');
+          const staleTasks = tasks.filter((t) => Number(t.stale_dependency || 0) > 0 && t.status !== 'archive' && t.status !== 'done');
+          const intentChanged = tasks.filter((t) =>
+            t.original_intent && t.active_intent &&
+            t.original_intent !== t.active_intent &&
+            t.status !== 'archive' && t.status !== 'done'
+          );
+
+          const renderQueueItems = (items, listId) => {
+            const list = document.getElementById(listId);
+            if (!list) return;
+            if (items.length === 0) {
+              list.innerHTML = '<div class="queue-item-empty">None</div>';
+              return;
+            }
+            list.innerHTML = items.map((task) => {
+              const typeConfig = taskTypeMap[task.task_type] || { label: task.task_type || 'operational', color: '#6b7280' };
+              const accentColor = typeConfig.color || '#6b7280';
+              return `
+                <div class="queue-item" data-id="${task.id}">
+                  <span class="queue-item-id">#${task.id}</span>
+                  <span class="queue-item-title">${esc(task.title)}</span>
+                  <span class="card-type-pill" style="background:${accentColor}20;color:${accentColor}">${esc(typeConfig.label)}</span>
+                  <span class="card-priority priority-${esc(task.priority)}">${esc(task.priority)}</span>
+                  <span class="queue-item-age">${ageLabel(task.updated_at || task.created_at)}</span>
+                </div>
+              `;
+            }).join('');
+          };
+
+          renderQueueItems(reviewTasks, 'queueReviewList');
+          renderQueueItems(proposedTasks, 'queueProposedList');
+          renderQueueItems(staleTasks, 'queueStaleList');
+          renderQueueItems(intentChanged, 'queueIntentList');
+
+          document.getElementById('queueReview').style.display = reviewTasks.length ? '' : 'none';
+          document.getElementById('queueProposed').style.display = proposedTasks.length ? '' : 'none';
+          document.getElementById('queueStale').style.display = staleTasks.length ? '' : 'none';
+          document.getElementById('queueIntentChanged').style.display = intentChanged.length ? '' : 'none';
+
+          const totalItems = reviewTasks.length + proposedTasks.length + staleTasks.length + intentChanged.length;
+          document.getElementById('queueEmpty').style.display = totalItems === 0 ? '' : 'none';
         }
 
         function notify(message, tone = 'success') {
@@ -1564,6 +1708,15 @@
           if (btn) switchView(btn.dataset.view);
         });
 
+        document.getElementById('queueView').addEventListener('click', (e) => {
+          const item = e.target.closest('.queue-item');
+          if (!item) return;
+          const taskId = Number(item.dataset.id);
+          if (Number.isInteger(taskId)) {
+            openPanel(taskId).catch((err) => alert(err.message));
+          }
+        });
+
         document.getElementById('panelBackdrop').addEventListener('click', closePanel);
         document.getElementById('closePanelBtn').addEventListener('click', closePanel);
         document.getElementById('commentBtn').addEventListener('click', postComment);
@@ -1603,7 +1756,7 @@
           runAction(state.selectedTaskId, btn.dataset.action);
         });
 
-        const initialView = location.hash === '#pipelines' ? 'pipelines' : 'board';
+        const initialView = location.hash === '#queue' ? 'queue' : (location.hash === '#pipelines' ? 'pipelines' : 'board');
         switchView(initialView);
 
         if (window.__tasksPollTimer) clearInterval(window.__tasksPollTimer);
@@ -1614,6 +1767,7 @@
         window.__tasksPollTimer = setInterval(() => {
           refreshAll().then(() => {
             if (location.hash === '#pipelines') renderPipelines();
+            if (location.hash === '#queue') renderQueue();
           }).catch((err) => console.error('Tasks auto-refresh failed:', err));
         }, 10000);
       }
