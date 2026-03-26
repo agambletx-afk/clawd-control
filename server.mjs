@@ -36,6 +36,16 @@ import {
   addAuditEntry,
   getAuditTrail,
   checkArtifactGate,
+  createCheckpoint,
+  getCheckpoints,
+  supersedeCheckpoint,
+  flagStaleDependencies,
+  clearStaleDependency,
+  claimTask,
+  refreshClaim,
+  releaseClaim,
+  updateIntent,
+  getIntentHistory,
   getStaleTasks,
   getOverdueTasks,
   validateTransition,
@@ -5735,6 +5745,141 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (path.match(/^\/api\/tasks\/\d+\/claim$/) && req.method === 'POST') {
+    readJsonBody(req).then((body) => {
+      const taskId = Number(path.split('/')[3]);
+      if (!body.agent_id) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'agent_id required' }));
+        return;
+      }
+      const timeout = Number(body.timeout_hours) || 4;
+      const result = claimTask(taskId, body.agent_id, timeout);
+      if (!result.ok) {
+        res.writeHead(409, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+        return;
+      }
+      addAuditEntry({
+        task_id: taskId,
+        action: 'claimed',
+        actor: body.agent_id,
+        details: { expires_at: result.expires_at },
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+    }).catch((e) => {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    });
+    return;
+  }
+
+  if (path.match(/^\/api\/tasks\/\d+\/claim$/) && req.method === 'PUT') {
+    readJsonBody(req).then((body) => {
+      const taskId = Number(path.split('/')[3]);
+      if (!body.agent_id) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'agent_id required' }));
+        return;
+      }
+      const timeout = Number(body.timeout_hours) || 4;
+      const result = refreshClaim(taskId, body.agent_id, timeout);
+      if (!result.ok) {
+        res.writeHead(409, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+    }).catch((e) => {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    });
+    return;
+  }
+
+  if (path.match(/^\/api\/tasks\/\d+\/claim$/) && req.method === 'DELETE') {
+    readJsonBody(req).then((body) => {
+      const taskId = Number(path.split('/')[3]);
+      if (!body.agent_id) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'agent_id required' }));
+        return;
+      }
+      const result = releaseClaim(taskId, body.agent_id);
+      if (!result.ok) {
+        res.writeHead(409, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+        return;
+      }
+      addAuditEntry({
+        task_id: taskId,
+        action: 'claim_released',
+        actor: body.agent_id,
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+    }).catch((e) => {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    });
+    return;
+  }
+
+  if (path.match(/^\/api\/tasks\/\d+\/checkpoints$/) && req.method === 'GET') {
+    const taskId = Number(path.split('/')[3]);
+    const task = getTaskById(taskId);
+    if (!task) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Task not found' }));
+      return;
+    }
+    const checkpoints = getCheckpoints(taskId);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ checkpoints }));
+    return;
+  }
+
+  if (path.match(/^\/api\/tasks\/\d+\/intent$/) && req.method === 'POST') {
+    readJsonBody(req).then((body) => {
+      const taskId = Number(path.split('/')[3]);
+      try {
+        const result = updateIntent(taskId, body);
+        addAuditEntry({
+          task_id: taskId,
+          action: 'intent_updated',
+          actor: body.changed_by,
+          details: { version: result.version, change_reason: body.change_reason },
+        });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+      } catch (e) {
+        const code = e.message === 'Task not found' ? 404 : 400;
+        res.writeHead(code, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    }).catch((e) => {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    });
+    return;
+  }
+
+  if (path.match(/^\/api\/tasks\/\d+\/intent-history$/) && req.method === 'GET') {
+    const taskId = Number(path.split('/')[3]);
+    const task = getTaskById(taskId);
+    if (!task) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Task not found' }));
+      return;
+    }
+    const history = getIntentHistory(taskId);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ intent_history: history }));
+    return;
+  }
+
   if (path.match(/^\/api\/tasks\/\d+\/audit$/) && req.method === 'GET') {
     const taskId = Number(path.split('/')[3]);
     const task = getTaskById(taskId);
@@ -6239,6 +6384,20 @@ const server = createServer(async (req, res) => {
           }
         }
 
+        // Claim enforcement for backlog -> in_progress
+        if (current.status === 'backlog' && targetStatus === 'in_progress') {
+          const claimed = current.claimed_by;
+          const claimExpires = current.claim_expires_at ? new Date(current.claim_expires_at).getTime() : 0;
+          if (!claimed || claimExpires <= Date.now()) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+              error: 'claim_required',
+              message: 'Task must be claimed before moving to in_progress. POST /api/tasks/:id/claim first.',
+            }));
+            return;
+          }
+        }
+
         if (Object.hasOwn(body, 'status') && targetStatus !== current.status) {
           const validation = validateTransition(current.status, targetStatus, source);
           if (!validation.valid) {
@@ -6309,6 +6468,56 @@ const server = createServer(async (req, res) => {
             actor: source || 'unknown',
             details: { transitioned_by: source },
           });
+        }
+
+        // Checkpoint creation for gated transitions
+        if (current.status !== targetStatus) {
+          let gateTransition = null;
+          if (current.status === 'in_progress' && targetStatus === 'review') {
+            gateTransition = 'in_progress->review';
+          } else if (current.status === 'review' && targetStatus === 'done') {
+            gateTransition = 'review->done';
+          }
+          if (gateTransition) {
+            const artifacts = getArtifacts(taskId, gateTransition);
+            if (artifacts.length > 0) {
+              const checkpoint = createCheckpoint({
+                task_id: taskId,
+                transition: gateTransition,
+                artifact_ids: artifacts.map((a) => a.id),
+                created_by: source || 'unknown',
+              });
+              addAuditEntry({
+                task_id: taskId,
+                action: 'checkpoint_created',
+                from_status: current.status,
+                to_status: targetStatus,
+                actor: source || 'unknown',
+                checkpoint_id: checkpoint.id,
+                details: { artifact_count: artifacts.length },
+              });
+            }
+          }
+        }
+
+        // Rollback handling: supersede checkpoints and flag stale dependencies
+        if (current.status === 'review' && targetStatus === 'in_progress') {
+          const checkpoints = getCheckpoints(taskId);
+          const activeReviewCheckpoint = checkpoints.find((c) => c.status === 'active' && c.transition === 'in_progress->review');
+          if (activeReviewCheckpoint) {
+            supersedeCheckpoint(activeReviewCheckpoint.id, null);
+            const flagged = flagStaleDependencies(taskId);
+            if (flagged.length > 0) {
+              addAuditEntry({
+                task_id: taskId,
+                action: 'stale_dependencies_flagged',
+                from_status: current.status,
+                to_status: targetStatus,
+                actor: source || 'unknown',
+                details: { flagged_task_ids: flagged, superseded_checkpoint: activeReviewCheckpoint.id },
+              });
+            }
+          }
         }
 
         res.writeHead(200, { 'Content-Type': 'application/json' });

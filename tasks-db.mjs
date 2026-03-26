@@ -136,6 +136,24 @@ function sanitizeCreateData(data = {}) {
   if (Object.hasOwn(data, 'user_notified_at')) {
     out.user_notified_at = data.user_notified_at == null ? null : String(data.user_notified_at);
   }
+  if (Object.hasOwn(data, 'task_type')) {
+    out.task_type = data.task_type == null ? null : String(data.task_type).trim() || null;
+  }
+  if (Object.hasOwn(data, 'original_intent')) {
+    out.original_intent = data.original_intent == null ? null : String(data.original_intent);
+  }
+  if (Object.hasOwn(data, 'active_intent')) {
+    out.active_intent = data.active_intent == null ? null : String(data.active_intent);
+  }
+  if (Object.hasOwn(data, 'acceptance_criteria')) {
+    out.acceptance_criteria = data.acceptance_criteria == null ? null : String(data.acceptance_criteria);
+  }
+  if (Object.hasOwn(data, 'scoped_contribution')) {
+    out.scoped_contribution = data.scoped_contribution == null ? null : String(data.scoped_contribution);
+  }
+  if (Object.hasOwn(data, 'non_goals')) {
+    out.non_goals = data.non_goals == null ? null : String(data.non_goals);
+  }
   return out;
 }
 
@@ -572,13 +590,17 @@ export function createTask(data) {
   if (!payload.title) {
     throw new Error('title is required');
   }
+  if (payload.original_intent && !payload.active_intent) {
+    payload.active_intent = payload.original_intent;
+  }
 
   const tx = conn.transaction(() => {
     const stmt = conn.prepare(`
       INSERT INTO tasks (
         title, description, status, priority, assigned_agent, depends_on,
         handoff_payload, created_by, source, token_estimate, token_actual, max_retries, last_activity_at, goal_id,
-        due_at, delivery_channel, execution_mode, requested_via, accepted_at, user_notified_at
+        due_at, delivery_channel, execution_mode, requested_via, accepted_at, user_notified_at,
+        task_type, original_intent, active_intent, acceptance_criteria, scoped_contribution, non_goals
       ) VALUES (
         @title,
         @description,
@@ -599,7 +621,13 @@ export function createTask(data) {
         @execution_mode,
         @requested_via,
         @accepted_at,
-        @user_notified_at
+        @user_notified_at,
+        @task_type,
+        @original_intent,
+        @active_intent,
+        @acceptance_criteria,
+        @scoped_contribution,
+        @non_goals
       )
     `);
 
@@ -624,6 +652,12 @@ export function createTask(data) {
       requested_via: payload.requested_via ?? null,
       accepted_at: payload.accepted_at ?? null,
       user_notified_at: payload.user_notified_at ?? null,
+      task_type: payload.task_type ?? 'operational',
+      original_intent: payload.original_intent ?? null,
+      active_intent: payload.active_intent ?? null,
+      acceptance_criteria: payload.acceptance_criteria ?? null,
+      scoped_contribution: payload.scoped_contribution ?? null,
+      non_goals: payload.non_goals ?? null,
     });
 
     addHistory(result.lastInsertRowid, payload.created_by ?? 'adam', 'created', '');
@@ -1141,6 +1175,165 @@ export function checkArtifactGate(taskId, transition, taskType) {
     required: requiredTypes,
     submitted: [...existingTypes],
   };
+}
+
+export function createCheckpoint(data) {
+  const conn = getDb();
+  const {
+    task_id, transition, artifact_ids, created_by,
+  } = data;
+  if (!task_id || !transition || !artifact_ids || !created_by) {
+    throw new Error('Missing required checkpoint fields');
+  }
+  const id = `chk_${task_id}_${transition.replace('->', '_')}_${Date.now()}`;
+  conn.prepare(`
+    INSERT INTO task_checkpoints (id, task_id, transition, artifact_ids, created_by, status)
+    VALUES (?, ?, ?, ?, ?, 'active')
+  `).run(id, task_id, transition, JSON.stringify(artifact_ids), created_by);
+
+  const updateArtifacts = conn.prepare('UPDATE task_artifacts SET checkpoint_id = ? WHERE id = ?');
+  for (const artifactId of artifact_ids) {
+    updateArtifacts.run(id, artifactId);
+  }
+
+  return conn.prepare('SELECT * FROM task_checkpoints WHERE id = ?').get(id);
+}
+
+export function getCheckpoints(taskId) {
+  const conn = getDb();
+  return conn.prepare('SELECT * FROM task_checkpoints WHERE task_id = ? ORDER BY created_at ASC').all(taskId);
+}
+
+export function supersedeCheckpoint(checkpointId, supersededById) {
+  const conn = getDb();
+  conn.prepare(`
+    UPDATE task_checkpoints
+    SET status = 'superseded', superseded_by = ?, superseded_at = datetime('now')
+    WHERE id = ? AND status = 'active'
+  `).run(supersededById || null, checkpointId);
+  return conn.prepare('SELECT * FROM task_checkpoints WHERE id = ?').get(checkpointId);
+}
+
+export function flagStaleDependencies(taskId) {
+  const conn = getDb();
+  const taskIdStr = String(taskId);
+  const allTasks = conn.prepare('SELECT id, depends_on, parent_checkpoint_id FROM tasks').all();
+  const flagged = [];
+
+  for (const task of allTasks) {
+    let isDependent = false;
+    if (task.depends_on) {
+      const depIds = task.depends_on.split(',').map((s) => s.trim());
+      if (depIds.includes(taskIdStr)) isDependent = true;
+    }
+    if (task.parent_checkpoint_id) {
+      const checkpoint = conn.prepare('SELECT task_id FROM task_checkpoints WHERE id = ?').get(task.parent_checkpoint_id);
+      if (checkpoint && checkpoint.task_id === taskId) isDependent = true;
+    }
+    if (isDependent && task.id !== taskId) {
+      conn.prepare("UPDATE tasks SET stale_dependency = 1, updated_at = datetime('now') WHERE id = ?").run(task.id);
+      flagged.push(task.id);
+    }
+  }
+  return flagged;
+}
+
+export function clearStaleDependency(taskId) {
+  const conn = getDb();
+  conn.prepare("UPDATE tasks SET stale_dependency = 0, updated_at = datetime('now') WHERE id = ?").run(taskId);
+}
+
+export function claimTask(taskId, agentId, timeoutHours = 4) {
+  const conn = getDb();
+  const task = conn.prepare('SELECT id, claimed_by, claim_expires_at FROM tasks WHERE id = ?').get(taskId);
+  if (!task) return { ok: false, error: 'Task not found' };
+  if (task.claimed_by && task.claim_expires_at) {
+    const expires = new Date(task.claim_expires_at).getTime();
+    if (expires > Date.now()) {
+      return {
+        ok: false, error: 'Task already claimed', claimed_by: task.claimed_by, expires_at: task.claim_expires_at,
+      };
+    }
+  }
+
+  const now = new Date().toISOString();
+  const expiresAt = new Date(Date.now() + timeoutHours * 3600000).toISOString();
+  conn.prepare(`
+    UPDATE tasks SET claimed_by = ?, claimed_at = ?, claim_expires_at = ?, updated_at = datetime('now')
+    WHERE id = ?
+  `).run(agentId, now, expiresAt, taskId);
+
+  return {
+    ok: true, claimed_by: agentId, claimed_at: now, expires_at: expiresAt,
+  };
+}
+
+export function refreshClaim(taskId, agentId, timeoutHours = 4) {
+  const conn = getDb();
+  const task = conn.prepare('SELECT id, claimed_by FROM tasks WHERE id = ?').get(taskId);
+  if (!task) return { ok: false, error: 'Task not found' };
+  if (task.claimed_by !== agentId) return { ok: false, error: 'Not claimed by this agent' };
+
+  const expiresAt = new Date(Date.now() + timeoutHours * 3600000).toISOString();
+  conn.prepare("UPDATE tasks SET claim_expires_at = ?, updated_at = datetime('now') WHERE id = ?").run(expiresAt, taskId);
+  return { ok: true, claimed_by: agentId, expires_at: expiresAt };
+}
+
+export function releaseClaim(taskId, agentId) {
+  const conn = getDb();
+  const task = conn.prepare('SELECT id, claimed_by FROM tasks WHERE id = ?').get(taskId);
+  if (!task) return { ok: false, error: 'Task not found' };
+  if (task.claimed_by && task.claimed_by !== agentId) return { ok: false, error: 'Not claimed by this agent' };
+
+  conn.prepare("UPDATE tasks SET claimed_by = NULL, claimed_at = NULL, claim_expires_at = NULL, updated_at = datetime('now') WHERE id = ?").run(taskId);
+  return { ok: true };
+}
+
+export function updateIntent(taskId, data) {
+  const conn = getDb();
+  const {
+    intent, acceptance_criteria, changed_by, change_reason,
+  } = data;
+  if (!intent || !changed_by || !change_reason) {
+    throw new Error('Missing required intent fields: intent, changed_by, change_reason');
+  }
+
+  const task = conn.prepare('SELECT id, active_intent, active_intent_version FROM tasks WHERE id = ?').get(taskId);
+  if (!task) throw new Error('Task not found');
+
+  const newVersion = (task.active_intent_version || 1) + 1;
+  const previousVersion = task.active_intent_version || 1;
+
+  const tx = conn.transaction(() => {
+    conn.prepare(`
+      INSERT INTO task_intent_history (task_id, version, intent, acceptance_criteria, changed_by, change_reason, previous_version)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(taskId, newVersion, intent, acceptance_criteria || null, changed_by, change_reason, previousVersion);
+
+    conn.prepare(`
+      UPDATE tasks SET active_intent = ?, active_intent_version = ?, acceptance_criteria = ?, updated_at = datetime('now')
+      WHERE id = ?
+    `).run(intent, newVersion, acceptance_criteria || null, taskId);
+
+    addHistory(taskId, changed_by, 'intent_updated', `Intent updated to v${newVersion}: ${change_reason}`);
+
+    return {
+      task_id: taskId,
+      version: newVersion,
+      previous_version: previousVersion,
+      intent,
+      acceptance_criteria: acceptance_criteria || null,
+      changed_by,
+      change_reason,
+    };
+  });
+
+  return tx();
+}
+
+export function getIntentHistory(taskId) {
+  const conn = getDb();
+  return conn.prepare('SELECT * FROM task_intent_history WHERE task_id = ? ORDER BY version ASC').all(taskId);
 }
 
 export function getTaskTypeConfigs() {
