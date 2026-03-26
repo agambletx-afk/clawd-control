@@ -379,8 +379,29 @@ export function getDb() {
       FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
     );
 
+
+
     CREATE INDEX IF NOT EXISTS idx_audit_task ON task_audit(task_id);
     CREATE INDEX IF NOT EXISTS idx_audit_created ON task_audit(created_at);
+
+    CREATE TABLE IF NOT EXISTS task_handoffs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      task_id INTEGER NOT NULL,
+      from_agent TEXT NOT NULL,
+      to_agent TEXT NOT NULL,
+      checkpoint_id TEXT,
+      intent_version_id INTEGER,
+      required_outcome TEXT NOT NULL,
+      artifact_refs TEXT,
+      known_unknowns TEXT,
+      status TEXT DEFAULT 'pending' CHECK(status IN ('pending','accepted','rejected','superseded')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      resolved_at TEXT,
+      FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_handoffs_task ON task_handoffs(task_id);
+    CREATE INDEX IF NOT EXISTS idx_handoffs_status ON task_handoffs(status);
   `);
 
 
@@ -1334,6 +1355,139 @@ export function updateIntent(taskId, data) {
 export function getIntentHistory(taskId) {
   const conn = getDb();
   return conn.prepare('SELECT * FROM task_intent_history WHERE task_id = ? ORDER BY version ASC').all(taskId);
+}
+
+export function getGoalCompositionStatus(goalId) {
+  const conn = getDb();
+  const goal = conn.prepare('SELECT * FROM goals WHERE id = ?').get(goalId);
+  if (!goal) return null;
+
+  const childTasks = conn.prepare('SELECT * FROM tasks WHERE goal_id = ?').all(goalId);
+
+  const children = childTasks.map((task) => {
+    const checkpoints = conn.prepare(
+      "SELECT * FROM task_checkpoints WHERE task_id = ? AND status = 'active' ORDER BY created_at DESC"
+    ).all(task.id);
+
+    const intentDrift = task.original_intent && task.active_intent && task.original_intent !== task.active_intent;
+
+    const alignmentArtifacts = conn.prepare(
+      "SELECT * FROM task_artifacts WHERE task_id = ? AND artifact_type IN ('author_alignment', 'alignment_review') ORDER BY created_at DESC"
+    ).all(task.id);
+
+    const latestAlignment = alignmentArtifacts.length > 0 ? alignmentArtifacts[0] : null;
+    let alignmentVerdict = null;
+    if (latestAlignment) {
+      try {
+        const content = JSON.parse(latestAlignment.content);
+        alignmentVerdict = content.verdict || content.alignment_claim || null;
+      } catch {
+        alignmentVerdict = null;
+      }
+    }
+
+    return {
+      task_id: task.id,
+      title: task.title,
+      status: task.status,
+      task_type: task.task_type,
+      priority: task.priority,
+      scoped_contribution: task.scoped_contribution || null,
+      non_goals: task.non_goals || null,
+      active_intent_version: task.active_intent_version,
+      parent_intent_version: task.parent_intent_version,
+      stale_dependency: Number(task.stale_dependency || 0) > 0,
+      intent_drift: intentDrift,
+      checkpoint_count: checkpoints.length,
+      checkpoint_health: checkpoints.length > 0 ? 'active' : (task.status === 'done' ? 'complete' : 'none'),
+      alignment_verdict: alignmentVerdict,
+      claimed_by: task.claimed_by,
+    };
+  });
+
+  const total = children.length;
+  const byStatus = {};
+  children.forEach((child) => {
+    byStatus[child.status] = (byStatus[child.status] || 0) + 1;
+  });
+
+  const completedOrDone = children.filter((child) => child.status === 'done' || child.status === 'archive').length;
+  const inReview = children.filter((child) => child.status === 'review').length;
+  const staleChildren = children.filter((child) => child.stale_dependency);
+  const driftedChildren = children.filter((child) => child.intent_drift);
+
+  const childrenMissingScope = children.filter(
+    (child) => !child.scoped_contribution && child.status !== 'archive' && child.status !== 'done'
+  );
+
+  const compositionReady = total > 0 && (completedOrDone + inReview) === total;
+
+  return {
+    goal_id: goalId,
+    goal_title: goal.title,
+    goal_status: goal.status,
+    total_children: total,
+    status_breakdown: byStatus,
+    completed_or_done: completedOrDone,
+    in_review: inReview,
+    composition_ready: compositionReady,
+    stale_children: staleChildren.map((child) => ({ task_id: child.task_id, title: child.title })),
+    drifted_children: driftedChildren.map((child) => ({
+      task_id: child.task_id,
+      title: child.title,
+      intent_version: child.active_intent_version,
+    })),
+    children_missing_scope: childrenMissingScope.map((child) => ({ task_id: child.task_id, title: child.title })),
+    children,
+  };
+}
+
+export function createHandoff(data) {
+  const conn = getDb();
+  const {
+    task_id, from_agent, to_agent, checkpoint_id, intent_version_id, required_outcome, artifact_refs, known_unknowns,
+  } = data;
+
+  if (!task_id || !from_agent || !to_agent || !required_outcome) {
+    throw new Error('Missing required handoff fields: task_id, from_agent, to_agent, required_outcome');
+  }
+
+  if (checkpoint_id) {
+    const checkpoint = conn.prepare('SELECT id, status FROM task_checkpoints WHERE id = ?').get(checkpoint_id);
+    if (!checkpoint) throw new Error('Referenced checkpoint not found');
+    if (checkpoint.status === 'superseded') throw new Error('Referenced checkpoint is superseded');
+  }
+
+  const stmt = conn.prepare(`
+    INSERT INTO task_handoffs (task_id, from_agent, to_agent, checkpoint_id, intent_version_id, required_outcome, artifact_refs, known_unknowns)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const result = stmt.run(
+    task_id,
+    from_agent,
+    to_agent,
+    checkpoint_id || null,
+    intent_version_id || null,
+    required_outcome,
+    artifact_refs ? JSON.stringify(artifact_refs) : null,
+    known_unknowns ? JSON.stringify(known_unknowns) : null,
+  );
+
+  return conn.prepare('SELECT * FROM task_handoffs WHERE id = ?').get(result.lastInsertRowid);
+}
+
+export function getHandoffs(taskId) {
+  const conn = getDb();
+  return conn.prepare('SELECT * FROM task_handoffs WHERE task_id = ? ORDER BY created_at DESC').all(taskId);
+}
+
+export function resolveHandoff(handoffId, status) {
+  const conn = getDb();
+  const validStatuses = ['accepted', 'rejected', 'superseded'];
+  if (!validStatuses.includes(status)) throw new Error('Invalid handoff status');
+  conn.prepare("UPDATE task_handoffs SET status = ?, resolved_at = datetime('now') WHERE id = ?").run(status, handoffId);
+  return conn.prepare('SELECT * FROM task_handoffs WHERE id = ?').get(handoffId);
 }
 
 export function getTaskTypeConfigs() {

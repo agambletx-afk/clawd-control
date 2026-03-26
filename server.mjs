@@ -46,6 +46,10 @@ import {
   releaseClaim,
   updateIntent,
   getIntentHistory,
+  getGoalCompositionStatus,
+  createHandoff,
+  getHandoffs,
+  resolveHandoff,
   getStaleTasks,
   getOverdueTasks,
   validateTransition,
@@ -5509,6 +5513,19 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (path.match(/^\/api\/goals\/\d+\/composition-status$/) && req.method === 'GET') {
+    const goalId = Number(path.split('/')[3]);
+    const result = getGoalCompositionStatus(goalId);
+    if (!result) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Goal not found' }));
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(result));
+    return;
+  }
+
   if (path.startsWith('/api/goals/') && path.endsWith('/tasks') && req.method === 'GET') {
     const segments = path.split('/');
     const goalId = Number.parseInt(segments[3], 10);
@@ -5820,6 +5837,84 @@ const server = createServer(async (req, res) => {
       });
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(result));
+    }).catch((e) => {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    });
+    return;
+  }
+
+  if (path.match(/^\/api\/tasks\/\d+\/handoffs$/) && req.method === 'POST') {
+    readJsonBody(req).then((body) => {
+      const taskId = Number(path.split('/')[3]);
+      const task = getTaskById(taskId);
+      if (!task) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Task not found' }));
+        return;
+      }
+      try {
+        const handoff = createHandoff({ task_id: taskId, ...body });
+        addAuditEntry({
+          task_id: taskId,
+          action: 'handoff_created',
+          actor: body.from_agent || 'unknown',
+          details: { handoff_id: handoff.id, to_agent: body.to_agent, checkpoint_id: body.checkpoint_id || null },
+        });
+        res.writeHead(201, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ handoff }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    }).catch((e) => {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    });
+    return;
+  }
+
+  if (path.match(/^\/api\/tasks\/\d+\/handoffs$/) && req.method === 'GET') {
+    const taskId = Number(path.split('/')[3]);
+    const task = getTaskById(taskId);
+    if (!task) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Task not found' }));
+      return;
+    }
+    const handoffs = getHandoffs(taskId);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ handoffs }));
+    return;
+  }
+
+  if (path.match(/^\/api\/handoffs\/\d+$/) && req.method === 'PATCH') {
+    readJsonBody(req).then((body) => {
+      const handoffId = Number(path.split('/')[3]);
+      if (!body.status) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'status required (accepted, rejected, superseded)' }));
+        return;
+      }
+      try {
+        const handoff = resolveHandoff(handoffId, body.status);
+        if (!handoff) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Handoff not found' }));
+          return;
+        }
+        addAuditEntry({
+          task_id: handoff.task_id,
+          action: 'handoff_resolved',
+          actor: body.actor || 'unknown',
+          details: { handoff_id: handoff.id, status: body.status },
+        });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ handoff }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
     }).catch((e) => {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: e.message }));
