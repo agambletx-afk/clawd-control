@@ -2012,7 +2012,7 @@ export function tryAutoAdvance(taskId, newStatus) {
       JSON.stringify({ pipeline_id: instance.id, step_order: nextStepOrder, version: newVersion }),
     );
 
-    conn.prepare("INSERT INTO task_history (task_id, actor, action, detail, timestamp) VALUES (?, ?, ?, ?, datetime('now'))")
+    conn.prepare("INSERT INTO task_history (task_id, actor, action, detail) VALUES (?, ?, ?, ?)")
       .run(downstreamTask.id, 'system', 'status_changed', 'proposed -> backlog (auto-advance)');
 
     return {
