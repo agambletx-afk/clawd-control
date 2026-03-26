@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import https from "node:https";
+import { createRequire } from "node:module";
 import path from "node:path";
 
 type ConfirmPathRule = {
@@ -21,6 +22,11 @@ type SecurityHookConfig = {
   confirmPaths: ConfirmPathRule[];
   telegram: TelegramConfig;
   rateLimits?: Record<string, unknown>;
+  structured_logging?: {
+    enabled?: boolean;
+    sampling?: Record<string, unknown>;
+    max_record_bytes?: number;
+  };
 };
 
 type RateLimitThreshold = {
@@ -118,6 +124,19 @@ const DEFAULT_CONFIG: SecurityHookConfig = {
     janitor: { perMinute: 15, perHour: 150 },
     researcher: { perMinute: 5, perHour: 50 },
   },
+  structured_logging: {
+    enabled: true,
+    sampling: {
+      blocked: 1.0,
+      confirmed: 1.0,
+      rate_limited: 1.0,
+      allowed_sensitive_write: 1.0,
+      allowed_exec: 0.5,
+      allowed_read: 0.05,
+      allowed_default: 0.1,
+    },
+    max_record_bytes: 4096,
+  },
 };
 
 const DEFAULT_RATE_LIMITS: Record<string, RateLimitThreshold> = {
@@ -126,6 +145,27 @@ const DEFAULT_RATE_LIMITS: Record<string, RateLimitThreshold> = {
 
 const MINUTE_WINDOW_MS = 60_000;
 const HOUR_WINDOW_MS = 3_600_000;
+const STRUCTURED_DECISION_SCHEMA = `
+  CREATE TABLE IF NOT EXISTS hook_decisions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT NOT NULL,
+    session_id TEXT,
+    task_id TEXT,
+    agent TEXT,
+    tool_name TEXT NOT NULL,
+    action TEXT NOT NULL,
+    decision TEXT NOT NULL,
+    rule_matched TEXT,
+    risk_score INTEGER,
+    detail TEXT,
+    truncated INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_hook_session ON hook_decisions(session_id);
+  CREATE INDEX IF NOT EXISTS idx_hook_task ON hook_decisions(task_id);
+  CREATE INDEX IF NOT EXISTS idx_hook_decision ON hook_decisions(decision);
+  CREATE INDEX IF NOT EXISTS idx_hook_timestamp ON hook_decisions(timestamp);
+`;
 
 const READ_ONLY_COMMANDS = new Set([
   "cat",
@@ -449,6 +489,134 @@ async function appendBlockedLog(logPath: string, payload: Record<string, unknown
   await fs.promises.appendFile(logPath, `${JSON.stringify(payload)}\n`, { encoding: "utf8" });
 }
 
+type StructuredDecision = {
+  timestamp: string;
+  session_id: string | null;
+  task_id: string | null;
+  agent: string;
+  tool_name: string;
+  action: string;
+  decision: "allowed" | "blocked" | "confirmed" | "rate_limited";
+  rule_matched: string | null;
+  risk_score: number | null;
+  detail: string | null;
+  truncated: 0 | 1;
+};
+
+function extractSessionId(ctx: any): string | null {
+  const candidate =
+    ctx?.sessionId ??
+    ctx?.session_id ??
+    ctx?.session?.id ??
+    ctx?.session?.sessionId ??
+    ctx?.request?.sessionId ??
+    null;
+  return candidate == null ? null : String(candidate);
+}
+
+function extractAgentName(ctx: any): string {
+  return String(ctx?.agentId ?? ctx?.agent?.id ?? ctx?.agent ?? "unknown");
+}
+
+function getActionPayload(event: any): string {
+  const source =
+    event?.params?.command ??
+    event?.params?.cmd ??
+    event?.params?.content ??
+    event?.params?.text ??
+    event?.params?.patch;
+  if (source != null) {
+    return String(source);
+  }
+  try {
+    return JSON.stringify(event?.params ?? {});
+  } catch {
+    return "";
+  }
+}
+
+function parseSamplingRate(input: unknown, fallback: number): number {
+  const numeric = Number(input);
+  if (!Number.isFinite(numeric)) {
+    return fallback;
+  }
+  return Math.min(1, Math.max(0, numeric));
+}
+
+function capStructuredDecisionSize(record: StructuredDecision, maxBytes: number): StructuredDecision {
+  const result: StructuredDecision = {
+    ...record,
+    action: String(record.action ?? ""),
+    detail: record.detail == null ? null : String(record.detail),
+    truncated: 0,
+  };
+  const sizeFor = (candidate: StructuredDecision): number => Buffer.byteLength(JSON.stringify(candidate), "utf8");
+  if (sizeFor(result) <= maxBytes) {
+    return result;
+  }
+
+  result.truncated = 1;
+  const marker = "…[truncated]";
+  const shrink = (field: "detail" | "action") => {
+    const current = result[field];
+    if (current == null || current.length === 0) {
+      return;
+    }
+    let low = 0;
+    let high = current.length;
+    let best = "";
+    while (low <= high) {
+      const mid = Math.floor((low + high) / 2);
+      const candidate = `${current.slice(0, mid)}${marker}`;
+      const updated: StructuredDecision = { ...result, [field]: candidate };
+      if (sizeFor(updated) <= maxBytes) {
+        best = candidate;
+        low = mid + 1;
+      } else {
+        high = mid - 1;
+      }
+    }
+    result[field] = best;
+  };
+
+  shrink("detail");
+  if (sizeFor(result) > maxBytes) {
+    shrink("action");
+  }
+  if (sizeFor(result) > maxBytes) {
+    result.detail = null;
+  }
+  if (sizeFor(result) > maxBytes) {
+    result.action = marker;
+  }
+
+  return result;
+}
+
+function getAllowedSamplingCategory(
+  toolName: string,
+  targetPath: string | null,
+  config: SecurityHookConfig,
+  homeDir: string,
+): "allowed_sensitive_write" | "allowed_exec" | "allowed_read" | "allowed_default" {
+  if (targetPath && isWriteTool(toolName)) {
+    const protectedMatch = matchesProtectedPath(targetPath, config.protectedPaths, homeDir);
+    const confirmMatch = matchesConfirmPath(targetPath, config.confirmPaths, homeDir);
+    if (protectedMatch.matched || Boolean(confirmMatch)) {
+      return "allowed_sensitive_write";
+    }
+  }
+
+  const lower = toolName.toLowerCase();
+  if (/(exec|shell|bash|terminal|command)/.test(lower)) {
+    return "allowed_exec";
+  }
+  if (/(read|view|cat|list|ls|find|search)/.test(lower)) {
+    return "allowed_read";
+  }
+  return "allowed_default";
+}
+
 function blockCall(reason: string): { block: true; blockReason: string } {
   return { block: true, blockReason: reason };
 }
@@ -467,6 +635,10 @@ export default function securityHook(api: any) {
   let failClosed = false;
   const countersByAgent = new Map<string, AgentRateCounter>();
   let rateLimitsByAgent: Record<string, RateLimitThreshold> = { ...DEFAULT_RATE_LIMITS };
+  let structuredLoggingDisabled = false;
+  let structuredLogWarned = false;
+  let structuredDb: any = null;
+  let insertStructuredDecisionStmt: any = null;
 
   try {
     if (!fs.existsSync(configPath)) {
@@ -502,6 +674,138 @@ export default function securityHook(api: any) {
 
   const getThresholdForAgent = (agentId: string): RateLimitThreshold => {
     return rateLimitsByAgent[agentId] ?? rateLimitsByAgent.default ?? DEFAULT_RATE_LIMITS.default;
+  };
+
+  const resolveDecisionDbPath = (): string[] => {
+    const candidates = [
+      "/home/openclaw/clawd-control/security-decisions.db",
+      process.env.CLAWD_CONTROL_DIR ? path.join(process.env.CLAWD_CONTROL_DIR, "security-decisions.db") : null,
+      path.join(process.cwd(), "clawd-control", "security-decisions.db"),
+      path.join(process.cwd(), "security-decisions.db"),
+    ];
+    return candidates.filter((value): value is string => Boolean(value));
+  };
+
+  const getStructuredDb = () => {
+    if (structuredLoggingDisabled) {
+      return null;
+    }
+    if (structuredDb && insertStructuredDecisionStmt) {
+      return { db: structuredDb, stmt: insertStructuredDecisionStmt };
+    }
+    try {
+      const require = createRequire(path.join(process.cwd(), "clawd-control", "package.json"));
+      const BetterSqlite3 = require("better-sqlite3");
+      let opened: any = null;
+      for (const dbPath of resolveDecisionDbPath()) {
+        try {
+          opened = new BetterSqlite3(dbPath);
+          break;
+        } catch {
+          // Try next candidate path
+        }
+      }
+      if (!opened) {
+        throw new Error("unable to open any security-decisions.db path candidate");
+      }
+      opened.pragma("journal_mode = WAL");
+      opened.exec(STRUCTURED_DECISION_SCHEMA);
+      structuredDb = opened;
+      insertStructuredDecisionStmt = opened.prepare(`
+        INSERT INTO hook_decisions
+          (timestamp, session_id, task_id, agent, tool_name, action, decision, rule_matched, risk_score, detail, truncated)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      return { db: structuredDb, stmt: insertStructuredDecisionStmt };
+    } catch (error) {
+      structuredLoggingDisabled = true;
+      if (!structuredLogWarned) {
+        structuredLogWarned = true;
+        api.logger.warn(`security-hook: structured decision logging disabled (${String(error)})`);
+      }
+      return null;
+    }
+  };
+
+  const maybeLogStructuredDecision = (payload: {
+    event: any;
+    ctx: any;
+    toolName: string;
+    targetPath: string | null;
+    decision: "allowed" | "blocked" | "confirmed" | "rate_limited";
+    ruleMatched?: string | null;
+    detail?: Record<string, unknown>;
+  }): void => {
+    if (!config?.structured_logging?.enabled || structuredLoggingDisabled) {
+      return;
+    }
+
+    const sampling = config?.structured_logging?.sampling ?? {};
+    const samplingCategory =
+      payload.decision === "blocked"
+        ? "blocked"
+        : payload.decision === "confirmed"
+          ? "confirmed"
+          : payload.decision === "rate_limited"
+            ? "rate_limited"
+            : getAllowedSamplingCategory(payload.toolName, payload.targetPath, config, homeDir);
+    const defaultRate =
+      payload.decision === "blocked" || payload.decision === "confirmed" || payload.decision === "rate_limited"
+        ? 1
+        : 0.1;
+    const rate = parseSamplingRate((sampling as Record<string, unknown>)[samplingCategory], defaultRate);
+    if (Math.random() > rate) {
+      return;
+    }
+
+    const dbBundle = getStructuredDb();
+    if (!dbBundle) {
+      return;
+    }
+    const maxRecordBytes = Math.max(
+      512,
+      Math.floor(Number(config?.structured_logging?.max_record_bytes) || 4096),
+    );
+    const detail =
+      payload.detail == null
+        ? null
+        : (() => {
+            try {
+              return JSON.stringify(payload.detail);
+            } catch {
+              return '{"error":"failed_to_serialize_detail"}';
+            }
+          })();
+    const record = capStructuredDecisionSize(
+      {
+        timestamp: new Date().toISOString(),
+        session_id: extractSessionId(payload.ctx),
+        task_id: null,
+        agent: extractAgentName(payload.ctx),
+        tool_name: payload.toolName,
+        action: getActionPayload(payload.event),
+        decision: payload.decision,
+        rule_matched: payload.ruleMatched ?? null,
+        risk_score: null,
+        detail,
+        truncated: 0,
+      },
+      maxRecordBytes,
+    );
+
+    dbBundle.stmt.run(
+      record.timestamp,
+      record.session_id,
+      record.task_id,
+      record.agent,
+      record.tool_name,
+      record.action,
+      record.decision,
+      record.rule_matched,
+      record.risk_score,
+      record.detail,
+      record.truncated,
+    );
   };
 
   const getAgentCounter = (agentId: string, nowMs: number): AgentRateCounter => {
@@ -589,6 +893,19 @@ export default function securityHook(api: any) {
     // Fail-closed: block all exec-capable calls when config is invalid
     if (failClosed && isExecCapableTool(toolName)) {
       const reason = "invalid config: fail-closed mode";
+      try {
+        maybeLogStructuredDecision({
+          event,
+          ctx,
+          toolName,
+          targetPath,
+          decision: "blocked",
+          ruleMatched: reason,
+          detail: { source: "fail-closed", reason, agentId },
+        });
+      } catch (error) {
+        api.logger.warn(`security-hook: structured decision logging failed (${String(error)})`);
+      }
       await appendBlockedLog(logPath, {
         timestamp: new Date().toISOString(),
         agentId,
@@ -617,6 +934,24 @@ export default function securityHook(api: any) {
           current.resetAtMs < earliest.resetAtMs ? current : earliest,
         );
         const blockedThreshold = earliestBlock.window === "minute" ? thresholds.perMinute : thresholds.perHour;
+        try {
+          maybeLogStructuredDecision({
+            event,
+            ctx,
+            toolName,
+            targetPath,
+            decision: "rate_limited",
+            ruleMatched: `rate limit active block (${earliestBlock.window})`,
+            detail: {
+              source: "rate-limit",
+              window: earliestBlock.window,
+              threshold: blockedThreshold,
+              resetAt: new Date(earliestBlock.resetAtMs).toISOString(),
+            },
+          });
+        } catch (error) {
+          api.logger.warn(`security-hook: structured decision logging failed (${String(error)})`);
+        }
         return blockCall(formatRateLimitDenyMessage(earliestBlock.window, blockedThreshold, earliestBlock.resetAtMs));
       }
 
@@ -626,6 +961,25 @@ export default function securityHook(api: any) {
       if (counter.minute.count > thresholds.perMinute) {
         const resetAtMs = getResetMs(counter.minute, MINUTE_WINDOW_MS);
         counter.minute.blockedUntilMs = resetAtMs;
+        try {
+          maybeLogStructuredDecision({
+            event,
+            ctx,
+            toolName,
+            targetPath,
+            decision: "rate_limited",
+            ruleMatched: "rate limit exceeded (minute)",
+            detail: {
+              source: "rate-limit",
+              window: "minute",
+              currentCount: counter.minute.count,
+              threshold: thresholds.perMinute,
+              resetAt: new Date(resetAtMs).toISOString(),
+            },
+          });
+        } catch (error) {
+          api.logger.warn(`security-hook: structured decision logging failed (${String(error)})`);
+        }
         await appendBlockedLog(logPath, {
           timestamp: new Date(nowMs).toISOString(),
           action: "rate-limited",
@@ -643,6 +997,25 @@ export default function securityHook(api: any) {
       if (counter.hour.count > thresholds.perHour) {
         const resetAtMs = getResetMs(counter.hour, HOUR_WINDOW_MS);
         counter.hour.blockedUntilMs = resetAtMs;
+        try {
+          maybeLogStructuredDecision({
+            event,
+            ctx,
+            toolName,
+            targetPath,
+            decision: "rate_limited",
+            ruleMatched: "rate limit exceeded (hour)",
+            detail: {
+              source: "rate-limit",
+              window: "hour",
+              currentCount: counter.hour.count,
+              threshold: thresholds.perHour,
+              resetAt: new Date(resetAtMs).toISOString(),
+            },
+          });
+        } catch (error) {
+          api.logger.warn(`security-hook: structured decision logging failed (${String(error)})`);
+        }
         await appendBlockedLog(logPath, {
           timestamp: new Date(nowMs).toISOString(),
           action: "rate-limited",
@@ -665,6 +1038,19 @@ export default function securityHook(api: any) {
         const blocked = matchBlocklist(command, config.blocklist);
         if (blocked.matched) {
           const reason = `blocklist match: ${blocked.rule}`;
+          try {
+            maybeLogStructuredDecision({
+              event,
+              ctx,
+              toolName,
+              targetPath,
+              decision: "blocked",
+              ruleMatched: reason,
+              detail: { source: "blocklist", matchedRule: blocked.rule ?? null },
+            });
+          } catch (error) {
+            api.logger.warn(`security-hook: structured decision logging failed (${String(error)})`);
+          }
           await appendBlockedLog(logPath, {
             timestamp: new Date().toISOString(),
             agentId,
@@ -685,6 +1071,19 @@ export default function securityHook(api: any) {
       const protectedMatch = matchesProtectedPath(targetPath, config.protectedPaths, homeDir);
       if (protectedMatch.matched) {
         const reason = `protected path: ${protectedMatch.rule}`;
+        try {
+          maybeLogStructuredDecision({
+            event,
+            ctx,
+            toolName,
+            targetPath,
+            decision: "blocked",
+            ruleMatched: reason,
+            detail: { source: "protected-path", matchedRule: protectedMatch.rule ?? null },
+          });
+        } catch (error) {
+          api.logger.warn(`security-hook: structured decision logging failed (${String(error)})`);
+        }
         await appendBlockedLog(logPath, {
           timestamp: new Date().toISOString(),
           agentId,
@@ -708,6 +1107,19 @@ export default function securityHook(api: any) {
 
         if (!botToken || !chatId) {
           const reason = `${matchedRule}; missing telegram credentials in env`;
+          try {
+            maybeLogStructuredDecision({
+              event,
+              ctx,
+              toolName,
+              targetPath,
+              decision: "blocked",
+              ruleMatched: reason,
+              detail: { source: "confirm-path", stage: "credentials", matchedRule },
+            });
+          } catch (error) {
+            api.logger.warn(`security-hook: structured decision logging failed (${String(error)})`);
+          }
           await appendBlockedLog(logPath, {
             timestamp: new Date().toISOString(),
             agentId,
@@ -757,6 +1169,19 @@ export default function securityHook(api: any) {
 
           const decision = await waitForTelegramDecision(botToken, chatId, timeoutSeconds, initialOffset);
           if (decision === "approve") {
+            try {
+              maybeLogStructuredDecision({
+                event,
+                ctx,
+                toolName,
+                targetPath,
+                decision: "confirmed",
+                ruleMatched: matchedRule,
+                detail: { source: "confirm-path", outcome: "approve", timeoutSeconds },
+              });
+            } catch (error) {
+              api.logger.warn(`security-hook: structured decision logging failed (${String(error)})`);
+            }
             await appendBlockedLog(logPath, {
               timestamp: new Date().toISOString(),
               agentId,
@@ -770,6 +1195,19 @@ export default function securityHook(api: any) {
           }
 
           if (decision === "deny") {
+            try {
+              maybeLogStructuredDecision({
+                event,
+                ctx,
+                toolName,
+                targetPath,
+                decision: "blocked",
+                ruleMatched: `${matchedRule}; denied via Telegram`,
+                detail: { source: "confirm-path", outcome: "deny", timeoutSeconds },
+              });
+            } catch (error) {
+              api.logger.warn(`security-hook: structured decision logging failed (${String(error)})`);
+            }
             await appendBlockedLog(logPath, {
               timestamp: new Date().toISOString(),
               agentId,
@@ -782,6 +1220,19 @@ export default function securityHook(api: any) {
             return blockCall(`Blocked by security-hook (${matchedRule}; denied via Telegram)`);
           }
 
+          try {
+            maybeLogStructuredDecision({
+              event,
+              ctx,
+              toolName,
+              targetPath,
+              decision: "blocked",
+              ruleMatched: `${matchedRule}; approval timeout`,
+              detail: { source: "confirm-path", outcome: "timeout", timeoutSeconds },
+            });
+          } catch (error) {
+            api.logger.warn(`security-hook: structured decision logging failed (${String(error)})`);
+          }
           await appendBlockedLog(logPath, {
             timestamp: new Date().toISOString(),
             agentId,
@@ -795,6 +1246,19 @@ export default function securityHook(api: any) {
           return blockCall(`Blocked by security-hook (${matchedRule}; approval timeout)`);
         } catch (error) {
           const reason = `${matchedRule}; telegram error: ${String(error)}`;
+          try {
+            maybeLogStructuredDecision({
+              event,
+              ctx,
+              toolName,
+              targetPath,
+              decision: "blocked",
+              ruleMatched: reason,
+              detail: { source: "confirm-path", outcome: "error", timeoutSeconds },
+            });
+          } catch (loggingError) {
+            api.logger.warn(`security-hook: structured decision logging failed (${String(loggingError)})`);
+          }
           await appendBlockedLog(logPath, {
             timestamp: new Date().toISOString(),
             agentId,
@@ -810,6 +1274,19 @@ export default function securityHook(api: any) {
     }
 
     // Allow: return undefined
+    try {
+      maybeLogStructuredDecision({
+        event,
+        ctx,
+        toolName,
+        targetPath,
+        decision: "allowed",
+        ruleMatched: null,
+        detail: { source: "default-allow", agentId },
+      });
+    } catch (error) {
+      api.logger.warn(`security-hook: structured decision logging failed (${String(error)})`);
+    }
     return;
   });
 }

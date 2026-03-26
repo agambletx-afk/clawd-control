@@ -68,6 +68,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 
 import { logAction, getLog, getLogStats, pruneLog } from './ops-log-db.mjs';
 import { queryLogs, getIngestHealth, pruneOldLogs, runIngestionCycle } from './logs-db.mjs';
+import { queryDecisions, getDecisionStats } from './security-decisions-db.mjs';
 import { storeChecks, getHistory as getSecurityHistory, getTransitions } from './security-db.mjs';
 import { recordRun, getHistory as getWatcherHistory, getTrends as getWatcherTrends, getJobStats, pruneOldRuns } from './watcher-db.mjs';
 import { createSnapshot, listSnapshots, getSnapshotManifest, restoreSnapshot, deleteSnapshot, enforceRetention } from './ops-backup.mjs';
@@ -4906,6 +4907,51 @@ const server = createServer(async (req, res) => {
       const rows = getTransitions(limit);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(rows));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (path === '/api/security/decisions' && req.method === 'GET') {
+    try {
+      const session_id = url.searchParams.get('session_id') || null;
+      const task_id = url.searchParams.get('task_id') || null;
+      const agent = url.searchParams.get('agent') || null;
+      const decision = url.searchParams.get('decision') || null;
+      const after = url.searchParams.get('after') || null;
+      const before = url.searchParams.get('before') || null;
+      const limit = Number.parseInt(url.searchParams.get('limit') || '50', 10);
+      const offset = Number.parseInt(url.searchParams.get('offset') || '0', 10);
+      const safeLimit = Math.max(1, Math.min(200, Number.isFinite(limit) ? limit : 50));
+      const safeOffset = Math.max(0, Number.isFinite(offset) ? offset : 0);
+      const { rows, total } = queryDecisions({
+        session_id,
+        task_id,
+        agent,
+        decision,
+        after,
+        before,
+        limit: safeLimit,
+        offset: safeOffset,
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ rows, total, limit: safeLimit, offset: safeOffset }));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (path === '/api/security/decisions/stats' && req.method === 'GET') {
+    try {
+      const after = url.searchParams.get('after') || null;
+      const before = url.searchParams.get('before') || null;
+      const stats = getDecisionStats({ after, before });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(stats));
     } catch (e) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: e.message }));
