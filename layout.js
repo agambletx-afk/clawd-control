@@ -163,6 +163,7 @@ body {
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 
 .topbar-right { display: flex; align-items: center; gap: 2px; }
+.page-header h1, .page-header > .subtitle, .page-header > div > .subtitle, .page-header p.subtitle { display: none; }
 
 
 /* ── Sidebar ───────────────────────────── */
