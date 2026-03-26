@@ -7075,6 +7075,149 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (path === '/api/cortex/bypass-check' && req.method === 'GET') {
+    try {
+      const requestedWindow = Number(url.searchParams.get('window'));
+      const windowMinutes = Math.min(120, Math.max(5, Number.isFinite(requestedWindow) ? requestedWindow : 30));
+      const cutoff = new Date(Date.now() - windowMinutes * 60000).toISOString();
+      const agentsDir = join(process.env.HOME || '/home/openclaw', '.openclaw', 'agents');
+
+      let newestActiveSession = null;
+      let newestActiveMtime = 0;
+      let newestArchivedSession = null;
+      let newestArchivedMtime = 0;
+
+      if (existsSync(agentsDir)) {
+        const agents = readdirSync(agentsDir, { withFileTypes: true }).filter((entry) => entry.isDirectory());
+        for (const agent of agents) {
+          const sessionsDir = join(agentsDir, agent.name, 'sessions');
+          if (!existsSync(sessionsDir)) continue;
+
+          const entries = readdirSync(sessionsDir, { withFileTypes: true });
+          for (const entry of entries) {
+            if (!entry.isDirectory() || entry.name === 'archive') continue;
+            const jsonlPath = join(sessionsDir, entry.name, 'session.jsonl');
+            if (!existsSync(jsonlPath)) continue;
+            const stats = statSync(jsonlPath);
+            if (stats.mtimeMs > newestActiveMtime) {
+              newestActiveMtime = stats.mtimeMs;
+              newestActiveSession = jsonlPath;
+            }
+          }
+
+          const archiveDir = join(sessionsDir, 'archive');
+          if (!existsSync(archiveDir)) continue;
+          const archivedFiles = readdirSync(archiveDir, { withFileTypes: true }).filter((entry) => entry.isFile() && entry.name.endsWith('.jsonl'));
+          for (const archived of archivedFiles) {
+            const jsonlPath = join(archiveDir, archived.name);
+            const stats = statSync(jsonlPath);
+            if (stats.mtimeMs > newestArchivedMtime) {
+              newestArchivedMtime = stats.mtimeMs;
+              newestArchivedSession = jsonlPath;
+            }
+          }
+        }
+      }
+
+      const sessionFile = newestActiveSession || newestArchivedSession;
+      if (!sessionFile) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ bypasses: [], telemetry_healthy: false, reason: 'No session files found' }));
+        return;
+      }
+
+      const lines = readFileSync(sessionFile, 'utf8').split('\n').filter(Boolean).slice(-500);
+      const sessionTurns = [];
+      for (const line of lines) {
+        try {
+          const entry = JSON.parse(line);
+          if (!entry?.provider || !entry?.timestamp) continue;
+          const turnMs = new Date(entry.timestamp).getTime();
+          if (!Number.isFinite(turnMs)) continue;
+          const turnIso = new Date(turnMs).toISOString();
+          if (turnIso < cutoff) continue;
+          sessionTurns.push({
+            provider: String(entry.provider),
+            modelId: entry.modelId ? String(entry.modelId) : 'unknown',
+            timestamp: turnIso,
+            id: entry.id ? String(entry.id) : null,
+          });
+        } catch {
+          // ignore malformed lines
+        }
+      }
+
+      let outcomeRows = [];
+      if (existsSync(OUTCOME_DB_PATH)) {
+        const db = openSqlite(OUTCOME_DB_PATH, { readonly: true });
+        try {
+          outcomeRows = db.prepare(
+            'SELECT id, timestamp, chosen_provider, chosen_model FROM outcome_records WHERE timestamp >= ? ORDER BY timestamp ASC'
+          ).all(cutoff);
+        } finally {
+          db.close();
+        }
+      }
+
+      const outcomeTimestamps = outcomeRows
+        .map((row) => new Date(row.timestamp).getTime())
+        .filter((value) => Number.isFinite(value));
+      const unmatchedTurns = sessionTurns.filter((turn) => {
+        const turnMs = new Date(turn.timestamp).getTime();
+        if (!Number.isFinite(turnMs)) return false;
+        return !outcomeTimestamps.some((outcomeMs) => Math.abs(outcomeMs - turnMs) <= 10000);
+      });
+
+      const unmatchedByClass = {};
+      for (const turn of unmatchedTurns) {
+        const workloadClass = `${turn.provider}/${turn.modelId || 'unknown'}`;
+        if (!unmatchedByClass[workloadClass]) {
+          unmatchedByClass[workloadClass] = {
+            workloadClass,
+            provider: turn.provider,
+            model: turn.modelId || 'unknown',
+            count: 0,
+            first_seen: turn.timestamp,
+            last_seen: turn.timestamp,
+          };
+        }
+        unmatchedByClass[workloadClass].count += 1;
+        if (turn.timestamp < unmatchedByClass[workloadClass].first_seen) unmatchedByClass[workloadClass].first_seen = turn.timestamp;
+        if (turn.timestamp > unmatchedByClass[workloadClass].last_seen) unmatchedByClass[workloadClass].last_seen = turn.timestamp;
+      }
+
+      const telemetryHealthy = outcomeRows.length > 0;
+      const bypasses = telemetryHealthy
+        ? Object.values(unmatchedByClass).map((row) => ({
+            tier: row.count >= 5 ? 'confirmed' : 'suspected',
+            workloadClass: row.workloadClass,
+            provider: row.provider,
+            model: row.model,
+            count: row.count,
+            window_minutes: windowMinutes,
+            first_seen: row.first_seen,
+            last_seen: row.last_seen,
+          }))
+        : [];
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        bypasses,
+        telemetry_healthy: telemetryHealthy,
+        session_file: sessionFile.replace(process.env.HOME || '/home/openclaw', '~'),
+        session_turns_in_window: sessionTurns.length,
+        outcome_records_in_window: outcomeRows.length,
+        unmatched_count: unmatchedTurns.length,
+        window_minutes: windowMinutes,
+      }));
+    } catch (e) {
+      console.error('[API] /api/cortex/bypass-check error:', e.message);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ bypasses: [], telemetry_healthy: false, reason: e.message }));
+    }
+    return;
+  }
+
   if (path === '/api/cortex/decisions' && req.method === 'GET') {
     try {
       const requestedLimit = parseInt(url.searchParams.get('limit') || '20', 10);
