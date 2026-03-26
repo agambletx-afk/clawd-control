@@ -73,6 +73,8 @@ import {
   updatePipelineInstance,
   createTaskSession,
   getTaskSessions,
+  tryAutoAdvance,
+  getKillSwitches,
 } from './tasks-db.mjs';
 
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
@@ -97,6 +99,7 @@ const CORTEX_QUOTA_STATE_PATH = join(process.env.HOME || '/home/openclaw', '.ope
 const BUDGET_CONFIG_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', 'budget.json');
 const SENTINEL_CONFIG_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', 'sentinel-config.json');
 const RATE_LIMITS_CONFIG_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', 'rate-limits.json');
+const KILL_SWITCHES_PATH = '/home/openclaw/.openclaw/workspace/kill-switches.json';
 const PROXY_API_BASE_URL = 'https://gw.dataimpulse.com:777';
 const PROXY_PLAN_TOTAL_BYTES = 25 * 1024 * 1024 * 1024;
 const PROXY_FETCH_TIMEOUT_MS = 10000;
@@ -1549,6 +1552,13 @@ function toCstDate(isoString) {
   const d = new Date(isoString);
   return new Date(d.getTime() + CST_OFFSET_MS).toISOString().split('T')[0];
 }
+
+function writeKillSwitches(payload) {
+  const tmpPath = `${KILL_SWITCHES_PATH}.tmp`;
+  writeFileSync(tmpPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+  renameSync(tmpPath, KILL_SWITCHES_PATH);
+}
+
 
 function parseDependsOnIds(value) {
   if (typeof value !== 'string' || !value.trim()) return [];
@@ -5856,6 +5866,55 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (path.startsWith('/api/pipelines/') && path.split('/').length === 5 && req.method === 'PATCH') {
+    const parts = path.split('/');
+    const pipelineId = decodeURIComponent(parts[3] || '');
+    const action = parts[4] || '';
+    const actionMap = {
+      pause: { status: 'paused' },
+      resume: { status: 'active' },
+      'disable-auto': { auto_advance_enabled: 0 },
+      'enable-auto': { auto_advance_enabled: 1 },
+    };
+    if (!actionMap[action]) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Route not found' }));
+      return;
+    }
+    try {
+      const pipeline = updatePipelineInstance(pipelineId, actionMap[action]);
+      if (!pipeline) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Pipeline instance not found' }));
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ pipeline }));
+    } catch (e) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (path.startsWith('/api/pipelines/') && path.endsWith('/state') && path.split('/').length === 5 && req.method === 'GET') {
+    const pipelineId = decodeURIComponent(path.split('/')[3] || '');
+    const pipeline = getPipelineInstance(pipelineId);
+    if (!pipeline) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Pipeline instance not found' }));
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      current_step: pipeline.current_step,
+      version: pipeline.version,
+      status: pipeline.status,
+      auto_advance_enabled: pipeline.auto_advance_enabled,
+    }));
+    return;
+  }
+
   if (path.startsWith('/api/pipelines/') && path.split('/').length === 4) {
     const pipelineId = decodeURIComponent(path.split('/')[3] || '');
     if (req.method === 'GET') {
@@ -5892,6 +5951,54 @@ const server = createServer(async (req, res) => {
       });
       return;
     }
+  }
+
+  if (path === '/api/kill-switches' && req.method === 'GET') {
+    try {
+      let killSwitches;
+      try {
+        killSwitches = JSON.parse(readFileSync(KILL_SWITCHES_PATH, 'utf8'));
+      } catch {
+        killSwitches = getKillSwitches();
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(killSwitches));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message || 'Failed to read kill switches' }));
+    }
+    return;
+  }
+
+  if (path === '/api/kill-switches/pipeline-auto-advance' && req.method === 'PUT') {
+    readJsonBody(req).then((body) => {
+      const active = body?.active === true;
+      const reason = body?.reason == null ? null : String(body.reason);
+      const activatedBy = body?.activated_by == null ? null : String(body.activated_by);
+      const currentSwitches = getKillSwitches();
+      const next = {
+        ...currentSwitches,
+        pipeline_auto_advance: {
+          active,
+          reason,
+          activated_at: active ? new Date().toISOString() : null,
+          activated_by: active ? (activatedBy || 'unknown') : null,
+        },
+      };
+      try {
+        writeKillSwitches(next);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(next));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message || 'Failed to write kill switch file' }));
+      }
+    }).catch((e) => {
+      const code = e.message === 'Payload too large' ? 413 : 400;
+      res.writeHead(code, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message === 'Payload too large' ? 'Payload too large' : 'Invalid JSON body' }));
+    });
+    return;
   }
 
   if (path === '/api/task-sessions' && req.method === 'POST') {
@@ -6881,6 +6988,19 @@ const server = createServer(async (req, res) => {
                 details: { flagged_task_ids: flagged, superseded_checkpoint: activeReviewCheckpoint.id },
               });
             }
+          }
+        }
+
+        // Auto-advance pipeline (Stage 4A)
+        if (current.status !== targetStatus && targetStatus === 'done' && task.group_id) {
+          try {
+            const advanceResult = tryAutoAdvance(taskId, targetStatus);
+            if (advanceResult.advanced) {
+              task.__auto_advance = advanceResult;
+            }
+          } catch (advanceError) {
+            // Auto-advance failure must never block the status transition response
+            console.error('[auto-advance] error:', advanceError.message);
           }
         }
 
