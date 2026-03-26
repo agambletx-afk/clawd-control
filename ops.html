@@ -1948,9 +1948,9 @@
       try {
         const query = getOpsLogsQuery();
         const data = await api(`/api/logs?${query}`);
-        const entries = Array.isArray(data.entries) ? data.entries : (Array.isArray(data.logs) ? data.logs : []);
+        const entries = Array.isArray(data.rows) ? data.rows : (Array.isArray(data.entries) ? data.entries : []);
         state.opsLogs.entries = entries;
-        state.opsLogs.total = Number(data.total ?? data.count ?? entries.length ?? 0);
+        state.opsLogs.total = Number(data.total ?? entries.length ?? 0);
         state.opsLogs.error = '';
         state.opsLogs.staleAt = new Date().toISOString();
       } catch (error) {
