@@ -49,6 +49,60 @@
 .stat-value.accent { color: var(--accent); }
 .stat-sub { font-size: 0.7rem; color: var(--text-tertiary); margin-top: 4px; }
 
+/* ── Domain Status Strip ───────────────── */
+.domain-strip {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+.domain-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 9999px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: default;
+  transition: border-color var(--transition-fast);
+  position: relative;
+}
+.domain-badge:hover {
+  border-color: var(--border);
+}
+.domain-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--text-tertiary);
+  transition: background var(--transition-fast);
+}
+.domain-dot.green { background: #22c55e; }
+.domain-dot.amber { background: #f59e0b; }
+.domain-dot.red { background: #ef4444; }
+.domain-label {
+  white-space: nowrap;
+}
+.domain-pip {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: transparent;
+  transition: background var(--transition-fast);
+}
+.domain-pip.amber { background: #f59e0b; }
+.domain-pip.red { background: #ef4444; }
+
 /* ── Fleet Health Breakdown ────────────── */
 .fleet-breakdown {
   display: flex; align-items: center; gap: 12px;
@@ -240,6 +294,13 @@
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
   .agents-grid { grid-template-columns: 1fr; }
 }
+
+@media (max-width: 1024px) {
+  .domain-strip {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
 </style>
 </head>
 <body>
@@ -272,6 +333,49 @@
       <div class="stat-value" id="statCostValue">—</div>
       <div class="stat-sub" id="statCostSub">Loading…</div>
     </a>
+  </div>
+
+  <div class="domain-strip fade-up" style="animation-delay:.25s" id="domainStrip">
+    <div class="domain-badge" data-domain="gateway">
+      <span class="domain-dot" id="domainDotGateway"></span>
+      <span class="domain-label">Gateway</span>
+      <span class="domain-pip" id="domainPipGateway"></span>
+    </div>
+    <div class="domain-badge" data-domain="cortex">
+      <span class="domain-dot" id="domainDotCortex"></span>
+      <span class="domain-label">CORTEX</span>
+      <span class="domain-pip" id="domainPipCortex"></span>
+    </div>
+    <div class="domain-badge" data-domain="sessions">
+      <span class="domain-dot" id="domainDotSessions"></span>
+      <span class="domain-label">Sessions</span>
+      <span class="domain-pip" id="domainPipSessions"></span>
+    </div>
+    <div class="domain-badge" data-domain="memory">
+      <span class="domain-dot" id="domainDotMemory"></span>
+      <span class="domain-label">Memory</span>
+      <span class="domain-pip" id="domainPipMemory"></span>
+    </div>
+    <div class="domain-badge" data-domain="security">
+      <span class="domain-dot" id="domainDotSecurity"></span>
+      <span class="domain-label">Security</span>
+      <span class="domain-pip" id="domainPipSecurity"></span>
+    </div>
+    <div class="domain-badge" data-domain="crons">
+      <span class="domain-dot" id="domainDotCrons"></span>
+      <span class="domain-label">Crons</span>
+      <span class="domain-pip" id="domainPipCrons"></span>
+    </div>
+    <div class="domain-badge" data-domain="tasks">
+      <span class="domain-dot" id="domainDotTasks"></span>
+      <span class="domain-label">Tasks</span>
+      <span class="domain-pip" id="domainPipTasks"></span>
+    </div>
+    <div class="domain-badge" data-domain="cost">
+      <span class="domain-dot" id="domainDotCost"></span>
+      <span class="domain-label">Cost</span>
+      <span class="domain-pip" id="domainPipCost"></span>
+    </div>
   </div>
 
   <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
@@ -435,11 +539,31 @@ async function renderSummarizerCards() {
       costEl.className = 'stat-value';
     }
     if (costSub) costSub.textContent = costDomain.detail || 'Tokens today';
+
+    const domainKeys = ['gateway', 'cortex', 'sessions', 'memory', 'security', 'crons', 'tasks', 'cost'];
+    for (const key of domainKeys) {
+      const d = domains[key] || {};
+      const dot = document.getElementById('domainDot' + key.charAt(0).toUpperCase() + key.slice(1));
+      const pip = document.getElementById('domainPip' + key.charAt(0).toUpperCase() + key.slice(1));
+      if (dot) dot.className = 'domain-dot ' + (d.health || '');
+      if (pip) pip.className = 'domain-pip ' + (d.attention || '');
+      const badge = dot?.closest('.domain-badge');
+      if (badge) badge.title = d.detail || '';
+    }
   } catch (err) {
     ['statGatewayValue', 'statTasksValue', 'statSecurityValue', 'statCostValue'].forEach(id => {
       const el = document.getElementById(id);
       if (el) { el.textContent = '—'; el.className = 'stat-value'; }
     });
+    const domainKeys = ['gateway', 'cortex', 'sessions', 'memory', 'security', 'crons', 'tasks', 'cost'];
+    for (const key of domainKeys) {
+      const dot = document.getElementById('domainDot' + key.charAt(0).toUpperCase() + key.slice(1));
+      const pip = document.getElementById('domainPip' + key.charAt(0).toUpperCase() + key.slice(1));
+      if (dot) dot.className = 'domain-dot';
+      if (pip) pip.className = 'domain-pip';
+      const badge = dot?.closest('.domain-badge');
+      if (badge) badge.title = '';
+    }
   }
 }
 
