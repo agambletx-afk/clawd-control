@@ -789,6 +789,22 @@
     .toast-caution { border-left-color: #f97316; }
     .toast-error { border-left-color: #ef4444; }
 
+
+    .templates-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+    .templates-list { display:grid; gap:10px; }
+    .template-card { border:1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--bg-surface); padding:12px; }
+    .template-title-row { display:flex; justify-content:space-between; gap:8px; align-items:flex-start; }
+    .template-name { color: var(--text-primary); font-weight: 700; }
+    .template-description { color: var(--text-secondary); font-size:0.8rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:4px; }
+    .template-meta { margin-top:8px; color: var(--text-tertiary); font-size:0.74rem; display:flex; gap:10px; }
+    .template-step-count { font-family: var(--font-mono); font-variant-numeric: tabular-nums; border:1px solid var(--border-subtle); border-radius:999px; padding:2px 8px; }
+    .template-actions { display:flex; align-items:center; gap:10px; margin-top:10px; }
+    .action-link { color: var(--text-secondary); cursor:pointer; text-decoration: underline; font-size:0.75rem; }
+    .templates-empty { text-align:center; color: var(--text-tertiary); padding:30px 12px; border:1px dashed var(--border-subtle); border-radius: var(--radius-lg); }
+    .template-editor { border:1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--bg-surface); padding:12px; }
+    .template-step-row { display:grid; grid-template-columns: 70px 1.1fr 1fr 120px 140px 40px; gap:8px; margin-top:8px; }
+    .template-step-row input, .template-step-row select { width:100%; }
+
     @media (max-width: 980px) {
       .stats-bar { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
       .page-header h1 { font-size: 1.7rem; }
@@ -809,6 +825,7 @@
     <div class="sub-nav" id="tasksSubNav">
       <button class="sub-nav-btn active" data-view="board">Board</button>
       <button class="sub-nav-btn" data-view="pipelines">Pipelines</button>
+      <button class="sub-nav-btn" data-view="templates">Templates</button>
       <button class="sub-nav-btn" data-view="queue">My Queue</button>
     </div>
 
@@ -866,6 +883,16 @@
         <div class="pipeline-subtitle">Most common state changes across all tasks</div>
         <div class="pipeline-transitions" id="pipelineTransitions"></div>
       </div>
+    </div>
+
+
+
+    <div id="tasks-templates-view" style="display:none">
+      <div class="templates-header">
+        <div class="pipeline-title">Workflow Templates</div>
+        <button class="btn btn-small" id="newTemplateBtn">New Template</button>
+      </div>
+      <div id="templatesContainer"></div>
     </div>
 
     <div id="queueView" style="display:none">
@@ -967,6 +994,8 @@
           failureMeta: null,
           failureReasonExpanded: false,
           panelTab: 'overview',
+          templates: [],
+          templateEditor: null,
         };
 
         const cstFormatter = new Intl.DateTimeFormat('en-US', {
@@ -1006,6 +1035,7 @@
           document.getElementById('boardView').style.display = view === 'board' ? '' : 'none';
           document.getElementById('pipelinesView').style.display = view === 'pipelines' ? '' : 'none';
           document.getElementById('queueView').style.display = view === 'queue' ? '' : 'none';
+          document.getElementById('tasks-templates-view').style.display = view === 'templates' ? '' : 'none';
           if (location.hash !== `#${view}`) {
             location.hash = view;
           }
@@ -1014,6 +1044,9 @@
           }
           if (view === 'queue') {
             renderQueue();
+          }
+          if (view === 'templates') {
+            renderTemplates();
           }
         }
 
@@ -1156,6 +1189,147 @@
 
           const totalItems = reviewTasks.length + proposedTasks.length + staleTasks.length + intentChanged.length;
           document.getElementById('queueEmpty').style.display = totalItems === 0 ? '' : 'none';
+        }
+
+
+        function templateDateLabel(iso) {
+          const d = new Date(iso);
+          if (Number.isNaN(d.getTime())) return '--';
+          return d.toLocaleDateString('en-US');
+        }
+
+        function defaultTemplateStep(order = 1) {
+          return { order, name: '', agent: '', description: '', step_type: 'agent', completion_mode: 'manual_only' };
+        }
+
+        async function loadTemplates() {
+          const res = await fetch('/api/workflows', FETCH_OPTS);
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Failed to load templates');
+          state.templates = Array.isArray(data.templates) ? data.templates : [];
+        }
+
+        function renderTemplateEditor() {
+          const t = state.templateEditor || { id: null, name: '', description: '', steps: [defaultTemplateStep(1)] };
+          const root = document.getElementById('templatesContainer');
+          root.innerHTML = `
+            <div class="template-editor">
+              <div class="form-field"><label>Name</label><input id="tmplName" value="${esc(t.name || '')}" maxlength="120"></div>
+              <div class="form-field"><label>Description</label><textarea id="tmplDescription">${esc(t.description || '')}</textarea></div>
+              <div id="tmplSteps"></div>
+              <div class="template-actions">
+                <button class="btn btn-small" id="tmplAddStepBtn">Add Step</button>
+                <button class="btn btn-primary btn-small" id="tmplSaveBtn">Save</button>
+                <button class="btn btn-small" id="tmplCancelBtn">Cancel</button>
+              </div>
+            </div>`;
+          const stepWrap = document.getElementById('tmplSteps');
+          stepWrap.innerHTML = (t.steps || []).map((step, idx) => `
+            <div class="template-step-row" data-step-index="${idx}">
+              <input class="field-mono" data-step-field="order" value="${Number(step.order || idx + 1)}" placeholder="Order">
+              <input data-step-field="name" value="${esc(step.name || '')}" placeholder="Name">
+              <input data-step-field="agent" value="${esc(step.agent || '')}" placeholder="Agent">
+              <select data-step-field="step_type">
+                <option value="agent" ${step.step_type === 'agent' ? 'selected' : ''}>agent</option>
+                <option value="human" ${step.step_type === 'human' ? 'selected' : ''}>human</option>
+                <option value="system" ${step.step_type === 'system' ? 'selected' : ''}>system</option>
+              </select>
+              <input data-step-field="completion_mode" value="${esc(step.completion_mode || 'manual_only')}" placeholder="manual_only">
+              <button class="btn btn-small" data-remove-step="${idx}">x</button>
+            </div>`).join('');
+        }
+
+        function collectTemplateEditorPayload() {
+          const name = document.getElementById('tmplName').value.trim();
+          const description = document.getElementById('tmplDescription').value;
+          const rows = Array.from(document.querySelectorAll('#tmplSteps .template-step-row'));
+          const steps = rows.map((row) => {
+            const read = (field) => row.querySelector(`[data-step-field="${field}"]`).value;
+            return {
+              order: Number.parseInt(read('order'), 10),
+              name: read('name').trim(),
+              agent: read('agent').trim(),
+              step_type: read('step_type'),
+              completion_mode: read('completion_mode').trim() || 'manual_only',
+            };
+          });
+          return { name, description, steps, created_by: 'dashboard' };
+        }
+
+        async function saveTemplateEditor() {
+          const payload = collectTemplateEditorPayload();
+          const isEdit = Boolean(state.templateEditor && state.templateEditor.id);
+          const endpoint = isEdit ? `/api/workflows/${state.templateEditor.id}` : '/api/workflows';
+          const method = isEdit ? 'PUT' : 'POST';
+          const res = await fetch(endpoint, { ...FETCH_OPTS, method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Failed to save template');
+          state.templateEditor = null;
+          await renderTemplates();
+          notify('Template saved.');
+        }
+
+        async function deleteTemplateById(templateId) {
+          const res = await fetch(`/api/workflows/${templateId}`, { ...FETCH_OPTS, method: 'DELETE' });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Failed to delete template');
+          await renderTemplates();
+          notify('Template deleted.', 'warning');
+        }
+
+        async function instantiateFromTemplate(template) {
+          const datePart = new Date().toISOString().slice(0, 10);
+          const defaultName = `${template.name} ${datePart}`;
+          const pipelineName = prompt('Pipeline name', defaultName);
+          if (!pipelineName) return;
+          const res = await fetch(`/api/workflows/${template.id}/instantiate`, {
+            ...FETCH_OPTS,
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: pipelineName, created_by: 'dashboard' }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Failed to instantiate pipeline');
+          await refreshAll();
+          switchView('board');
+          notify('Pipeline created.');
+        }
+
+        async function renderTemplates() {
+          const root = document.getElementById('templatesContainer');
+          try {
+            await loadTemplates();
+          } catch (err) {
+            root.innerHTML = `<div class="templates-empty">${esc(err.message || 'Unable to load templates.')}</div>`;
+            return;
+          }
+          if (state.templateEditor) {
+            renderTemplateEditor();
+            return;
+          }
+          if (!state.templates.length) {
+            root.innerHTML = '<div class="templates-empty">No workflow templates yet. Create your first template to define reusable task pipelines.</div>';
+            return;
+          }
+          root.innerHTML = `<div class="templates-list">${state.templates.map((t) => `
+            <div class="template-card" data-template-id="${t.id}">
+              <div class="template-title-row">
+                <div>
+                  <div class="template-name">${esc(t.name)}</div>
+                  <div class="template-description">${esc(t.description || '')}</div>
+                </div>
+                <div class="template-step-count">${Number((t.steps || []).length)} steps</div>
+              </div>
+              <div class="template-meta">
+                <span>by ${esc(t.created_by || 'unknown')}</span>
+                <span class="field-mono">${esc(templateDateLabel(t.created_at))}</span>
+              </div>
+              <div class="template-actions">
+                <button class="btn btn-small" data-template-action="instantiate">New Pipeline</button>
+                <span class="action-link" data-template-action="edit">Edit</span>
+                <span class="action-link" data-template-action="delete">Delete</span>
+              </div>
+            </div>`).join('')}</div>`;
         }
 
         function notify(message, tone = 'success') {
@@ -1717,6 +1891,55 @@
           if (btn) switchView(btn.dataset.view);
         });
 
+
+        document.getElementById('newTemplateBtn').addEventListener('click', () => {
+          state.templateEditor = { id: null, name: '', description: '', steps: [defaultTemplateStep(1)] };
+          renderTemplates();
+        });
+
+        document.getElementById('tasks-templates-view').addEventListener('click', async (e) => {
+          const card = e.target.closest('[data-template-id]');
+          if (e.target.id === 'tmplAddStepBtn') {
+            state.templateEditor.steps.push(defaultTemplateStep(state.templateEditor.steps.length + 1));
+            renderTemplateEditor();
+            return;
+          }
+          if (e.target.matches('[data-remove-step]')) {
+            const idx = Number(e.target.getAttribute('data-remove-step'));
+            state.templateEditor.steps.splice(idx, 1);
+            if (!state.templateEditor.steps.length) state.templateEditor.steps = [defaultTemplateStep(1)];
+            renderTemplateEditor();
+            return;
+          }
+          if (e.target.id === 'tmplCancelBtn') {
+            state.templateEditor = null;
+            renderTemplates();
+            return;
+          }
+          if (e.target.id === 'tmplSaveBtn') {
+            try { await saveTemplateEditor(); } catch (err) { alert(err.message); }
+            return;
+          }
+          if (!card) return;
+          const templateId = card.getAttribute('data-template-id');
+          const template = state.templates.find((t) => t.id === templateId);
+          const actionEl = e.target.closest('[data-template-action]');
+          if (!template || !actionEl) return;
+          const action = actionEl.getAttribute('data-template-action');
+          try {
+            if (action === 'edit') {
+              state.templateEditor = { ...template, steps: Array.isArray(template.steps) ? template.steps.map((step) => ({ ...step })) : [defaultTemplateStep(1)] };
+              renderTemplates();
+            } else if (action === 'delete') {
+              if (confirm(`Delete template "${template.name}"?`)) await deleteTemplateById(template.id);
+            } else if (action === 'instantiate') {
+              await instantiateFromTemplate(template);
+            }
+          } catch (err) {
+            alert(err.message || 'Template action failed');
+          }
+        });
+
         document.getElementById('queueView').addEventListener('click', (e) => {
           const item = e.target.closest('.queue-item');
           if (!item) return;
@@ -1765,7 +1988,7 @@
           runAction(state.selectedTaskId, btn.dataset.action);
         });
 
-        const initialView = location.hash === '#queue' ? 'queue' : (location.hash === '#pipelines' ? 'pipelines' : 'board');
+        const initialView = location.hash === '#queue' ? 'queue' : (location.hash === '#templates' ? 'templates' : (location.hash === '#pipelines' ? 'pipelines' : 'board'));
         switchView(initialView);
 
         if (window.__tasksPollTimer) clearInterval(window.__tasksPollTimer);
@@ -1777,6 +2000,7 @@
           refreshAll().then(() => {
             if (location.hash === '#pipelines') renderPipelines();
             if (location.hash === '#queue') renderQueue();
+            if (location.hash === '#templates') renderTemplates();
           }).catch((err) => console.error('Tasks auto-refresh failed:', err));
         }, 10000);
       }

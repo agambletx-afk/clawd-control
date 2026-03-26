@@ -62,6 +62,17 @@ import {
   archiveGoal,
   getGoalTasks,
   goalNeedsTasks,
+  createTemplate,
+  getTemplateById,
+  getAllTemplates,
+  updateTemplate,
+  deleteTemplate,
+  instantiatePipeline,
+  getPipelineInstance,
+  listPipelineInstances,
+  updatePipelineInstance,
+  createTaskSession,
+  getTaskSessions,
 } from './tasks-db.mjs';
 
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
@@ -5717,6 +5728,206 @@ const server = createServer(async (req, res) => {
       }
       return;
     }
+  }
+
+
+  if (path === '/api/workflows' && req.method === 'GET') {
+    try {
+      const templates = getAllTemplates();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ templates }));
+    } catch (e) {
+      console.error('[API] /api/workflows error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Internal server error' }));
+    }
+    return;
+  }
+
+  if (path === '/api/workflows' && req.method === 'POST') {
+    readJsonBody(req).then((body) => {
+      try {
+        const template = createTemplate(body || {});
+        res.writeHead(201, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ template }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message || 'Invalid template payload' }));
+      }
+    }).catch((e) => {
+      const code = e.message === 'Payload too large' ? 413 : 400;
+      res.writeHead(code, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message === 'Payload too large' ? 'Payload too large' : 'Invalid JSON body' }));
+    });
+    return;
+  }
+
+  if (path.match(/^\/api\/workflows\/[^/]+\/instantiate$/) && req.method === 'POST') {
+    readJsonBody(req).then((body) => {
+      const templateId = decodeURIComponent(path.split('/')[3] || '');
+      try {
+        const result = instantiatePipeline({ template_id: templateId, ...(body || {}) });
+        res.writeHead(201, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+      } catch (e) {
+        const code = e.message === 'Template not found' ? 404 : 400;
+        res.writeHead(code, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    }).catch((e) => {
+      const code = e.message === 'Payload too large' ? 413 : 400;
+      res.writeHead(code, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message === 'Payload too large' ? 'Payload too large' : 'Invalid JSON body' }));
+    });
+    return;
+  }
+
+  if (path.startsWith('/api/workflows/') && path.split('/').length === 4) {
+    const templateId = decodeURIComponent(path.split('/')[3] || '');
+
+    if (req.method === 'GET') {
+      const template = getTemplateById(templateId);
+      if (!template) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Template not found' }));
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ template }));
+      return;
+    }
+
+    if (req.method === 'PUT') {
+      readJsonBody(req).then((body) => {
+        try {
+          const template = updateTemplate(templateId, body || {});
+          if (!template) {
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Template not found' }));
+            return;
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ template }));
+        } catch (e) {
+          const code = e.message.includes('active pipeline instances') ? 409 : 400;
+          res.writeHead(code, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: e.message }));
+        }
+      }).catch((e) => {
+        const code = e.message === 'Payload too large' ? 413 : 400;
+        res.writeHead(code, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message === 'Payload too large' ? 'Payload too large' : 'Invalid JSON body' }));
+      });
+      return;
+    }
+
+    if (req.method === 'DELETE') {
+      try {
+        const result = deleteTemplate(templateId);
+        if (!result.deleted) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Template not found' }));
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+      } catch (e) {
+        const code = e.message.includes('pipeline instances') ? 409 : 400;
+        res.writeHead(code, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+      return;
+    }
+  }
+
+  if (path === '/api/pipelines' && req.method === 'GET') {
+    try {
+      const status = url.searchParams.get('status') || undefined;
+      const template_id = url.searchParams.get('template_id') || undefined;
+      const limit = url.searchParams.get('limit') || undefined;
+      const offset = url.searchParams.get('offset') || undefined;
+      const pipelines = listPipelineInstances({ status, template_id, limit, offset });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ pipelines }));
+    } catch (e) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message || 'Invalid query params' }));
+    }
+    return;
+  }
+
+  if (path.startsWith('/api/pipelines/') && path.split('/').length === 4) {
+    const pipelineId = decodeURIComponent(path.split('/')[3] || '');
+    if (req.method === 'GET') {
+      const pipeline = getPipelineInstance(pipelineId);
+      if (!pipeline) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Pipeline instance not found' }));
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ pipeline }));
+      return;
+    }
+
+    if (req.method === 'PATCH') {
+      readJsonBody(req).then((body) => {
+        try {
+          const pipeline = updatePipelineInstance(pipelineId, body || {});
+          if (!pipeline) {
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Pipeline instance not found' }));
+            return;
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ pipeline }));
+        } catch (e) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: e.message }));
+        }
+      }).catch((e) => {
+        const code = e.message === 'Payload too large' ? 413 : 400;
+        res.writeHead(code, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message === 'Payload too large' ? 'Payload too large' : 'Invalid JSON body' }));
+      });
+      return;
+    }
+  }
+
+  if (path === '/api/task-sessions' && req.method === 'POST') {
+    readJsonBody(req).then((body) => {
+      try {
+        const taskSession = createTaskSession(body || {});
+        res.writeHead(201, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ task_session: taskSession }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    }).catch((e) => {
+      const code = e.message === 'Payload too large' ? 413 : 400;
+      res.writeHead(code, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message === 'Payload too large' ? 'Payload too large' : 'Invalid JSON body' }));
+    });
+    return;
+  }
+
+  if (path === '/api/task-sessions' && req.method === 'GET') {
+    const taskId = url.searchParams.get('task_id') || '';
+    if (!taskId.trim()) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'task_id query parameter required' }));
+      return;
+    }
+    try {
+      const sessions = getTaskSessions(taskId);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ sessions }));
+    } catch (e) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
   }
 
 
