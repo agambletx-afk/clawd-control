@@ -3407,6 +3407,148 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (path === '/api/overview/activity' && req.method === 'GET') {
+    const fetchedAt = new Date().toISOString();
+    const parsedLimit = Number.parseInt(url.searchParams.get('limit') || '15', 10);
+    const limit = Math.max(1, Math.min(50, Number.isFinite(parsedLimit) ? parsedLimit : 15));
+    const truncateText = (value, maxLen) => {
+      const text = String(value ?? '');
+      if (text.length <= maxLen) return text;
+      return `${text.slice(0, Math.max(0, maxLen - 1)).trimEnd()}…`;
+    };
+    const normalizeTimestamp = (value) => {
+      const text = String(value ?? '').trim();
+      if (!text) return null;
+      const replaced = text.includes(' ') ? text.replace(' ', 'T') : text;
+      if (/([zZ]|[+-]\d{2}:?\d{2})$/.test(replaced)) return replaced;
+      return `${replaced}Z`;
+    };
+    const fetchLocalJson = (endpointPath, timeoutMs = 500) => new Promise((resolve, reject) => {
+      const request = http.get({
+        hostname: '127.0.0.1',
+        port: 3100,
+        path: endpointPath,
+        timeout: timeoutMs,
+      }, (resp) => {
+        if (resp.statusCode && resp.statusCode >= 400) {
+          resp.resume();
+          reject(new Error(`status ${resp.statusCode}`));
+          return;
+        }
+        let data = '';
+        resp.on('data', chunk => { data += chunk; });
+        resp.on('end', () => {
+          try {
+            resolve(JSON.parse(data || '{}'));
+          } catch (err) {
+            reject(err);
+          }
+        });
+      });
+      request.on('timeout', () => request.destroy(new Error('timeout')));
+      request.on('error', reject);
+    });
+
+    try {
+      const taskEvents = (() => {
+        const tasksDb = openSqlite('/home/openclaw/clawd-control/tasks.db', { readonly: true, fileMustExist: true });
+        try {
+          const rows = tasksDb.prepare(`
+            SELECT h.id, h.task_id, h.actor, h.action, h.detail, h.created_at, t.title as task_title
+            FROM task_history h
+            LEFT JOIN tasks t ON t.id = h.task_id
+            ORDER BY h.created_at DESC
+            LIMIT 20
+          `).all();
+
+          return rows.map((row) => {
+            const action = String(row.action || 'updated');
+            const actionLc = action.toLowerCase();
+            let type = 'info';
+            if (actionLc === 'created' || actionLc === 'status_change' || actionLc === 'updated') type = 'state_change';
+            else if (actionLc.includes('fail')) type = 'failure';
+
+            return {
+              timestamp: normalizeTimestamp(row.created_at),
+              source: 'tasks',
+              type,
+              agent: String(row.actor || 'system'),
+              title: truncateText(`Task #${row.task_id} ${action}`, 80),
+              detail: truncateText(row.detail || row.task_title || '', 100),
+              link: '/tasks.html',
+            };
+          });
+        } finally {
+          tasksDb.close();
+        }
+      })();
+
+      const opsEntries = getLog({ limit: 20 }).entries || [];
+      const opsEvents = opsEntries.map((entry) => {
+        const category = String(entry.category || 'ops');
+        const categoryLc = category.toLowerCase();
+        const status = String(entry.status || '').toLowerCase();
+        const sourceMap = {
+          cron: 'cron',
+          service: 'gateway',
+          session: 'gateway',
+          staleness: 'tasks',
+          cleanup: 'gateway',
+        };
+        const link = categoryLc === 'staleness' ? '/tasks.html' : '/ops.html';
+        let type = 'info';
+        if (status === 'success') type = 'completion';
+        else if (status === 'failed') type = 'failure';
+        else if (status === 'blocked') type = 'alert';
+
+        return {
+          timestamp: normalizeTimestamp(entry.timestamp),
+          source: sourceMap[categoryLc] || categoryLc,
+          type,
+          agent: 'system',
+          title: truncateText(`${category}: ${entry.action || ''} ${entry.target || ''}`.trim(), 80),
+          detail: truncateText(entry.detail || '', 100),
+          link,
+        };
+      });
+
+      let gatewayEvents = [];
+      try {
+        const payload = await fetchLocalJson('/api/ops/gateway-events?limit=10', 500);
+        const events = Array.isArray(payload?.events) ? payload.events : [];
+        gatewayEvents = events.map((event) => ({
+          timestamp: normalizeTimestamp(event.timestamp),
+          source: 'gateway',
+          type: 'info',
+          agent: 'system',
+          title: truncateText(event.message || '', 80),
+          detail: null,
+          link: '/ops.html',
+        }));
+      } catch {
+        gatewayEvents = [];
+      }
+
+      const events = [...taskEvents, ...opsEvents, ...gatewayEvents]
+        .map((event) => ({ ...event, _ts: Date.parse(event.timestamp || '') || 0 }))
+        .sort((a, b) => b._ts - a._ts)
+        .slice(0, limit)
+        .map(({ _ts, ...event }) => event);
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        events,
+        count: events.length,
+        fetched_at: fetchedAt,
+      }));
+    } catch (e) {
+      console.error('[API] /api/overview/activity error:', e.message);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ events: [], count: 0, fetched_at: fetchedAt }));
+    }
+    return;
+  }
+
   if (path === '/api/overview/actions' && req.method === 'GET') {
     const fetchedAt = new Date().toISOString();
     const truncateText = (value, maxLen) => {
