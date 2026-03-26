@@ -354,6 +354,241 @@ async function main() {
     cost: domainRecord(costHealth, null, costDetail, observedAt, costAgeSeconds, costError),
   };
 
+  const previousState = readJsonFileSafe(STATE_PATH);
+  const previousOperationsCards = previousState.ok && previousState.data && typeof previousState.data === 'object'
+    ? previousState.data.operations_cards
+    : null;
+
+  const operationsCardsGeneratedAt = new Date().toISOString();
+
+  let servicesCard = {
+    status: 'red',
+    up: 0,
+    total: 0,
+    down_names: [],
+    generated_at: operationsCardsGeneratedAt,
+    source_last_success_at: null,
+    source_error: null,
+  };
+
+  try {
+    const servicesRes = await fetchJson('/api/ops/services/status', API_PORT, REQUEST_TIMEOUT_MS, controllers);
+    if (!servicesRes.ok) throw new Error(`Unexpected status ${servicesRes.statusCode}`);
+    const parsed = JSON.parse(servicesRes.body);
+    const services = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray(parsed?.services)
+        ? parsed.services
+        : [];
+    const total = services.length;
+    const runningStatuses = ['running', 'healthy', 'up', 'ok'];
+    const up = services.filter((service) => runningStatuses.includes(String(service?.status || '').toLowerCase())).length;
+    const downNames = services
+      .filter((service) => !runningStatuses.includes(String(service?.status || '').toLowerCase()))
+      .map((service) => String(service?.name || service?.service || 'unknown'))
+      .filter(Boolean);
+
+    let status = 'red';
+    if (total > 0 && up === total) status = 'green';
+    else if (up > total / 2) status = 'amber';
+
+    servicesCard = {
+      status,
+      up,
+      total,
+      down_names: downNames,
+      generated_at: operationsCardsGeneratedAt,
+      source_last_success_at: operationsCardsGeneratedAt,
+      source_error: null,
+    };
+  } catch (error) {
+    const previousServices = previousOperationsCards && typeof previousOperationsCards === 'object' ? previousOperationsCards.services : null;
+    servicesCard = {
+      status: 'red',
+      up: Number(previousServices?.up || 0),
+      total: Number(previousServices?.total || 0),
+      down_names: Array.isArray(previousServices?.down_names) ? previousServices.down_names : [],
+      generated_at: operationsCardsGeneratedAt,
+      source_last_success_at: previousServices?.source_last_success_at || null,
+      source_error: String(error.message || error || 'Request failed'),
+    };
+  }
+
+  let jobsCard = {
+    status: 'red',
+    scheduler_health: {
+      fired: 0,
+      total: 0,
+      missed: 0,
+    },
+    attention: {
+      failing_count: 0,
+      failing_names: [],
+    },
+    generated_at: operationsCardsGeneratedAt,
+    source_last_success_at: null,
+    source_error: null,
+  };
+
+  try {
+    const jobsRes = await fetchJson('/api/cron/health', API_PORT, REQUEST_TIMEOUT_MS, controllers);
+    if (!jobsRes.ok) throw new Error(`Unexpected status ${jobsRes.statusCode}`);
+    const parsed = JSON.parse(jobsRes.body);
+    const crons = Array.isArray(parsed) ? parsed : [];
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const enabledCrons = crons.filter((cron) => cron?.enabled === true);
+    const fired = enabledCrons.filter((cron) => {
+      const lastRunAtMs = Number(cron?.lastRunAtMs);
+      if (!Number.isFinite(lastRunAtMs) || lastRunAtMs <= 0) return false;
+      const ageMs = Date.now() - lastRunAtMs;
+      const scheduleIntervalMs = Number(
+        cron?.scheduleIntervalMs
+          || cron?.intervalMs
+          || cron?.runIntervalMs
+          || cron?.everyMs
+      );
+      const expectedWindowMs = Number.isFinite(scheduleIntervalMs) && scheduleIntervalMs > 0
+        ? Math.min(scheduleIntervalMs * 2, DAY_MS)
+        : DAY_MS;
+      return ageMs <= expectedWindowMs;
+    }).length;
+    const missed = enabledCrons.filter((cron) => {
+      const lastRunAtMs = Number(cron?.lastRunAtMs);
+      if (!Number.isFinite(lastRunAtMs) || lastRunAtMs <= 0) return true;
+      return (Date.now() - lastRunAtMs) > DAY_MS;
+    }).length;
+    const failingNames = crons
+      .filter((cron) => String(cron?.lastStatus || '').toLowerCase() !== 'ok' || Number(cron?.consecutiveErrors || 0) > 0)
+      .map((cron) => String(cron?.name || 'unknown'))
+      .filter(Boolean);
+
+    const failingCount = failingNames.length;
+    const status = missed > 0 ? 'red' : failingCount > 0 ? 'amber' : 'green';
+
+    jobsCard = {
+      status,
+      scheduler_health: {
+        fired,
+        total: enabledCrons.length,
+        missed,
+      },
+      attention: {
+        failing_count: failingCount,
+        failing_names: failingNames,
+      },
+      generated_at: operationsCardsGeneratedAt,
+      source_last_success_at: operationsCardsGeneratedAt,
+      source_error: null,
+    };
+  } catch (error) {
+    jobsCard = {
+      status: 'red',
+      scheduler_health: {
+        fired: 0,
+        total: 0,
+        missed: 0,
+      },
+      attention: {
+        failing_count: 0,
+        failing_names: [],
+      },
+      generated_at: operationsCardsGeneratedAt,
+      source_last_success_at: null,
+      source_error: String(error.message || error || 'Request failed'),
+    };
+  }
+
+  let recoveryCard = {
+    status: 'red',
+    latest_age_seconds: null,
+    latest_name: null,
+    snapshot_count: 0,
+    freshness: 'none',
+    generated_at: operationsCardsGeneratedAt,
+    source_last_success_at: null,
+    source_error: null,
+  };
+
+  try {
+    const recoveryRes = await fetchJson('/api/ops/backups', API_PORT, REQUEST_TIMEOUT_MS, controllers);
+    if (!recoveryRes.ok) throw new Error(`Unexpected status ${recoveryRes.statusCode}`);
+    const parsed = JSON.parse(recoveryRes.body);
+    const backups = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray(parsed?.backups)
+        ? parsed.backups
+        : [];
+
+    const normalizeTimestampMs = (backup) => {
+      const directMs = Number(
+        backup?.timestampMs
+          || backup?.createdAtMs
+          || backup?.lastModifiedMs
+          || backup?.ts
+      );
+      if (Number.isFinite(directMs) && directMs > 0) return directMs;
+      const dateString = backup?.timestamp || backup?.createdAt || backup?.created_at || backup?.date;
+      const parsedMs = Date.parse(dateString || '');
+      return Number.isFinite(parsedMs) ? parsedMs : null;
+    };
+
+    const latestBackup = backups.reduce((latest, backup) => {
+      const timestampMs = normalizeTimestampMs(backup);
+      if (!Number.isFinite(timestampMs)) return latest;
+      if (!latest || timestampMs > latest.timestampMs) {
+        return { backup, timestampMs };
+      }
+      return latest;
+    }, null);
+
+    let freshness = 'none';
+    let status = 'red';
+    let latestAgeSeconds = null;
+    let latestName = null;
+    if (latestBackup) {
+      latestAgeSeconds = Math.max(0, Math.round((Date.now() - latestBackup.timestampMs) / 1000));
+      latestName = String(latestBackup.backup?.name || latestBackup.backup?.id || latestBackup.backup?.filename || 'latest-backup');
+      if (latestAgeSeconds < 86400) {
+        freshness = 'fresh';
+        status = 'green';
+      } else if (latestAgeSeconds <= 172800) {
+        freshness = 'aging';
+        status = 'amber';
+      } else {
+        freshness = 'stale';
+        status = 'red';
+      }
+    }
+
+    recoveryCard = {
+      status,
+      latest_age_seconds: latestAgeSeconds,
+      latest_name: latestName,
+      snapshot_count: backups.length,
+      freshness,
+      generated_at: operationsCardsGeneratedAt,
+      source_last_success_at: operationsCardsGeneratedAt,
+      source_error: null,
+    };
+  } catch (error) {
+    recoveryCard = {
+      status: 'red',
+      latest_age_seconds: null,
+      latest_name: null,
+      snapshot_count: 0,
+      freshness: 'none',
+      generated_at: operationsCardsGeneratedAt,
+      source_last_success_at: null,
+      source_error: String(error.message || error || 'Request failed'),
+    };
+  }
+
+  const operations_cards = {
+    services: servicesCard,
+    jobs: jobsCard,
+    recovery: recoveryCard,
+  };
+
   const runEndedAt = Date.now();
   const state = {
     schema_version: 1,
@@ -367,6 +602,7 @@ async function main() {
       last_completed: new Date(runEndedAt).toISOString(),
     },
     domains,
+    operations_cards,
     stat_cards: {
       gateway: {
         status: gatewayHealth === 'green' ? 'connected' : gatewayHealth === 'amber' ? 'degraded' : 'down',
