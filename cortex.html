@@ -124,6 +124,40 @@ main{padding:20px;max-width:1500px;margin:0 auto}
 .wt-est-badge { font-size: 0.55rem; padding: 1px 4px; border-radius: 3px; background: rgba(245,158,11,0.15); color: #f59e0b; font-weight: 600; }
 .wt-empty { text-align: center; padding: 30px; color: var(--text-tertiary); font-size: 0.8rem; }
 
+
+.sub-nav {
+  display: flex;
+  gap: 2px;
+  background: var(--bg-input, var(--bg-tertiary));
+  border-radius: 9999px;
+  padding: 3px;
+  margin-bottom: 16px;
+  width: fit-content;
+}
+.sub-nav-btn {
+  padding: 6px 16px;
+  border-radius: 9999px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 150ms;
+  white-space: nowrap;
+}
+.sub-nav-btn:hover { color: var(--text-primary); }
+.sub-nav-btn.active {
+  background: var(--surface);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.cortex-unsaved {
+  font-size: 0.68rem;
+  color: var(--accent-amber);
+  margin-bottom: 8px;
+}
+
 </style>
 </head>
 <body>
@@ -132,89 +166,108 @@ main{padding:20px;max-width:1500px;margin:0 auto}
     <h1>CORTEX</h1>
     <p class="subtitle">Model routing, workload controls, and configuration.</p>
   </div>
-  <div id="bypassAlerts" style="display:none"></div>
+
+  <div class="sub-nav" id="cortexSubNav">
+    <button class="sub-nav-btn active" data-view="routing">Routing</button>
+    <button class="sub-nav-btn" data-view="workloads">Workloads</button>
+    <button class="sub-nav-btn" data-view="config">Config</button>
+  </div>
 
   <section class="grid5" id="statCards"></section>
+  <div class="cortex-unsaved" id="cortexUnsaved" style="display:none"></div>
 
-  <section class="card" id="workloadRoutingPanel" style="margin-bottom:12px">
-    <div class="panel-title"><i data-lucide="workflow"></i>Workload Routing</div>
-    <div class="panel-sub">Which model handles each type of work. Red means expensive model on cheap workload.</div>
-    <div id="workloadCards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:10px"></div>
-  </section>
-
-  <section class="card" id="workloadTokenPanel" style="margin-bottom:12px">
-    <div class="panel-title"><i data-lucide="bar-chart-3"></i>Workload Token Distribution</div>
-    <div class="panel-sub">Where your tokens go. Heartbeats and crons should be near zero on expensive models.</div>
-    <div id="workloadTokenPeriod" style="display:flex;gap:4px;margin-top:8px;margin-bottom:8px"></div>
-    <div id="workloadTokenChart" style="margin-top:8px"></div>
-    <div id="workloadTokenSummary" style="margin-top:10px"></div>
-  </section>
-
-  <section class="zone2">
-    <div class="card" style="display:flex;flex-direction:column">
-      <div class="panel-title"><i data-lucide="layers"></i>Model Ladder</div>
-      <div class="panel-sub">Routing availability and quota utilization in one view.</div>
-      <div class="ladder-head"><div>Model</div><div>Score</div><div>Toggle</div><div>RPD</div><div>RPM</div><div>Last Used</div></div>
-      <div id="cortexLadder" ></div>
-      <div id="cortexPins" style="margin-top:8px"></div>
-    </div>
-    <div class="card" style="margin-top:12px">
+  <!-- ═══ ROUTING VIEW ═══ -->
+  <div id="routingView">
+    <!-- Subscription Status -->
+    <div class="card" style="margin-bottom:12px">
       <div class="panel-title"><i data-lucide="shield-check"></i>Subscription Status</div>
       <div class="panel-sub">Subscription pressure and CLI usage snapshots.</div>
       <div id="subscriptionStatus"></div>
     </div>
-  </section>
 
-  <section class="zone3">
-    <div>
-      <div class="card cortex-sentinel-card" id="cortexSentinelCard">
-        <div class="sentinel-head">
-          <div class="sentinel-title-wrap">
-            <div class="panel-title"><i data-lucide="shield-alert"></i>CORTEX Sentinel</div>
-            <div class="panel-sub">Routing anomaly detection — 5 statistical checks on recent decisions</div>
+    <!-- CORTEX Sentinel -->
+    <section class="zone3" style="margin-bottom:12px">
+      <div>
+        <div class="card cortex-sentinel-card" id="cortexSentinelCard">
+          <div class="sentinel-head">
+            <div class="sentinel-title-wrap">
+              <div class="panel-title"><i data-lucide="shield-alert"></i>CORTEX Sentinel</div>
+              <div class="panel-sub">Routing anomaly detection — 5 statistical checks on recent decisions</div>
+            </div>
+            <button class="sentinel-toggle" onclick="toggleSentinelCollapse()" id="cortexSentinelToggle">Collapse</button>
           </div>
-          <button class="sentinel-toggle" onclick="toggleSentinelCollapse()" id="cortexSentinelToggle">Collapse</button>
+          <div id="cortexSentinelBody" class="sentinel-body"></div>
         </div>
-        <div id="cortexSentinelBody" class="sentinel-body"></div>
+        <div class="card">
+          <div class="panel-title"><i data-lucide="route"></i>Routing Decisions</div>
+          <div class="panel-sub">Recent routes and why each request went to a specific provider.</div>
+          <div class="filters" id="decisionFilters"></div>
+          <div id="decisionList" class="decision-list"></div>
+        </div>
       </div>
       <div class="card">
-        <div class="panel-title"><i data-lucide="route"></i>Routing Decisions</div>
-        <div class="panel-sub">Recent routes and why each request went to a specific provider.</div>
-        <div class="filters" id="decisionFilters"></div>
-        <div id="decisionList" class="decision-list"></div>
+        <div class="panel-title"><i data-lucide="chart-no-axes-column"></i>Affinity View</div>
+        <div class="panel-sub">Task vectors, model fit, and candidate affinity at a glance.</div>
+        <div id="scoreProfile"></div>
+        <div id="scoreExplain" class="panel-sub" style="margin-top:10px"></div>
       </div>
-    </div>
-    <div class="card">
-      <div class="panel-title"><i data-lucide="chart-no-axes-column"></i>Affinity View</div>
-      <div class="panel-sub">Task vectors, model fit, and candidate affinity at a glance.</div>
-      <div id="scoreProfile"></div>
-      <div id="scoreExplain" class="panel-sub" style="margin-top:10px"></div>
-    </div>
-  </section>
+    </section>
 
-  <section class="card" style="margin-top:12px">
-    <div class="trends-head">
-      <div>
-        <div class="panel-title"><i data-lucide="activity"></i>Outcome Trends</div>
-        <div class="panel-sub">Correction rates, escalation patterns, and reward distribution by model and task type.</div>
+    <!-- Outcome Trends -->
+    <section class="card">
+      <div class="trends-head">
+        <div>
+          <div class="panel-title"><i data-lucide="activity"></i>Outcome Trends</div>
+          <div class="panel-sub">Correction rates, escalation patterns, and reward distribution by model and task type.</div>
+        </div>
+        <div id="outcomePeriodPills" class="period-pills"></div>
       </div>
-      <div id="outcomePeriodPills" class="period-pills"></div>
-    </div>
-    <div id="outcomeTrends" style="margin-top:10px"></div>
-  </section>
+      <div id="outcomeTrends" style="margin-top:10px"></div>
+    </section>
+  </div>
 
-  <section class="card" style="margin-top:12px">
-    <div class="settings-head" onclick="toggleSettings()"><div class="panel-title"><i data-lucide="sliders-horizontal"></i>Cortex Settings</div><button class="pill">Expand</button></div>
-    <div class="panel-sub">Adjust routing behavior without leaving this tab.</div>
-    <div id="settingsBody" class="settings-body">
-      <div class="card" id="settingsCortexWeights"></div>
-      <div class="card" id="settingsCortexLadder" style="margin-top:8px"></div>
-      <div class="card" id="settingsCortexPins" style="margin-top:8px"></div>
-      <div class="card" id="settingsCortexSchedule" style="margin-top:8px"></div>
-      <div class="card" id="settingsCortexRules" style="margin-top:8px"></div>
-      <div class="card" id="settingsDiscovery" style="margin-top:8px"></div>
+  <!-- ═══ WORKLOADS VIEW ═══ -->
+  <div id="workloadsView" style="display:none">
+    <div id="bypassAlerts" style="display:none"></div>
+
+    <section class="card" id="workloadRoutingPanel" style="margin-bottom:12px">
+      <div class="panel-title"><i data-lucide="workflow"></i>Workload Routing</div>
+      <div class="panel-sub">Which model handles each type of work. Red means expensive model on cheap workload.</div>
+      <div id="workloadCards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:10px"></div>
+    </section>
+
+    <section class="card" id="workloadTokenPanel" style="margin-bottom:12px">
+      <div class="panel-title"><i data-lucide="bar-chart-3"></i>Workload Token Distribution</div>
+      <div class="panel-sub">Where your tokens go. Heartbeats and crons should be near zero on expensive models.</div>
+      <div id="workloadTokenPeriod" style="display:flex;gap:4px;margin-top:8px;margin-bottom:8px"></div>
+      <div id="workloadTokenChart" style="margin-top:8px"></div>
+      <div id="workloadTokenSummary" style="margin-top:10px"></div>
+    </section>
+  </div>
+
+  <!-- ═══ CONFIG VIEW ═══ -->
+  <div id="configView" style="display:none">
+    <div class="card" style="margin-bottom:12px;display:flex;flex-direction:column">
+      <div class="panel-title"><i data-lucide="layers"></i>Model Ladder</div>
+      <div class="panel-sub">Routing availability and quota utilization in one view.</div>
+      <div class="ladder-head"><div>Model</div><div>Score</div><div>Toggle</div><div>RPD</div><div>RPM</div><div>Last Used</div></div>
+      <div id="cortexLadder"></div>
+      <div id="cortexPins" style="margin-top:8px"></div>
     </div>
-  </section>
+
+    <section class="card">
+      <div class="settings-head" onclick="toggleSettings()"><div class="panel-title"><i data-lucide="sliders-horizontal"></i>Cortex Settings</div><button class="pill" id="settingsToggleBtn">Expand</button></div>
+      <div class="panel-sub">Adjust routing behavior without leaving this tab.</div>
+      <div id="settingsBody" class="settings-body">
+        <div class="card" id="settingsCortexWeights"></div>
+        <div class="card" id="settingsCortexLadder" style="margin-top:8px"></div>
+        <div class="card" id="settingsCortexPins" style="margin-top:8px"></div>
+        <div class="card" id="settingsCortexSchedule" style="margin-top:8px"></div>
+        <div class="card" id="settingsCortexRules" style="margin-top:8px"></div>
+        <div class="card" id="settingsDiscovery" style="margin-top:8px"></div>
+      </div>
+    </section>
+  </div>
 </main>
 <script src="/layout.js"></script>
 <script>
@@ -222,6 +275,15 @@ const providerColors={google:'#4285f4',openai:'#10a37f','openai-codex':'#10a37f'
 const taskDims=['reasoning','coding','conversation','instruction'];
 const dims=['tokenCount','reasoning','simple','system','agentic','domain','code','image','context'];
 let state={status:null,decisions:[],usage:null,modelUsage:{},cliUsage:null,outcomes:[],outcomeStats24h:null,outcomeTrends:null,outcomePeriod:'24h',provider:'all',selected:null,filtered:[],affinityMode:'aggregate',sentinel:{available:false,stale:false,age_seconds:null,status:null},workloadRouting:null,workloadEditorOpen:null,workloadDrafts:{},bypassData:null,workloadTokens:null,workloadTokenPeriod:'24h'};
+let _activeView = null;
+let _configSettingsExpanded = false;
+const _viewFlags = {
+  routing:   { _firstRendered: false, _stale: false, _dirty: false },
+  workloads: { _firstRendered: false, _stale: false, _dirty: false },
+  config:    { _firstRendered: false, _stale: false, _dirty: false },
+};
+const _bypassDismissed = new Set();
+const VALID_CORTEX_VIEWS = new Set(['routing', 'workloads', 'config']);
 const WORKLOAD_COLORS={primary:'#7c3aed',heartbeat:'#f59e0b',compaction:'#6366f1',cron:'#2dd4bf',unknown:'#475569'};
 const $=(s)=>document.querySelector(s); const esc=(s)=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fmtAgo=(iso)=>{if(!iso)return '—'; const d=Math.floor((Date.now()-new Date(iso).getTime())/60000); if(d<1)return 'now'; if(d<60)return `${d}m ago`; const h=Math.floor(d/60); if(h<24)return `${h}h ago`; return `${Math.floor(h/24)}d ago`;};
@@ -255,11 +317,168 @@ function workloadProfileLabel(){const avg=aggregateTaskVector(50); const sorted=
 const shortDim=(d)=>({conversation:'Conv',coding:'Code',reasoning:'Reason',instruction:'Instr'})[d]||d;
 const titleDim=(d)=>d.charAt(0).toUpperCase()+d.slice(1);
 
+function setCortexHash(view) {
+  location.hash = '#' + view;
+}
+
+function readCortexHash() {
+  const raw = location.hash.replace(/^#/, '');
+  return VALID_CORTEX_VIEWS.has(raw) ? raw : 'routing';
+}
+
+function renderRoutingView() {
+  renderSubscriptionStatus();
+  renderSentinel();
+  renderFilters();
+  renderDecisions();
+  renderScore();
+  renderOutcomeTrends();
+}
+
+function renderWorkloadsView() {
+  renderBypassAlerts();
+  renderWorkloadRouting();
+  renderWorkloadTokens();
+}
+
+function renderConfigView() {
+  renderLadder();
+  renderSettings();
+}
+
+function switchCortexView(view) {
+  if (!VALID_CORTEX_VIEWS.has(view)) view = 'routing';
+
+  if (view === _activeView && _viewFlags[view]._firstRendered) return;
+
+  document.getElementById('routingView').style.display = 'none';
+  document.getElementById('workloadsView').style.display = 'none';
+  document.getElementById('configView').style.display = 'none';
+
+  document.getElementById(view + 'View').style.display = '';
+
+  document.querySelectorAll('#cortexSubNav .sub-nav-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.view === view);
+  });
+
+  _activeView = view;
+  const flags = _viewFlags[view];
+
+  if (!flags._firstRendered) {
+    if (view === 'routing') renderRoutingView();
+    else if (view === 'workloads') renderWorkloadsView();
+    else if (view === 'config') renderConfigView();
+    flags._firstRendered = true;
+
+    if (view === 'routing') {
+      requestAnimationFrame(() => {
+        if (typeof drawRadar === 'function') drawRadar(aggregateTaskVector(50), null);
+        if (typeof drawHeatmap === 'function' && state.affinityMode === 'heatmap') drawHeatmap();
+      });
+    }
+
+    if (view === 'config' && !_configSettingsExpanded) {
+      const body = document.getElementById('settingsBody');
+      if (body) body.classList.add('open');
+      const btn = document.getElementById('settingsToggleBtn');
+      if (btn) btn.textContent = 'Collapse';
+      _configSettingsExpanded = true;
+    }
+  } else if (flags._stale && !flags._dirty) {
+    if (view === 'routing') renderRoutingView();
+    else if (view === 'workloads') renderWorkloadsView();
+    else if (view === 'config') renderConfigView();
+    flags._stale = false;
+
+    if (view === 'routing') {
+      requestAnimationFrame(() => {
+        if (typeof drawRadar === 'function') drawRadar(aggregateTaskVector(50), null);
+      });
+    }
+  }
+
+  updateUnsavedIndicator();
+}
+
+function updateUnsavedIndicator() {
+  const el = document.getElementById('cortexUnsaved');
+  if (!el) return;
+  const dirty = Object.entries(_viewFlags)
+    .filter(([, f]) => f._dirty)
+    .map(([name]) => name.charAt(0).toUpperCase() + name.slice(1));
+  if (dirty.length > 0) {
+    el.textContent = 'Unsaved changes in ' + dirty.join(', ');
+    el.style.display = '';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+function setupDirtyTracking() {
+  const workloadsEl = document.getElementById('workloadsView');
+  if (workloadsEl) {
+    workloadsEl.addEventListener('input', (e) => {
+      if (e.target.closest('.wl-editor.open')) {
+        _viewFlags.workloads._dirty = true;
+        updateUnsavedIndicator();
+      }
+    });
+    workloadsEl.addEventListener('change', (e) => {
+      if (e.target.closest('.wl-editor.open')) {
+        _viewFlags.workloads._dirty = true;
+        updateUnsavedIndicator();
+      }
+    });
+  }
+
+  const settingsBody = document.getElementById('settingsBody');
+  if (settingsBody) {
+    settingsBody.addEventListener('input', () => {
+      _viewFlags.config._dirty = true;
+      updateUnsavedIndicator();
+    });
+    settingsBody.addEventListener('change', (e) => {
+      if (e.target.type === 'checkbox' && e.target.closest('.rules-row')) return;
+      _viewFlags.config._dirty = true;
+      updateUnsavedIndicator();
+    });
+  }
+}
+
+document.getElementById('cortexSubNav').addEventListener('click', (e) => {
+  const btn = e.target.closest('.sub-nav-btn');
+  if (btn && btn.dataset.view) {
+    setCortexHash(btn.dataset.view);
+  }
+});
+
 async function load(){
   const [s,d,u,cli,outcomes,stats24h,sentinel,workloadRouting,bypass,workloadTokens]=await Promise.all([fetch('/api/cortex/status').then(r=>r.json()).catch(()=>({})),fetch('/api/cortex/decisions?limit=50').then(r=>r.json()).catch(()=>({decisions:[]})),fetch('/api/cortex/usage').then(r=>r.json()).catch(()=>({providers:{}})),fetch('/api/cli-usage').then(r=>r.json()).catch(()=>({})),fetch('/api/cortex/outcomes?limit=50').then(r=>r.json()).catch(()=>({outcomes:[]})),fetch('/api/cortex/outcomes/stats?period=24h').then(r=>r.json()).catch(()=>({summary:{},byModel:[],byWorkType:[]})),fetch('/api/cortex/sentinel').then(r=>r.json()).catch(()=>({available:false,stale:false,age_seconds:null,status:null})),fetch('/api/workload-routing').then(r=>r.json()).catch(()=>null),fetch('/api/cortex/bypass-check').then(r=>r.json()).catch(()=>({ bypasses: [], telemetry_healthy: false })),fetch(`/api/cortex/workload-tokens?period=${state.workloadTokenPeriod || '24h'}`).then(r=>r.json()).catch(()=>null)]);
   state.status=s; state.decisions=Array.isArray(d.decisions)?d.decisions:[]; state.usage=u; state.modelUsage=s?.providerQuota?.modelUsage||{}; state.cliUsage=cli; state.outcomes=Array.isArray(outcomes?.outcomes)?outcomes.outcomes:[]; state.outcomeStats24h=stats24h; state.sentinel=sentinel||{available:false,stale:false,age_seconds:null,status:null}; state.workloadRouting=workloadRouting&&typeof workloadRouting==='object'&&!workloadRouting.error?workloadRouting:null; state.bypassData=bypass&&typeof bypass==='object'?bypass:{ bypasses: [], telemetry_healthy: false }; state.workloadTokens=workloadTokens;
   await loadOutcomeTrends(state.outcomePeriod||'24h');
-  renderStats(); renderBypassAlerts(); renderWorkloadRouting(); renderWorkloadTokens(); renderLadder(); renderSubscriptionStatus(); renderSentinel(); renderFilters(); renderDecisions(); renderScore(); renderOutcomeTrends(); renderSettings();
+  // Always render shared stat cards
+  renderStats();
+
+  // Per-view refresh with dirty/stale guards
+  if (_activeView === 'routing') {
+    renderRoutingView();
+  } else {
+    _viewFlags.routing._stale = true;
+  }
+
+  if (_activeView === 'workloads' && !_viewFlags.workloads._dirty) {
+    renderWorkloadsView();
+  } else if (_activeView !== 'workloads') {
+    _viewFlags.workloads._stale = true;
+  }
+
+  if (_activeView === 'config' && !_viewFlags.config._dirty) {
+    renderConfigView();
+  } else if (_activeView !== 'config') {
+    _viewFlags.config._stale = true;
+  }
+
+  updateUnsavedIndicator();
 }
 function getModelLastUsedMap(){const m={}; for(const r of state.decisions){const model=String(r.modelSelected||r.selectedModel||r.model||''); const t=r.ts||r.timestamp||r.time; if(model&&t&&(!m[model]||new Date(t)>new Date(m[model])))m[model]=t;} return m;}
 function getUsageForModel(model){const usage=state.modelUsage||{}; return usage[model]||usage[model.split('/').slice(1).join('/')]||usage[model.split('/').pop()]||{};}
@@ -279,6 +498,10 @@ function renderStats(){const ladder=Array.isArray(state.status?.ladder)?state.st
   const rewardVal=Number.isFinite(reward)?reward.toFixed(2):'—'; const corrVal=Number.isFinite(correction)?`${Math.round(correction*100)}%`:'—'; const escVal=Number.isFinite(escalation)?`${Math.round(escalation*100)}%`:'—';
   const rewardColor=!Number.isFinite(reward)?'var(--text-primary)':(reward>0.5?'var(--accent-green)':(reward>=0?'var(--accent-amber)':'var(--accent-red)'));
   const concentration=providerConcentration();
+  const hasConfirmedBypass = (state.bypassData?.bypasses || []).some(b => b.tier === 'confirmed');
+  if (hasConfirmedBypass) {
+    concentration.badge = { text: 'bypass detected', style: 'color:#fef2f2;background:var(--accent-red);padding:1px 6px;border-radius:9999px' };
+  }
   const cards=[['Active Models',enabled.length,'Models available for routing'],['Providers',pCount,'Connected inference providers'],['Routing Today',today,'Requests routed by Cortex'],['Top Model',top,'Most frequently selected'],['Provider Spread',concentration.count,'Provider diversity over last 24h',null,concentration.badge,concentration.tooltip],['Avg Reward (24h)',rewardVal,'Routing decision quality today',rewardColor]];
   $('#statCards').innerHTML=cards.map(([l,v,s,c,badge,tip])=>`<div class='card' title='${esc(tip||'')}'><div class='stat-label'>${l}</div><div class='stat-value mono' style='font-variant-numeric:tabular-nums;color:${c||'var(--text-primary)'}'>${v}</div><div class='stat-sub'>${s}</div>${badge?`<div class='pill' style='margin-top:6px;${badge.style||''}'>${badge.text}</div>`:''}</div>`).join('');
 }
@@ -373,14 +596,18 @@ function workloadModelRows(){const wr=state.workloadRouting||{}; const primary=w
  ];}
 function workloadDotClass(model){const tier=costTierForModel(model); return tier==='paid-high'?'paid-high':(tier==='paid-low'?'paid-low':'free');}
 function toggleWorkloadEditor(key){state.workloadEditorOpen=state.workloadEditorOpen===key?null:key; renderWorkloadRouting();}
-async function saveWorkloadPatch(key,payload,prev){try{const res=await fetch('/api/workload-routing',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); const data=await res.json(); if(!res.ok)throw new Error(data?.error||'Save failed'); $('#wl-status-'+key).innerHTML=`<span style="color:var(--accent-green)">${esc(data?.message||'Config saved. Restart gateway to apply.')}</span>`; await load();}catch(e){state.workloadRouting=prev; $('#wl-status-'+key).innerHTML=`<span style="color:var(--accent-red)">${esc(e.message||'Save failed')}</span>`; renderWorkloadRouting();}}
+async function saveWorkloadPatch(key,payload,prev){try{const res=await fetch('/api/workload-routing',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); const data=await res.json(); if(!res.ok)throw new Error(data?.error||'Save failed'); $('#wl-status-'+key).innerHTML=`<span style="color:var(--accent-green)">${esc(data?.message||'Config saved. Restart gateway to apply.')}</span>`; await load();_viewFlags.workloads._dirty = false;updateUnsavedIndicator();}catch(e){state.workloadRouting=prev; $('#wl-status-'+key).innerHTML=`<span style="color:var(--accent-red)">${esc(e.message||'Save failed')}</span>`; renderWorkloadRouting();}}
 function renderEditor(row){const wr=state.workloadRouting||{}; const catalog=(Array.isArray(wr?.catalog)?wr.catalog:[]); const enabled=catalog.filter(c=>c.enabled!==false); const opt=(arr,val)=>arr.map(c=>`<option value='${esc(c.model)}' ${String(val)===String(c.model)?'selected':''}>${esc(c.model)}</option>`).join('');
  if(row.key==='primary'){return `<div class='wl-editor ${state.workloadEditorOpen==='primary'?'open':''}'><select id='wl-primary'>${opt(enabled,row.model)}</select><button class='pill on btn' onclick='savePrimaryModel()'>Save</button><div class='wl-save-status' id='wl-status-primary'></div></div>`;}
  if(row.key==='heartbeat'){return `<div class='wl-editor ${state.workloadEditorOpen==='heartbeat'?'open':''}'><select id='wl-heartbeat-model'><option value=''>CORTEX routing</option>${opt(catalog,wr?.heartbeat?.model||'')}</select><input id='wl-heartbeat-every' value='${esc(wr?.heartbeat?.every||'0m')}' /><button class='pill on btn' onclick='saveHeartbeatModel()'>Save</button><div class='wl-save-status' id='wl-status-heartbeat'></div></div>`;}
  if(row.key==='fallbacks'){const current=Array.isArray(wr?.fallbacks?.models)?wr.fallbacks.models:[]; return `<div class='wl-editor ${state.workloadEditorOpen==='fallbacks'?'open':''}'><div class='panel-sub'>Ordered fallback chain</div>${current.map((m,i)=>`<div class='model-row'><div class='mono'>${esc(m)}</div><button class='pill' onclick='removeFallback(${i})'>x</button></div>`).join('')||"<div class='panel-sub'>No fallbacks configured.</div>"}<select id='wl-fallback-add'><option value=''>Select model to add</option>${opt(catalog,'')}</select><button class='pill btn' onclick='addFallback()'>Add</button><button class='pill on btn' onclick='saveFallbacks()'>Save</button><div class='wl-save-status' id='wl-status-fallbacks'></div></div>`;}
  const msg=row.key==='compaction'?'requires OpenClaw upgrade':'inherits primary — per-cron overrides not yet available'; return `<div class='wl-editor ${state.workloadEditorOpen===row.key?'open':''}'><div class='panel-sub'>${msg}</div></div>`;
 }
-function renderBypassAlerts(){const wrap=$('#bypassAlerts'); if(!wrap)return; const data=state.bypassData||{}; const bypasses=Array.isArray(data.bypasses)?data.bypasses:[]; if(bypasses.length===0){wrap.style.display='none'; wrap.innerHTML=''; return;} wrap.style.display='block'; wrap.innerHTML=bypasses.map(b=>{const isConfirmed=b.tier==='confirmed'; const borderColor=isConfirmed?'rgba(239,68,68,0.6)':'rgba(245,158,11,0.5)'; const bgColor=isConfirmed?'rgba(239,68,68,0.06)':'rgba(245,158,11,0.06)'; const icon=isConfirmed?'●':'◐'; const label=isConfirmed?'Confirmed Bypass':'Suspected Bypass'; const text=isConfirmed?`${esc(b.workloadClass)}: ${b.count} turns confirmed bypassing CORTEX routing — Model: ${esc(b.provider)}/${esc(b.model)}. No routing decisions recorded for this workload.`:`${b.count} turns may have bypassed CORTEX routing — Model: ${esc(b.provider)}/${esc(b.model)}. Timestamp correlation is imperfect; verify manually if unexpected.`; return `<div class="bypass-alert" style="border:1px solid ${borderColor};border-left:3px solid ${borderColor};background:${bgColor};border-radius:8px;padding:10px 14px;margin-bottom:8px;display:flex;align-items:flex-start;gap:10px"><span style="color:${isConfirmed?'#ef4444':'#f59e0b'};font-size:1rem;flex-shrink:0">${icon}</span><div style="flex:1;min-width:0"><div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:${isConfirmed?'#ef4444':'#f59e0b'};margin-bottom:2px">${label}</div><div style="font-size:0.78rem;color:var(--text-primary)">${text}</div><div style="font-size:0.65rem;color:var(--text-tertiary);margin-top:4px;font-family:var(--font-mono)">Window: ${b.window_minutes}m | First: ${fmtAgo(b.first_seen)} | Last: ${fmtAgo(b.last_seen)}</div></div><button onclick="this.parentElement.remove()" style="border:none;background:none;color:var(--text-tertiary);cursor:pointer;font-size:14px;padding:2px 6px">×</button></div>`;}).join('');}
+function dismissBypass(btn, key) {
+  _bypassDismissed.add(key);
+  btn.closest('.bypass-alert').remove();
+}
+function renderBypassAlerts(){const wrap=$('#bypassAlerts'); if(!wrap)return; const data=state.bypassData||{}; const bypasses=(Array.isArray(data.bypasses)?data.bypasses:[]).filter(b => !_bypassDismissed.has(`${b.tier}:${b.workloadClass}:${b.model}`)); if(bypasses.length===0){wrap.style.display='none'; wrap.innerHTML=''; return;} wrap.style.display='block'; wrap.innerHTML=bypasses.map(b=>{const isConfirmed=b.tier==='confirmed'; const borderColor=isConfirmed?'rgba(239,68,68,0.6)':'rgba(245,158,11,0.5)'; const bgColor=isConfirmed?'rgba(239,68,68,0.06)':'rgba(245,158,11,0.06)'; const icon=isConfirmed?'●':'◐'; const label=isConfirmed?'Confirmed Bypass':'Suspected Bypass'; const text=isConfirmed?`${esc(b.workloadClass)}: ${b.count} turns confirmed bypassing CORTEX routing — Model: ${esc(b.provider)}/${esc(b.model)}. No routing decisions recorded for this workload.`:`${b.count} turns may have bypassed CORTEX routing — Model: ${esc(b.provider)}/${esc(b.model)}. Timestamp correlation is imperfect; verify manually if unexpected.`; return `<div class="bypass-alert" style="border:1px solid ${borderColor};border-left:3px solid ${borderColor};background:${bgColor};border-radius:8px;padding:10px 14px;margin-bottom:8px;display:flex;align-items:flex-start;gap:10px"><span style="color:${isConfirmed?'#ef4444':'#f59e0b'};font-size:1rem;flex-shrink:0">${icon}</span><div style="flex:1;min-width:0"><div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:${isConfirmed?'#ef4444':'#f59e0b'};margin-bottom:2px">${label}</div><div style="font-size:0.78rem;color:var(--text-primary)">${text}</div><div style="font-size:0.65rem;color:var(--text-tertiary);margin-top:4px;font-family:var(--font-mono)">Window: ${b.window_minutes}m | First: ${fmtAgo(b.first_seen)} | Last: ${fmtAgo(b.last_seen)}</div></div><button onclick="dismissBypass(this, '${esc(b.tier)}:${esc(b.workloadClass)}:${esc(b.model)}')" style="border:none;background:none;color:var(--text-tertiary);cursor:pointer;font-size:14px;padding:2px 6px">×</button></div>`;}).join('');}
 function renderWorkloadRouting(){const wrap=$('#workloadCards'); if(!wrap)return; const rows=workloadModelRows(); wrap.innerHTML=rows.map(r=>{const dot=workloadDotClass(r.model); const tier=costTierForModel(r.model); const shouldCheap=['heartbeat','compaction','cron'].includes(r.key); const mismatch=shouldCheap&&tier==='paid-high'?(r.status==='pinned'?'mismatch-pinned':'mismatch-unexpected'):''; const disabled=r.key==='heartbeat'&&String(r.every||'0m')==='0m'; const status=disabled?'disabled':r.status; const bypassMatch=(state.bypassData?.bypasses||[]).find(b=>b.model===r.model||`${b.provider}/${b.model}`===r.model); const bypassBadge=bypassMatch?(bypassMatch.tier==='confirmed'?'<div style="margin-top:4px;font-size:0.6rem;color:#ef4444;font-weight:700">● BYPASSING CORTEX</div>':'<div style="margin-top:4px;font-size:0.6rem;color:#f59e0b;font-weight:700">◐ POSSIBLE BYPASS</div>'):''; return `<div><div class='wl-card ${mismatch}' onclick="toggleWorkloadEditor('${r.key}')"><div class='wl-label'>${r.label}</div><div class='wl-model mono'>${esc(r.model||'none')}</div><div class='wl-provider'>${esc(r.provider||'unknown')}</div><div class='wl-status'><span class='wl-dot ${disabled?'':dot}' style='${disabled?'background:#64748b':''}'></span><span class='mono' style='font-variant-numeric:tabular-nums'>${esc(status)}</span></div>${bypassBadge}</div>${renderEditor(r)}</div>`;}).join('');}
 function renderWorkloadTokens(){const data=state.workloadTokens; const periodWrap=document.getElementById('workloadTokenPeriod'); const chartWrap=document.getElementById('workloadTokenChart'); const summaryWrap=document.getElementById('workloadTokenSummary'); if(!periodWrap||!chartWrap||!summaryWrap)return;
   const currentPeriod=state.workloadTokenPeriod||'24h';
@@ -404,7 +631,7 @@ function removeFallback(i){const wr=state.workloadRouting||{}; const current=Arr
 function saveFallbacks(){const wr=state.workloadRouting||{}; const arr=Array.isArray(wr?.fallbacks?.models)?wr.fallbacks.models:[]; const primary=wr?.primary?.model||''; if(arr.includes(primary)){ $('#wl-status-fallbacks').innerHTML="<span style='color:var(--accent-red)'>Fallback chain cannot contain primary model.</span>"; return; } const prev=JSON.parse(JSON.stringify(state.workloadRouting||{})); saveWorkloadPatch('fallbacks',{fallbacks:arr},prev);}
 
 async function toggleModel(encoded){await fetch(`/api/cortex/ladder/${encoded}/toggle`,{method:'PUT'}); await load();}
-function toggleSettings(){ $('#settingsBody').classList.toggle('open'); }
+function toggleSettings(){ const body=$('#settingsBody'); if(!body)return; body.classList.toggle('open'); const btn=$('#settingsToggleBtn'); if(btn)btn.textContent=body.classList.contains('open')?'Collapse':'Expand'; if(body.classList.contains('open'))_configSettingsExpanded=true; }
 function renderSettings(){const s=state.status||{}; const weights=s?.scoring?.weights||{}; const ladder=Array.isArray(s?.ladder)?s.ladder:[]; const pins=s?.agentPins||{}; const schedule=s?.schedule||{}; const quota=s?.quotaThresholds||{};
  $('#settingsCortexWeights').innerHTML=`<div class='panel-title'>Scoring Weights</div><div class='panel-sub'>Tune how Cortex scores complexity dimensions.</div><div class='settings-grid'>${Object.keys(weights).map(k=>`<label>${k}<input data-cw='${k}' type='range' min='0' max='1' step='0.01' value='${Number(weights[k]||0)}'></label>`).join('')}</div><button class='pill on' onclick='saveWeights()'>Save Weights</button>`;
  $('#settingsCortexLadder').innerHTML=`<div class='panel-title'>Model Ladder</div><div class='panel-sub'>Edit model thresholds and context windows.</div><div style='display:grid;grid-template-columns:30px 1fr 80px 100px;gap:6px;padding:6px 0;font-size:.72rem;color:var(--text-tertiary)'><div></div><div>Model</div><div>minScore</div><div>Context</div></div>${ladder.map((e,i)=>`<div style='display:grid;grid-template-columns:30px 1fr 80px 100px;gap:6px;align-items:center'><input type='checkbox' data-cle='${i}' ${e.enabled!==false?'checked':''}><input data-clm='${i}' value='${esc(e.model||'')}' style='min-width:0;font-size:.78rem'><input data-cls='${i}' type='number' step='0.01' min='0' max='1' value='${Number(e.minScore||0)}' style='width:80px'><input data-clc='${i}' type='number' step='1' min='1' value='${Number(e.contextWindow||0)}' style='width:100px'></div>`).join('')}<button class='pill on' style='margin-top:8px' onclick='saveLadder()'>Save Ladder</button>`;
@@ -415,11 +642,24 @@ function renderSettings(){const s=state.status||{}; const weights=s?.scoring?.we
  $('#settingsCortexRules').innerHTML=`<div class='panel-title'>Rules</div><div class='panel-sub'><span class='mono'>${enabledCount}/${Math.max(20,rules.length||20)}</span> rules enabled.</div>${rules.map(r=>`<div class='rules-row'><div><div class='rule-id mono'>${esc(r.id||'—')} <span class='rule-cat ${categoryClass(r.category)}'>${esc(r.category||'interaction')}</span></div><div class='rule-meta'>${esc(r.description||'No description')}</div></div><label><input type='checkbox' ${r.enabled!==false?'checked':''} onchange="toggleRuleEnabled(decodeURIComponent('${encodeURIComponent(String(r.id||''))}'),this.checked)"></label></div>`).join('')||"<div class='panel-sub'>No rules found in status payload.</div>"}`;
  $('#settingsDiscovery').innerHTML=`<div class='panel-title'>Discovery Config</div><div class='panel-sub'>Discovery uses server-side defaults from cortex config.</div>`;
 }
-async function saveWeights(){const weights=Object.fromEntries([...document.querySelectorAll('[data-cw]')].map(e=>[e.dataset.cw,Number(e.value)||0])); await fetch('/api/cortex/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({scoring:{weights}})}); await load();}
-async function saveLadder(){const rows=[...document.querySelectorAll('[data-clm]')].map(el=>{const i=el.dataset.clm; return {model:el.value.trim(),enabled:document.querySelector(`[data-cle='${i}']`)?.checked!==false,minScore:Number(document.querySelector(`[data-cls='${i}']`)?.value||0),contextWindow:Number(document.querySelector(`[data-clc='${i}']`)?.value||0),provider:(el.value.split('/')[0]||'unknown')};}).filter(r=>r.model); await fetch('/api/cortex/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({ladder:rows})}); await load();}
-async function savePins(){for(const el of document.querySelectorAll('[data-cpa]')) await fetch('/api/cortex/pins',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({agentId:el.dataset.cpa,model:el.value||null})}); await load();}
-async function saveSchedule(){const quota=Object.fromEntries([...document.querySelectorAll('[data-cq]')].map(e=>[e.dataset.cq,Number(e.value)||0])); await fetch('/api/cortex/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({schedule:{...(state.status?.schedule||{}),timezone:$('#ctz').value||'UTC',workStart:$('#cws').value||'09:00',workEnd:$('#cwe').value||'17:00'},quotaThresholds:quota})}); await load();}
-load();
+async function saveWeights(){const weights=Object.fromEntries([...document.querySelectorAll('[data-cw]')].map(e=>[e.dataset.cw,Number(e.value)||0])); await fetch('/api/cortex/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({scoring:{weights}})}); await load(); _viewFlags.config._dirty = false; updateUnsavedIndicator();}
+async function saveLadder(){const rows=[...document.querySelectorAll('[data-clm]')].map(el=>{const i=el.dataset.clm; return {model:el.value.trim(),enabled:document.querySelector(`[data-cle='${i}']`)?.checked!==false,minScore:Number(document.querySelector(`[data-cls='${i}']`)?.value||0),contextWindow:Number(document.querySelector(`[data-clc='${i}']`)?.value||0),provider:(el.value.split('/')[0]||'unknown')};}).filter(r=>r.model); await fetch('/api/cortex/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({ladder:rows})}); await load(); _viewFlags.config._dirty = false; updateUnsavedIndicator();}
+async function savePins(){for(const el of document.querySelectorAll('[data-cpa]')) await fetch('/api/cortex/pins',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({agentId:el.dataset.cpa,model:el.value||null})}); await load(); _viewFlags.config._dirty = false; updateUnsavedIndicator();}
+async function saveSchedule(){const quota=Object.fromEntries([...document.querySelectorAll('[data-cq]')].map(e=>[e.dataset.cq,Number(e.value)||0])); await fetch('/api/cortex/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({schedule:{...(state.status?.schedule||{}),timezone:$('#ctz').value||'UTC',workStart:$('#cws').value||'09:00',workEnd:$('#cwe').value||'17:00'},quotaThresholds:quota})}); await load(); _viewFlags.config._dirty = false; updateUnsavedIndicator();}
+// Register hashchange as sole navigation handler
+window.addEventListener('hashchange', () => {
+  switchCortexView(readCortexHash());
+});
+
+// Initial load
+load().then(() => {
+  if (!location.hash || !VALID_CORTEX_VIEWS.has(location.hash.replace(/^#/, ''))) {
+    setCortexHash('routing');
+  }
+  switchCortexView(readCortexHash());
+  setupDirtyTracking();
+});
+
 setInterval(load,60000);
 </script>
 <script src="/lucide.min.js"></script>
