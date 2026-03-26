@@ -381,10 +381,14 @@ async function main() {
         ? parsed.services
         : [];
     const total = services.length;
-    const runningStatuses = ['running', 'healthy', 'up', 'ok'];
-    const up = services.filter((service) => runningStatuses.includes(String(service?.status || '').toLowerCase())).length;
+    const isUp = (service) => {
+      if (service?.active === true) return true;
+      const s = String(service?.status || '').toLowerCase();
+      return ['running', 'healthy', 'up', 'ok'].includes(s);
+    };
+    const up = services.filter(isUp).length;
     const downNames = services
-      .filter((service) => !runningStatuses.includes(String(service?.status || '').toLowerCase()))
+      .filter((service) => !isUp(service))
       .map((service) => String(service?.name || service?.service || 'unknown'))
       .filter(Boolean);
 
