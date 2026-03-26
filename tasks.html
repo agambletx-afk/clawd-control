@@ -575,7 +575,10 @@
 
     .panel-backdrop {
       position: fixed;
-      inset: 0;
+      top: 48px;
+      left: 0;
+      right: 0;
+      bottom: 0;
       background: rgba(6, 8, 10, 0.55);
       display: none;
       z-index: 150;
@@ -584,9 +587,9 @@
     .detail-panel {
       position: fixed;
       right: -520px;
-      top: 0;
+      top: 48px;
       width: min(520px, 100vw);
-      height: 100dvh;
+      height: calc(100dvh - 48px);
       background: var(--bg-secondary);
       border-left: 1px solid var(--border);
       z-index: 160;
@@ -595,6 +598,7 @@
       grid-template-rows: auto 1fr auto;
     }
     .detail-panel.open { right: 0; }
+    body.has-banner .detail-panel { top: 84px; height: calc(100dvh - 84px); }
     .panel-head {
       padding: 12px;
       border-bottom: 1px solid var(--border-subtle);
