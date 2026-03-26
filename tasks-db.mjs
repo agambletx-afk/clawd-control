@@ -177,6 +177,9 @@ function sanitizeUpdateData(data = {}) {
     'requested_via',
     'accepted_at',
     'user_notified_at',
+    'group_id',
+    'group_name',
+    'step_order',
   ];
   const out = {};
   for (const key of allowed) {
