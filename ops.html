@@ -1121,9 +1121,9 @@
         <div id="versionCheckDetails" class="version-check-details"></div>
       </section>
 
-      <div id="opsSummaryCards" class="ops-summary-grid" aria-label="Operations health summary"></div>
+      <div id="opsSummaryCards" style="margin-bottom: 14px;" class="ops-summary-grid" aria-label="Operations health summary"></div>
 
-      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px;">
+      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px; margin-bottom: 14px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="server" style="width:16px;height:16px;color:var(--text-secondary);"></i>
           <div>
@@ -1137,7 +1137,7 @@
         </div>
       </section>
 
-      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px;">
+      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px; margin-bottom: 14px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="radio" style="width:16px;height:16px;color:var(--text-secondary);"></i>
           <div>
@@ -1160,7 +1160,7 @@
         </div>
       </section>
 
-      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px;">
+      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px; margin-bottom: 14px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="heart-pulse" style="width:16px;height:16px;color:var(--text-secondary);"></i>
           <div>
@@ -1421,6 +1421,18 @@
       if (window.lucide && typeof window.lucide.createIcons === 'function') {
         window.lucide.createIcons();
       }
+    }
+    function ensureLucideReady(cb) {
+      if (window.lucide && typeof window.lucide.createIcons === 'function') { cb(); return; }
+      let attempts = 0;
+      const check = setInterval(() => {
+        attempts++;
+        if (window.lucide && typeof window.lucide.createIcons === 'function') {
+          clearInterval(check);
+          cb();
+        }
+        if (attempts > 40) clearInterval(check);
+      }, 100);
     }
 
     function setChevronIcon(buttonId, expanded) {
@@ -2989,14 +3001,15 @@
       } catch (error) {
         toast(error.message);
       }
-      setTimeout(renderLucideIcons, 100);
-      setTimeout(renderLucideIcons, 300);
-      setTimeout(renderLucideIcons, 1000);
+      ensureLucideReady(() => {
+        renderLucideIcons();
+        setTimeout(renderLucideIcons, 200);
+      });
     }
 
     window.initOpsTab = initOpsTab;
     initOpsTab();
-    renderLucideIcons();
+    ensureLucideReady(renderLucideIcons);
   </script>
 </body>
 </html>
