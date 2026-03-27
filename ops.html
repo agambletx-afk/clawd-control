@@ -660,9 +660,9 @@
 
 
     .gateway-events-panel {
-      border: 1px solid var(--border-subtle);
+      border: 1px solid rgba(167,139,250,0.12);
       border-radius: var(--radius-md);
-      background: var(--bg-surface);
+      background: color-mix(in srgb, var(--ops-domain) 4%, var(--bg-surface));
       overflow: hidden;
     }
 
@@ -1187,7 +1187,7 @@
     </div>
 
     <div id="ops-health-view">
-      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
+      <section class="panel" style="background: color-mix(in srgb, var(--ops-domain) 4%, var(--bg-surface)); border: 1px solid rgba(167,139,250,0.12); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="server" style="width:16px;height:16px;color:var(--text-secondary);"></i>
           <div>
@@ -1198,7 +1198,7 @@
         <div id="serviceCards" class="services"></div>
       </section>
 
-      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
+      <section class="panel" style="background: color-mix(in srgb, var(--ops-domain) 4%, var(--bg-surface)); border: 1px solid rgba(167,139,250,0.12); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="heart-pulse" style="width:16px;height:16px;color:var(--text-secondary);"></i>
           <div>
@@ -1209,7 +1209,7 @@
         <div id="cronHealthCards" class="cron-health-grid"></div>
       </section>
 
-      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
+      <section class="panel" style="background: color-mix(in srgb, var(--ops-domain) 4%, var(--bg-surface)); border: 1px solid rgba(167,139,250,0.12); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="radio" style="width:16px;height:16px;color:var(--text-secondary);"></i>
           <div>
@@ -1235,7 +1235,7 @@
 
     <div id="ops-jobs-view" style="display:none;">
 
-      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px;">
+      <section class="panel" style="background: color-mix(in srgb, var(--ops-domain) 4%, var(--bg-surface)); border: 1px solid rgba(167,139,250,0.12); border-radius: 12px; padding: 16px 20px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="clock" style="width:16px;height:16px;color:var(--text-secondary);"></i>
           <div>
@@ -1261,7 +1261,7 @@
     </div>
 
     <div id="ops-recovery-view" style="display:none;">
-      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px;">
+      <section class="panel" style="background: color-mix(in srgb, var(--ops-domain) 4%, var(--bg-surface)); border: 1px solid rgba(167,139,250,0.12); border-radius: 12px; padding: 16px 20px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="archive" style="width:16px;height:16px;color:var(--text-secondary);"></i>
           <div>
@@ -1304,7 +1304,7 @@
     <div id="ops-checks-view" style="display:none;">
 
 
-      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
+      <section class="panel" style="background: color-mix(in srgb, var(--ops-domain) 4%, var(--bg-surface)); border: 1px solid rgba(167,139,250,0.12); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="database" style="width:16px;height:16px;color:var(--text-secondary);"></i>
           <div>
@@ -1316,7 +1316,7 @@
         <div id="opsLogsHealthGrid" class="ops-logs-health-grid"></div>
       </section>
 
-      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
+      <section class="panel" style="background: color-mix(in srgb, var(--ops-domain) 4%, var(--bg-surface)); border: 1px solid rgba(167,139,250,0.12); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="activity" style="width:16px;height:16px;color:var(--text-secondary);"></i>
           <div>
@@ -1346,7 +1346,7 @@
         <div id="versionCheckDetails" class="version-check-details"></div>
       </section>
 
-      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px;" aria-label="Deployment verification results">
+      <section class="panel" style="background: color-mix(in srgb, var(--ops-domain) 4%, var(--bg-surface)); border: 1px solid rgba(167,139,250,0.12); border-radius: 12px; padding: 16px 20px;" aria-label="Deployment verification results">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="shield-check" style="width:16px;height:16px;color:var(--text-secondary);"></i>
           <div>
@@ -1369,7 +1369,7 @@
     </div>
 
     <div id="ops-logs-view" class="ops-logs-view" style="display:none;">
-      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px;">
+      <section class="panel" style="background: color-mix(in srgb, var(--ops-domain) 4%, var(--bg-surface)); border: 1px solid rgba(167,139,250,0.12); border-radius: 12px; padding: 16px 20px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="file-text" style="width:16px;height:16px;color:var(--text-secondary);"></i>
           <div>
