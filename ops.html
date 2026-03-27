@@ -3200,7 +3200,7 @@
       renderJobsStatusDots();
       setTimeout(renderLucideIcons, 50);
 
-      $('freshSessionBtn').onclick = handleFreshSession;
+      if ($('freshSessionBtn')) $('freshSessionBtn').onclick = handleFreshSession;
       $('versionCheckBanner').onclick = () => {
         state.versionCheckExpanded = !state.versionCheckExpanded;
         $('versionCheckDetails').classList.toggle('open', state.versionCheckExpanded);
