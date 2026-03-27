@@ -46,7 +46,7 @@
     tasks:      { title: 'Tasks', subtitle: 'All durable work, from proposal to archive.', color: '#6366f1' },
     agents:     { title: 'Agents', subtitle: 'Agent fleet status and per-agent workspace.', color: '#f59e0b' },
     analytics:  { title: 'Usage', subtitle: 'Where tokens and money go.', color: '#2dd4bf' },
-    ops:        { title: 'Operations', subtitle: 'Infrastructure health, jobs, recovery, and learning.', color: '#ef4444' },
+    ops:        { title: 'Operations', subtitle: 'Infrastructure health, jobs, and recovery.', color: '#a78bfa' },
     security:   { title: 'Security', subtitle: 'Security posture and enforcement status.', color: '#ef4444' },
     cortex:     { title: 'CORTEX', subtitle: 'Model routing, workload controls, and configuration.', color: '#7c3aed' },
     sessions:   { title: 'Sessions', subtitle: 'Active and recent gateway sessions.', color: '#6366f1' },

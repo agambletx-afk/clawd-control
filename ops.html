@@ -681,7 +681,7 @@
       left: 0;
       bottom: 0;
       width: 3px;
-      background: #ef4444;
+      background: #a78bfa;
     }
 
     .ops-summary-label {
@@ -1093,9 +1093,12 @@
 </head>
 <body>
   <main class="main">
-    <div class="page-header">
-      <h1>Operations</h1>
-      <p class="subtitle">Infrastructure health, jobs, recovery, and learning.</p>
+    <div class="page-header" style="display: flex; align-items: flex-start; justify-content: space-between;">
+      <div>
+        <h1>Operations</h1>
+        <p class="subtitle">Infrastructure health, jobs, and recovery.</p>
+      </div>
+      <button id="freshSessionBtn" class="btn btn-outline-amber" style="margin-top: 4px;">Fresh Session</button>
     </div>
 
     <div class="sub-nav" id="opsSubNav" role="tablist" aria-label="Operations views">
@@ -1107,22 +1110,6 @@
     </div>
 
     <div id="ops-health-view">
-      <section id="versionCheckBanner" class="version-check-banner" aria-label="OpenClaw version check">
-        <div class="version-check-main">
-          <div id="versionCheckSummary" class="version-check-summary">
-            <span class="version-check-dot version-gray"></span>
-            <span>Version check unavailable</span>
-          </div>
-          <div class="version-check-actions">
-            <button id="versionRefreshBtn" class="icon-btn" title="Refresh version check" aria-label="Refresh version check"><i data-lucide="refresh-cw"></i></button>
-            <button id="versionToggleBtn" class="icon-btn" title="Show release details" aria-label="Toggle release details" aria-expanded="false"><i data-lucide="chevron-down"></i></button>
-          </div>
-        </div>
-        <div id="versionCheckDetails" class="version-check-details"></div>
-      </section>
-
-      <div id="opsSummaryCards" style="margin-bottom: 14px;" class="ops-summary-grid" aria-label="Operations health summary"></div>
-
       <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px; margin-bottom: 14px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="server" style="width:16px;height:16px;color:var(--text-secondary);"></i>
@@ -1132,9 +1119,17 @@
           </div>
         </div>
         <div id="serviceCards" class="services"></div>
-        <div style="margin-top: 10px;">
-          <button id="freshSessionBtn" class="btn btn-outline-red">Fresh Session</button>
+      </section>
+
+      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px; margin-bottom: 14px;">
+        <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+          <i data-lucide="heart-pulse" style="width:16px;height:16px;color:var(--text-secondary);"></i>
+          <div>
+            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;">Cron Health</h2>
+            <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Status of all monitored crons. Sorted by severity.</p>
+          </div>
         </div>
+        <div id="cronHealthCards" class="cron-health-grid"></div>
       </section>
 
       <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px; margin-bottom: 14px;">
@@ -1158,17 +1153,6 @@
             </div>
           </div>
         </div>
-      </section>
-
-      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px; margin-bottom: 14px;">
-        <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
-          <i data-lucide="heart-pulse" style="width:16px;height:16px;color:var(--text-secondary);"></i>
-          <div>
-            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;">Cron Health</h2>
-            <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Status of all monitored crons. Sorted by severity.</p>
-          </div>
-        </div>
-        <div id="cronHealthCards" class="cron-health-grid"></div>
       </section>
     </div>
 
@@ -1235,6 +1219,24 @@
     </div>
 
     <div id="ops-checks-view" style="display:none;">
+      <section id="versionCheckBanner" class="version-check-banner" aria-label="OpenClaw version check">
+        <div class="version-check-main">
+          <div>
+            <div class="version-check-summary" style="margin-bottom: 2px;">Version Check</div>
+            <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 0;">Compares installed version against latest release.</p>
+          </div>
+          <div class="version-check-actions">
+            <button id="versionRefreshBtn" class="icon-btn" title="Refresh version check" aria-label="Refresh version check"><i data-lucide="refresh-cw"></i></button>
+            <button id="versionToggleBtn" class="icon-btn" title="Show release details" aria-label="Toggle release details" aria-expanded="false"><i data-lucide="chevron-down"></i></button>
+          </div>
+        </div>
+        <div id="versionCheckSummary" class="version-check-summary" style="margin-top: 8px;">
+          <span class="version-check-dot version-gray"></span>
+          <span>Version check unavailable</span>
+        </div>
+        <div id="versionCheckDetails" class="version-check-details"></div>
+      </section>
+
       <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px; margin-bottom: 14px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="activity" style="width:16px;height:16px;color:var(--text-secondary);"></i>
@@ -2587,11 +2589,9 @@
       if (view === 'logs') {
         ensureOpsLogsLoaded();
       }
-      if (view === 'health') {
-        loadOpsSummaryCards().catch(() => {});
-      }
       if (view === 'checks') {
         loadServiceHealth(true).catch(() => {});
+        loadVersionCheck().catch(() => {});
       }
       setTimeout(renderLucideIcons, 50);
       setTimeout(renderLucideIcons, 150);
@@ -2934,7 +2934,6 @@
       setupOpsSubNav();
       initOpsLogsView();
       initPanelCollapseState();
-      setOpsSummaryLoading();
       state.watcherHealthLoading = true;
       renderCronHealthCards();
       renderJobsSummaryCards();
@@ -2982,15 +2981,16 @@
       };
 
       try {
-        await Promise.all([loadOpsSummaryCards(), loadServices(), loadVersionCheck(), loadVerification(), loadCrons(), loadBackups(), loadGatewayEvents(), loadWatcherHealth(), loadServiceHealth(true)]);
+        await Promise.all([loadServices(), loadVersionCheck(), loadVerification(), loadCrons(), loadBackups(), loadGatewayEvents(), loadWatcherHealth(), loadServiceHealth(true)]);
         applyCollapsibleState();
         if (window.__opsServicesRefreshTimer) clearInterval(window.__opsServicesRefreshTimer);
         window.__opsServicesRefreshTimer = setInterval(() => {
-          loadOpsSummaryCards().catch((error) => toast(error.message));
           loadServices().catch((error) => toast(error.message));
-          loadVersionCheck().catch((error) => toast(error.message));
           loadVerification().catch((error) => toast(error.message));
           loadGatewayEvents().catch((error) => toast(error.message));
+          if (state.opsView === 'checks') {
+            loadVersionCheck().catch((error) => toast(error.message));
+          }
         }, 60000);
         if (window.__opsWatcherRefreshTimer) clearInterval(window.__opsWatcherRefreshTimer);
         window.__opsWatcherRefreshTimer = setInterval(() => {
