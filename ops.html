@@ -2198,7 +2198,7 @@
           const status = categoryStatus(category.summary || {});
           return `<button class="verification-chip" data-category="${esc(name)}"><span class="verification-chip-dot verification-${status}"></span>${statusSymbol(status)} ${esc(name)}</button>`;
         }).join('')}</div>
-        <div class="verification-counts">${summary.pass || 0} pass, ${summary.fail || 0} fail, ${summary.warn || 0} warn, ${summary.skip || 0} skip</div>
+        <div class="verification-counts"><span style="color:var(--accent-green)">${summary.pass || 0} pass</span>, <span style="color:var(--accent-red)">${summary.fail || 0} fail</span>, <span style="color:var(--accent-amber)">${summary.warn || 0} warn</span>, <span style="color:var(--text-tertiary)">${summary.skip || 0} skip</span></div>
         ${state.verificationError ? `<div class="verification-stale">${esc(state.verificationError)}</div>` : ''}
       `;
 
