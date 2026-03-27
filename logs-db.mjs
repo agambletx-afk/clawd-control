@@ -97,11 +97,11 @@ function buildLogWhere({ source, agent, severity, after, before, task_id, sessio
     params.push(String(severity));
   }
   if (after) {
-    clauses.push('timestamp >= ?');
+    clauses.push("datetime(timestamp) >= datetime(?)");
     params.push(String(after));
   }
   if (before) {
-    clauses.push('timestamp <= ?');
+    clauses.push("datetime(timestamp) <= datetime(?)");
     params.push(String(before));
   }
   if (task_id) {

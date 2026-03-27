@@ -1488,26 +1488,32 @@
     }
 
     function getWatcherResults() {
-      const rows = state.watcherHealth?.health?.results;
-      return Array.isArray(rows) ? rows : [];
+      const r = state.watcherHealth?.health?.results;
+      if (Array.isArray(r)) return r;
+      if (r && typeof r === "object") {
+        return [
+          ...(Array.isArray(r.system_crons) ? r.system_crons : []),
+          ...(Array.isArray(r.gateway_crons) ? r.gateway_crons : [])
+        ];
+      }
+      return [];
     }
 
     function getWatcherName(result = {}) {
       const config = state.watcherHealth?.config || {};
       const configJobs = [
-        ...(Array.isArray(config.jobs) ? config.jobs : []),
         ...(Array.isArray(config.system_crons) ? config.system_crons : []),
         ...(Array.isArray(config.gateway_crons) ? config.gateway_crons : [])
       ];
       const matched = configJobs.find((job) => (job?.id || job?.name) === result.id);
-      return matched?.name || matched?.description || result.id || 'Unknown cron';
+      return matched?.description || matched?.name || result.id || 'Unknown cron';
     }
 
     function getWatcherJobsOverride() {
-      if (!state.watcherHealth || !state.watcherHealth.health || !Array.isArray(state.watcherHealth.health.results)) {
+      const results = getWatcherResults();
+      if (!results.length) {
         return null;
       }
-      const results = state.watcherHealth.health.results;
       const total = results.length;
       const healthy = results.filter((row) => row?.status === 'healthy').length;
       const failing = results.filter((row) => ['failed', 'stale', 'erroring'].includes(row?.status)).length;
@@ -1632,7 +1638,7 @@
       }
       const health = watcher.health;
       const rows = getWatcherResults();
-      if (!health.available) {
+      if (!health.available && rows.length === 0) {
         root.innerHTML = '<div style="color: var(--accent-amber); text-align: center; padding: 20px;">Unable to load cron health data.</div>';
         return;
       }
@@ -1684,12 +1690,24 @@
       let failing = '—';
       let unmonitored = '—';
       if (results) {
-        const byId = new Map(results.map((row) => [row?.id, row]));
+        const byId2 = new Map(results.map((row) => [row?.id, row]));
+        const cfg2 = [
+          ...(Array.isArray((state.watcherHealth?.config||{}).system_crons) ? state.watcherHealth.config.system_crons : []),
+          ...(Array.isArray((state.watcherHealth?.config||{}).gateway_crons) ? state.watcherHealth.config.gateway_crons : [])
+        ];
+        const d2id = new Map();
+        cfg2.forEach((j) => { if (j?.description && j?.id) d2id.set(j.description.toLowerCase(), j.id); });
+        function matchCron(n) {
+          if (byId2.has(n)) return byId2.get(n);
+          const lo = (n||'').toLowerCase();
+          for (const [d,id] of d2id) { if (lo.startsWith(d)) return byId2.get(id)||null; }
+          return null;
+        }
         let healthyCount = 0;
         let failingCount = 0;
         let unmonitoredCount = 0;
         state.crons.forEach((job) => {
-          const match = byId.get(job.name);
+          const match = matchCron(job.name);
           if (!match) {
             unmonitoredCount += 1;
             return;
@@ -1721,12 +1739,25 @@
         return;
       }
       warning.innerHTML = '';
-      const byId = new Map(getWatcherResults().map((row) => [row?.id, row]));
+      const results = getWatcherResults();
+      const byId = new Map(results.map((row) => [row?.id, row]));
+      const cfgAll = [
+        ...(Array.isArray((state.watcherHealth?.config||{}).system_crons) ? state.watcherHealth.config.system_crons : []),
+        ...(Array.isArray((state.watcherHealth?.config||{}).gateway_crons) ? state.watcherHealth.config.gateway_crons : [])
+      ];
+      const descToId = new Map();
+      cfgAll.forEach((j) => { if (j?.description && j?.id) descToId.set(j.description.toLowerCase(), j.id); });
+      function findMatch(n) {
+        if (byId.has(n)) return byId.get(n);
+        const lo = (n||'').toLowerCase();
+        for (const [d,id] of descToId) { if (lo.startsWith(d)) return byId.get(id)||null; }
+        return null;
+      }
       document.querySelectorAll('#cronRows tr[data-cron-name]').forEach((row) => {
         const cell = row.querySelector('[data-role="watcher-status-dot"]');
         if (!cell) return;
         const cronName = row.dataset.cronName;
-        const match = byId.get(cronName);
+        const match = findMatch(cronName);
         if (!match) {
           cell.innerHTML = '<span class="jobs-status-dot gray" title="Not monitored by WATCHER"></span>';
           return;
