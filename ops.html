@@ -845,6 +845,12 @@
       gap: 10px;
     }
 
+    .service-health-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
     .jobs-status-dot {
       width: 9px;
       height: 9px;
@@ -1078,6 +1084,10 @@
       .cron-health-grid {
         grid-template-columns: 1fr;
       }
+
+      .service-health-grid {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 </head>
@@ -1225,6 +1235,18 @@
     </div>
 
     <div id="ops-checks-view" style="display:none;">
+      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px; margin-bottom: 14px;">
+        <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+          <i data-lucide="activity" style="width:16px;height:16px;color:var(--text-secondary);"></i>
+          <div>
+            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;">Service Health</h2>
+            <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Live status of API endpoints and local services.</p>
+          </div>
+        </div>
+        <div id="serviceHealthStats" class="service-health-stats" style="margin-bottom: 12px;"></div>
+        <div id="serviceHealthGrid" class="service-health-grid"></div>
+      </section>
+
       <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px;" aria-label="Deployment verification results">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="shield-check" style="width:16px;height:16px;color:var(--text-secondary);"></i>
@@ -1318,6 +1340,10 @@
       watcherHealth: null,
       watcherHealthLoading: false,
       watcherHealthLoaded: false,
+      serviceHealth: null,
+      serviceHealthLoading: false,
+      serviceHealthLoaded: false,
+      serviceHealthError: '',
       opsView: 'health',
       crons: [],
       opsLogs: {
@@ -2287,6 +2313,186 @@
       renderGatewayEvents();
     }
 
+    function getServiceHealthRows() {
+      if (Array.isArray(state.serviceHealth)) return state.serviceHealth;
+      return [];
+    }
+
+    function serviceHealthStatusRank(status) {
+      if (status === 'down') return 0;
+      if (status === 'degraded') return 1;
+      if (status === 'healthy') return 2;
+      return 3;
+    }
+
+    function serviceHealthTypeLabel(service = {}) {
+      const raw = String(service.type || service.provider || '').toLowerCase();
+      const idName = `${service.id || ''} ${service.name || ''}`.toLowerCase();
+      if (
+        raw.includes('local') ||
+        raw.includes('internal') ||
+        /gateway|clawd control|shim|camoufox|proxy/.test(idName)
+      ) {
+        return 'Local';
+      }
+      return 'External API';
+    }
+
+    function serviceHealthPillStyle(status) {
+      if (status === 'healthy') return 'background: rgba(34,197,94,0.15); color: var(--accent-green); border-color: rgba(34,197,94,0.45);';
+      if (status === 'degraded') return 'background: rgba(245,158,11,0.15); color: var(--accent-amber); border-color: rgba(245,158,11,0.45);';
+      return 'background: rgba(239,68,68,0.15); color: var(--accent-red); border-color: rgba(239,68,68,0.45);';
+    }
+
+    function renderServiceHealthStats() {
+      const root = $('serviceHealthStats');
+      if (!root) return;
+
+      if (state.serviceHealthLoading && !state.serviceHealthLoaded) {
+        root.innerHTML = '<div style="color: var(--text-secondary); text-align: center; padding: 20px;">Loading service health...</div>';
+        return;
+      }
+
+      if (state.serviceHealthError) {
+        root.innerHTML = '<div style="color: var(--accent-amber); text-align: center; padding: 20px;">Unable to reach health check endpoint.</div>';
+        return;
+      }
+
+      const rows = getServiceHealthRows();
+      if (!rows.length) {
+        root.innerHTML = '<div style="color: var(--text-secondary); text-align: center; padding: 20px;">No services configured.</div>';
+        return;
+      }
+
+      const healthy = rows.filter((row) => row?.status === 'healthy').length;
+      const degraded = rows.filter((row) => row?.status === 'degraded').length;
+      const down = rows.filter((row) => row?.status === 'down').length;
+      const total = rows.length;
+      const itemStyle = 'display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);';
+      const numStyle = 'font-family: var(--font-mono); font-variant-numeric: tabular-nums;';
+      root.innerHTML = `
+        <div style="display:flex; flex-wrap:wrap; align-items:center; gap:12px; font-size:12px;">
+          <span style="${itemStyle}">Total: <strong style="${numStyle}; color: var(--text-primary);">${total}</strong></span>
+          <span class="pill" style="${itemStyle} ${serviceHealthPillStyle('healthy')}">Healthy: <strong style="${numStyle}; color: inherit;">${healthy}</strong></span>
+          ${degraded > 0 ? `<span class="pill" style="${itemStyle} ${serviceHealthPillStyle('degraded')}">Degraded: <strong style="${numStyle}; color: inherit;">${degraded}</strong></span>` : ''}
+          ${down > 0 ? `<span class="pill" style="${itemStyle} ${serviceHealthPillStyle('down')}">Down: <strong style="${numStyle}; color: inherit;">${down}</strong></span>` : ''}
+        </div>
+      `;
+    }
+
+    function renderServiceHealthGrid() {
+      const root = $('serviceHealthGrid');
+      if (!root) return;
+
+      if (state.serviceHealthLoading && !state.serviceHealthLoaded) {
+        root.innerHTML = '<div style="color: var(--text-secondary); text-align: center; padding: 20px;">Loading service health...</div>';
+        return;
+      }
+
+      if (state.serviceHealthError) {
+        root.innerHTML = '<div style="color: var(--accent-amber); text-align: center; padding: 20px;">Unable to reach health check endpoint.</div>';
+        return;
+      }
+
+      const rows = getServiceHealthRows();
+      if (!rows.length) {
+        root.innerHTML = '<div style="color: var(--text-secondary); text-align: center; padding: 20px;">No services configured.</div>';
+        return;
+      }
+
+      const sorted = [...rows].sort((a, b) => {
+        const statusDelta = serviceHealthStatusRank(String(a?.status || '').toLowerCase()) - serviceHealthStatusRank(String(b?.status || '').toLowerCase());
+        if (statusDelta !== 0) return statusDelta;
+        return String(a?.name || '').localeCompare(String(b?.name || ''));
+      });
+
+      root.innerHTML = sorted.map((service) => {
+        const serviceId = String(service.id || '');
+        const checkedAt = service.checked_at || service.last_check || null;
+        const status = String(service.status || 'down').toLowerCase();
+        const statusLabel = status.charAt(0).toUpperCase() + status.slice(1);
+        const response = Number.isFinite(Number(service.response_ms))
+          ? `${Number(service.response_ms)}ms`
+          : '—';
+        const stale = checkedAt && Number.isFinite(Date.parse(checkedAt)) && ((Date.now() - Date.parse(checkedAt)) > 5 * 60 * 1000);
+        const staleText = stale ? '<span style="color: var(--text-tertiary);">(stale)</span>' : '';
+        return `<article class="service-health-card" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 10px 12px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; gap: 8px;">
+            <strong style="font-size: 13px; color: var(--text-primary);">${esc(service.name || service.id || 'Unknown service')}</strong>
+            <span class="pill" style="text-transform: capitalize; ${serviceHealthPillStyle(status)}">${esc(statusLabel)}</span>
+          </div>
+          <div style="font-size: 11px; color: var(--text-secondary); display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+            <span>${esc(serviceHealthTypeLabel(service))}</span>
+            <span style="font-family: var(--font-mono); font-variant-numeric: tabular-nums;">${esc(rel(checkedAt))} ${staleText}</span>
+            <span style="font-family: var(--font-mono); font-variant-numeric: tabular-nums;">${esc(response)}</span>
+          </div>
+          <div style="margin-top: 8px;">
+            <button class="btn" style="font-size: 11px; padding: 3px 10px;" onclick='checkServiceNow(${JSON.stringify(serviceId)}, this)'>Check Now</button>
+          </div>
+        </article>`;
+      }).join('');
+    }
+
+    async function loadServiceHealth(force = false) {
+      if (!force && state.opsView !== 'checks') return;
+      const statsEl = $('serviceHealthStats');
+      const gridEl = $('serviceHealthGrid');
+      if (!statsEl || !gridEl) return;
+
+      state.serviceHealthLoading = true;
+      renderServiceHealthStats();
+      renderServiceHealthGrid();
+      try {
+        const res = await fetch('/api/health', {
+          method: 'GET',
+          credentials: 'include'
+        });
+        if (!res.ok) throw new Error(`Health fetch failed: ${res.status}`);
+        const data = await res.json();
+        state.serviceHealth = Array.isArray(data) ? data : (Array.isArray(data.services) ? data.services : []);
+        state.serviceHealthError = '';
+      } catch {
+        state.serviceHealth = null;
+        state.serviceHealthError = 'Unable to reach health check endpoint.';
+      } finally {
+        state.serviceHealthLoading = false;
+        state.serviceHealthLoaded = true;
+        renderServiceHealthStats();
+        renderServiceHealthGrid();
+        setTimeout(renderLucideIcons, 50);
+      }
+    }
+
+    async function checkServiceNow(serviceId, buttonEl) {
+      const button = buttonEl;
+      if (!button) return;
+      button.disabled = true;
+      button.textContent = 'Checking...';
+      try {
+        const res = await fetch('/api/health/check', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ service: serviceId })
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(`Health check failed: ${res.status} ${text}`);
+        }
+        await loadServiceHealth(true);
+        toast('Check completed');
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = 'Check Now';
+        toast(error.message || 'Health check failed');
+        return;
+      }
+      button.disabled = false;
+      button.textContent = 'Check Now';
+    }
+
+    window.checkServiceNow = checkServiceNow;
+
     const VALID_OPS_VIEWS = new Set(['health', 'jobs', 'recovery', 'checks', 'logs']);
 
     function getOpsViewFromHash() {
@@ -2311,6 +2517,9 @@
       }
       if (view === 'health') {
         loadOpsSummaryCards().catch(() => {});
+      }
+      if (view === 'checks') {
+        loadServiceHealth(true).catch(() => {});
       }
       setTimeout(renderLucideIcons, 50);
       setTimeout(renderLucideIcons, 100);
@@ -2700,7 +2909,7 @@
       };
 
       try {
-        await Promise.all([loadOpsSummaryCards(), loadServices(), loadVersionCheck(), loadVerification(), loadCrons(), loadBackups(), loadGatewayEvents(), loadWatcherHealth()]);
+        await Promise.all([loadOpsSummaryCards(), loadServices(), loadVersionCheck(), loadVerification(), loadCrons(), loadBackups(), loadGatewayEvents(), loadWatcherHealth(), loadServiceHealth(true)]);
         applyCollapsibleState();
         if (window.__opsServicesRefreshTimer) clearInterval(window.__opsServicesRefreshTimer);
         window.__opsServicesRefreshTimer = setInterval(() => {
@@ -2712,6 +2921,7 @@
         }, 60000);
         if (window.__opsWatcherRefreshTimer) clearInterval(window.__opsWatcherRefreshTimer);
         window.__opsWatcherRefreshTimer = setInterval(() => {
+          loadServiceHealth().catch(() => {});
           loadWatcherHealth().catch(() => {});
           loadCrons().catch(() => {});
         }, 30000);
