@@ -455,7 +455,7 @@
 
     .ops-table thead th,
     th {
-      background: var(--bg-input, #0d1117);
+      background: #1a1e30;
     }
 
     .btn-primary {
@@ -1017,6 +1017,8 @@
     .ops-severity-dot.error { background: var(--accent-red); }
 
     .ops-logs-list-shell {
+      max-height: 600px;
+      overflow-y: auto;
       border: 1px solid var(--border-subtle);
       border-radius: var(--radius-md);
       background: var(--bg-surface);
@@ -1176,7 +1178,7 @@
         <h1>Operations</h1>
         <p class="subtitle">Infrastructure health, jobs, and recovery.</p>
       </div>
-      <button id="freshSessionBtn" class="btn btn-secondary" style="margin-top: 4px;">Fresh Session</button>
+
     </div>
 
     <div class="sub-nav" id="opsSubNav" role="tablist" aria-label="Operations views">
@@ -1272,7 +1274,7 @@
         </div>
         <div class="row" id="backupStats"></div>
         <div class="row" style="margin: 10px 0;">
-          <button id="createBackupBtn" class="btn btn-primary">Create Backup</button>
+          <button id="createBackupBtn" class="btn btn-secondary">Create Backup</button>
         </div>
         <table class="ops-table">
           <thead>
@@ -1329,7 +1331,7 @@
         <div id="serviceHealthGrid" class="service-health-grid"></div>
       </section>
 
-      <section id="versionCheckBanner" class="version-check-banner" aria-label="OpenClaw version check">
+      <section id="versionCheckBanner" class="version-check-banner" style="background: #1d2039; border-color: rgba(167,139,250,0.12);" aria-label="OpenClaw version check">
         <div class="version-check-main">
           <div>
             <div class="version-check-summary" style="margin-bottom: 2px;"><span class="ops-domain-capsule"></span>Version Check</div>
@@ -1358,7 +1360,7 @@
         <div class="verification-header">
           <div></div>
           <div>
-            <button id="verificationRunBtn" class="btn btn-primary">Run Verification</button>
+            <button id="verificationRunBtn" class="btn btn-secondary">Run Verification</button>
             <button id="verificationToggleBtn" class="btn verification-toggle" aria-label="Toggle verification details" aria-expanded="false"><i data-lucide="chevron-down"></i></button>
           </div>
         </div>
@@ -2369,7 +2371,7 @@
         const isEnabled = job.enabled !== false;
         const gwId = job._gatewayId || job.name;
         const toggleButton = isGateway
-          ? ` <button class="btn ${isEnabled ? 'btn-secondary' : 'btn-primary'}" onclick="toggleGatewayCron('${encodeURIComponent(gwId)}', ${isEnabled ? 'true' : 'false'}, this)">${isEnabled ? 'Disable' : 'Enable'}</button>`
+          ? ` <button class="btn btn-secondary" onclick="toggleGatewayCron('${encodeURIComponent(gwId)}', ${isEnabled ? 'true' : 'false'}, this)">${isEnabled ? 'Disable' : 'Enable'}</button>`
           : '';
         const runBtn = !isGateway
           ? `<button class="btn" onclick="triggerCron('${encodeURIComponent(job.name)}', this)">Run Now</button>`
