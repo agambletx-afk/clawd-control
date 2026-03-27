@@ -5,12 +5,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Operations — Clawd Control</title>
   <style>
+
+    :root {
+      /* Operations domain identity */
+      --ops-domain: #a78bfa;
+      --ops-domain-rgb: 167, 139, 250;
+      --ops-tint-soft: rgba(167, 139, 250, 0.04);
+      --ops-tint-med: rgba(167, 139, 250, 0.08);
+      --ops-tint-strong: rgba(167, 139, 250, 0.12);
+      --ops-tint-border: rgba(167, 139, 250, 0.20);
+    }
+
     /* =========================================================
        Page Layout
        ========================================================= */
 
     .page-header {
-      margin-bottom: 14px;
+      margin-bottom: 16px;
     }
 
     .page-header h1 {
@@ -32,7 +43,7 @@
       border: 1px solid var(--border-subtle);
       border-radius: var(--radius-lg);
       padding: 16px;
-      margin-bottom: 14px;
+      margin-bottom: 16px;
       min-width: 0;
     }
 
@@ -45,7 +56,7 @@
 
     .panel-subtitle {
       margin-top: 2px;
-      margin-bottom: 10px;
+      margin-bottom: 8px;
       font-size: 12px;
       font-weight: 400;
       color: var(--text-secondary);
@@ -54,8 +65,8 @@
     .version-check-banner {
       display: grid;
       gap: 8px;
-      margin-bottom: 14px;
-      padding: 10px 12px;
+      margin-bottom: 16px;
+      padding: 8px 12px;
       border: 1px solid var(--border);
       border-radius: 10px;
       background: var(--bg-secondary);
@@ -155,14 +166,14 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
       margin-bottom: 8px;
     }
 
     .verification-meta {
       display: flex;
       flex-wrap: wrap;
-      gap: 10px;
+      gap: 8px;
       font-size: 0.78rem;
       color: var(--text-secondary);
       margin-bottom: 8px;
@@ -255,7 +266,7 @@
     .verification-test-main {
       display: flex;
       justify-content: space-between;
-      gap: 10px;
+      gap: 8px;
     }
 
     .verification-test-left {
@@ -291,7 +302,7 @@
 
     .row {
       display: flex;
-      gap: 10px;
+      gap: 8px;
       flex-wrap: wrap;
       align-items: center;
     }
@@ -303,13 +314,13 @@
     .services {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 10px;
+      gap: 8px;
     }
 
     .card {
       border: 1px solid var(--border);
       border-radius: 10px;
-      padding: 10px;
+      padding: 8px;
       background: var(--bg-tertiary);
     }
 
@@ -410,6 +421,63 @@
       color: #f87171;
     }
 
+
+    .ops-domain-capsule {
+      display: inline-block;
+      width: 14px;
+      height: 4px;
+      border-radius: 2px;
+      background: var(--ops-domain, #a78bfa);
+      margin-right: 8px;
+      vertical-align: middle;
+      flex: 0 0 auto;
+    }
+
+    .cron-card,
+    .cron-health-card,
+    .ops-service-card,
+    .service-health-card,
+    .ops-ingestion-card,
+    .ops-logs-health-card {
+      border-top: 2px solid var(--ops-tint-border, rgba(167, 139, 250, 0.20));
+      background: var(--bg-elevated);
+    }
+
+    .ops-table thead th,
+    th {
+      background: var(--bg-input, #0d1117);
+    }
+
+    .btn-primary {
+      background: #2dd4bf;
+      color: #0f1419;
+      border: none;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .btn-primary:hover {
+      background: #5eead4;
+    }
+
+    .btn-secondary {
+      background: var(--bg-elevated, #1e2535);
+      color: var(--text-primary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(167, 139, 250, 0.08);
+      border-color: var(--border-strong);
+    }
+
     /* =========================================================
        Toast
        ========================================================= */
@@ -421,7 +489,7 @@
       background: #111827;
       color: #e5e7eb;
       border: 1px solid var(--border);
-      padding: 10px;
+      padding: 8px;
       border-radius: 8px;
       z-index: 9999;
       display: none;
@@ -521,7 +589,7 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
       padding: 12px 14px;
       border-bottom: 1px solid var(--border-subtle);
     }
@@ -532,18 +600,18 @@
     }
 
     .manifest-modal-meta {
-      padding: 10px 14px;
+      padding: 8px 16px;
       border-bottom: 1px solid var(--border-subtle);
       color: var(--text-secondary);
       font-size: 0.78rem;
       display: flex;
-      gap: 14px;
+      gap: 16px;
       flex-wrap: wrap;
     }
 
     .manifest-file-list {
       margin: 0;
-      padding: 10px 14px;
+      padding: 8px 16px;
       list-style: none;
       overflow-y: auto;
       display: grid;
@@ -554,7 +622,7 @@
     .manifest-file-item {
       display: grid;
       grid-template-columns: 1fr auto;
-      gap: 10px;
+      gap: 8px;
       align-items: center;
       border: 1px solid var(--border-subtle);
       border-radius: 8px;
@@ -575,7 +643,7 @@
     }
 
     .manifest-modal-foot {
-      padding: 10px 14px;
+      padding: 8px 16px;
       border-top: 1px solid var(--border-subtle);
       display: flex;
       justify-content: flex-end;
@@ -597,7 +665,7 @@
       align-items: center;
       justify-content: space-between;
       gap: 8px;
-      padding: 10px 12px;
+      padding: 8px 12px;
       cursor: pointer;
       user-select: none;
       color: inherit;
@@ -657,15 +725,15 @@
     .ops-summary-grid {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 10px;
-      margin-bottom: 14px;
+      gap: 16px;
+      margin-bottom: 16px;
     }
 
     .ops-summary-card {
       position: relative;
       border: 1px solid var(--border-subtle);
       border-radius: var(--radius-lg);
-      background: var(--bg-surface);
+      background: linear-gradient(135deg, rgba(167,139,250,0.12) 0%, var(--bg-surface) 100%);
       padding: 12px 12px 12px 14px;
       min-height: 130px;
       overflow: hidden;
@@ -681,7 +749,7 @@
       left: 0;
       bottom: 0;
       width: 3px;
-      background: #a78bfa;
+      background: var(--ops-domain, #a78bfa);
     }
 
     .ops-summary-label {
@@ -789,15 +857,15 @@
     .ops-logs-health-grid {
       display: grid;
       grid-template-columns: repeat(5, minmax(0, 1fr));
-      gap: 10px;
+      gap: 8px;
     }
 
     .ops-logs-health-card {
       position: relative;
       border: 1px solid var(--border-subtle);
       border-radius: var(--radius-lg);
-      background: var(--bg-surface);
-      padding: 10px 10px 10px 12px;
+      background: linear-gradient(135deg, rgba(167,139,250,0.12) 0%, var(--bg-surface) 100%);
+      padding: 8px 8px 8px 12px;
       overflow: hidden;
     }
 
@@ -808,7 +876,7 @@
       top: 0;
       bottom: 0;
       width: 3px;
-      background: #a78bfa;
+      background: var(--ops-domain, #a78bfa);
     }
 
     .ops-logs-health-head {
@@ -842,13 +910,13 @@
     .cron-health-grid {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 10px;
+      gap: 8px;
     }
 
     .service-health-grid {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 10px;
+      gap: 8px;
     }
 
     .jobs-status-dot {
@@ -870,7 +938,7 @@
     }
 
     .ops-logs-health-value {
-      font-size: 0.95rem;
+      font-size: 28px;
       color: var(--text-primary);
       margin-bottom: 2px;
     }
@@ -1110,33 +1178,33 @@
     </div>
 
     <div id="ops-health-view">
-      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px; margin-bottom: 14px;">
+      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="server" style="width:16px;height:16px;color:var(--text-secondary);"></i>
           <div>
-            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;">Service Controls</h2>
+            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;"><span class="ops-domain-capsule"></span>Service Controls</h2>
             <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Whether the core control plane is up right now.</p>
           </div>
         </div>
         <div id="serviceCards" class="services"></div>
       </section>
 
-      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px; margin-bottom: 14px;">
+      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="heart-pulse" style="width:16px;height:16px;color:var(--text-secondary);"></i>
           <div>
-            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;">Cron Health</h2>
+            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;"><span class="ops-domain-capsule"></span>Cron Health</h2>
             <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Status of all monitored crons. Sorted by severity.</p>
           </div>
         </div>
         <div id="cronHealthCards" class="cron-health-grid"></div>
       </section>
 
-      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px; margin-bottom: 14px;">
+      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="radio" style="width:16px;height:16px;color:var(--text-secondary);"></i>
           <div>
-            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;">Gateway Events</h2>
+            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;"><span class="ops-domain-capsule"></span>Gateway Events</h2>
             <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Live gateway events from the OpenClaw process.</p>
           </div>
         </div>
@@ -1157,17 +1225,18 @@
     </div>
 
     <div id="ops-jobs-view" style="display:none;">
-      
+
       <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="clock" style="width:16px;height:16px;color:var(--text-secondary);"></i>
           <div>
-            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;">Cron Jobs</h2>
+            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;"><span class="ops-domain-capsule"></span>Cron Jobs</h2>
             <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Scheduled automation. Missed or failing jobs quietly break the system.</p>
           </div>
         </div>
+        <div class="ops-summary-grid" id="jobsSummaryRow" style="grid-template-columns: repeat(4, minmax(0, 1fr));"></div>
         <div id="opsWatcherWarning"></div>
-        <table>
+        <table class="ops-table">
           <thead>
             <tr>
               <th style="width: 36px;">Status</th>
@@ -1187,15 +1256,15 @@
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="archive" style="width:16px;height:16px;color:var(--text-secondary);"></i>
           <div>
-            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;">Backups</h2>
+            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;"><span class="ops-domain-capsule"></span>Backups</h2>
             <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Create, restore, and manage recovery snapshots.</p>
           </div>
         </div>
         <div class="row" id="backupStats"></div>
         <div class="row" style="margin: 10px 0;">
-          <button id="createBackupBtn" class="btn btn-green">Create Backup</button>
+          <button id="createBackupBtn" class="btn btn-primary">Create Backup</button>
         </div>
-        <table>
+        <table class="ops-table">
           <thead>
             <tr>
               <th>Filename</th>
@@ -1217,17 +1286,43 @@
             <span class="muted">older than</span>
             <input id="maxAgeDays" type="number" value="30" min="1" style="width: 80px;" />
             <span class="muted">days</span>
-            <button id="cleanupBtn" class="btn btn-amber">Run Cleanup</button>
+            <button id="cleanupBtn" class="btn btn-secondary">Run Cleanup</button>
           </div>
         </div>
       </section>
     </div>
 
     <div id="ops-checks-view" style="display:none;">
+
+
+      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
+        <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+          <i data-lucide="database" style="width:16px;height:16px;color:var(--text-secondary);"></i>
+          <div>
+            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;"><span class="ops-domain-capsule"></span>Log Ingestion Health</h2>
+            <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Whether log sources are feeding data. Stale sources mean blind spots.</p>
+          </div>
+        </div>
+        <div id="opsLogsHealthStale" class="ops-logs-stale" style="display:none;"></div>
+        <div id="opsLogsHealthGrid" class="ops-logs-health-grid"></div>
+      </section>
+
+      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
+        <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+          <i data-lucide="activity" style="width:16px;height:16px;color:var(--text-secondary);"></i>
+          <div>
+            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;"><span class="ops-domain-capsule"></span>Service Health</h2>
+            <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Live status of API endpoints and local services.</p>
+          </div>
+        </div>
+        <div id="serviceHealthStats" class="service-health-stats" style="margin-bottom: 12px;"></div>
+        <div id="serviceHealthGrid" class="service-health-grid"></div>
+      </section>
+
       <section id="versionCheckBanner" class="version-check-banner" aria-label="OpenClaw version check">
         <div class="version-check-main">
           <div>
-            <div class="version-check-summary" style="margin-bottom: 2px;">Version Check</div>
+            <div class="version-check-summary" style="margin-bottom: 2px;"><span class="ops-domain-capsule"></span>Version Check</div>
             <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 0;">Compares installed version against latest release.</p>
           </div>
           <div class="version-check-actions">
@@ -1242,42 +1337,18 @@
         <div id="versionCheckDetails" class="version-check-details"></div>
       </section>
 
-      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px; margin-bottom: 14px;">
-        <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
-          <i data-lucide="database" style="width:16px;height:16px;color:var(--text-secondary);"></i>
-          <div>
-            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;">Log Ingestion Health</h2>
-            <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Whether log sources are feeding data. Stale sources mean blind spots.</p>
-          </div>
-        </div>
-        <div id="opsLogsHealthStale" class="ops-logs-stale" style="display:none;"></div>
-        <div id="opsLogsHealthGrid" class="ops-logs-health-grid"></div>
-      </section>
-
-      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px; margin-bottom: 14px;">
-        <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
-          <i data-lucide="activity" style="width:16px;height:16px;color:var(--text-secondary);"></i>
-          <div>
-            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;">Service Health</h2>
-            <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Live status of API endpoints and local services.</p>
-          </div>
-        </div>
-        <div id="serviceHealthStats" class="service-health-stats" style="margin-bottom: 12px;"></div>
-        <div id="serviceHealthGrid" class="service-health-grid"></div>
-      </section>
-
       <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px;" aria-label="Deployment verification results">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="shield-check" style="width:16px;height:16px;color:var(--text-secondary);"></i>
           <div>
-            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;">Deployment Verification</h2>
+            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;"><span class="ops-domain-capsule"></span>Deployment Verification</h2>
             <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Confirms the running build matches expected state.</p>
           </div>
         </div>
         <div class="verification-header">
           <div></div>
           <div>
-            <button id="verificationRunBtn" class="btn btn-green">Run Verification</button>
+            <button id="verificationRunBtn" class="btn btn-primary">Run Verification</button>
             <button id="verificationToggleBtn" class="btn verification-toggle" aria-label="Toggle verification details" aria-expanded="false"><i data-lucide="chevron-down"></i></button>
           </div>
         </div>
@@ -1293,7 +1364,7 @@
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="file-text" style="width:16px;height:16px;color:var(--text-secondary);"></i>
           <div>
-            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;">Unified Logs Viewer</h2>
+            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;"><span class="ops-domain-capsule"></span>Unified Logs Viewer</h2>
             <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Aggregated logs from task audit, ops log, security hooks, cron health, and WATCHER.</p>
           </div>
         </div>
@@ -1862,46 +1933,42 @@
     }
 
     function renderJobsSummaryCards() {
-      const root = $('opsJobsSummaryCards');
+      const root = $('jobsSummaryRow');
       if (!root) return;
-      const results = state.watcherHealth ? getWatcherResults() : null;
-      let failing = '—';
-      let unmonitored = '—';
-      let failingClass = 'tertiary';
-      let unmonitoredClass = 'tertiary';
-      if (results) {
-        const byId2 = new Map(results.map((row) => [row?.id, row]));
-        const cfg2 = [
-          ...(Array.isArray((state.watcherHealth?.config||{}).system_crons) ? state.watcherHealth.config.system_crons : []),
-          ...(Array.isArray((state.watcherHealth?.config||{}).gateway_crons) ? state.watcherHealth.config.gateway_crons : [])
-        ];
-        const d2id = new Map();
-        cfg2.forEach((j) => { if (j?.description && j?.id) d2id.set(j.description.toLowerCase(), j.id); });
-        function matchCron(n) {
-          if (byId2.has(n)) return byId2.get(n);
-          const lo = (n||'').toLowerCase();
-          for (const [d,id] of d2id) { if (lo.startsWith(d)) return byId2.get(id)||null; }
-          for (const [id,row] of byId2) { if ((row?.name||'') === n) return row; }
-          return null;
-        }
-        let failingCount = 0;
-        let unmonitoredCount = 0;
-        state.crons.forEach((job) => {
-          const match = matchCron(job.name);
-          if (!match) {
-            unmonitoredCount += 1;
-            return;
-          }
-          if (['failed', 'erroring', 'stale'].includes(match.status)) failingCount += 1;
-        });
-        failing = String(failingCount);
-        unmonitored = String(unmonitoredCount);
-        failingClass = Number(failing) > 0 ? 'red' : '';
-        unmonitoredClass = Number(unmonitored) > 0 ? 'amber' : '';
+      if (!Array.isArray(state.crons) || state.crons.length === 0) {
+        root.innerHTML = [
+          { label: 'TOTAL JOBS', value: '0', subtitle: 'system + gateway' },
+          { label: 'HEALTHY', value: '0', subtitle: 'WATCHER status healthy/ok' },
+          { label: 'FAILING', value: '0', subtitle: 'WATCHER status failed/erroring' },
+          { label: 'UNMONITORED', value: '0', subtitle: 'not tracked by WATCHER' }
+        ].map(renderSummaryCard).join('');
+        return;
       }
+
+      let healthyCount = 0;
+      let failingCount = 0;
+      let unmonitoredCount = 0;
+
+      state.crons.forEach((job) => {
+        const cronName = job?._isGateway ? (job._gatewayId || job.name) : job?.name;
+        const match = getCronWatcherMatch(cronName);
+        if (!match) {
+          unmonitoredCount += 1;
+          return;
+        }
+        const status = String(match.status || '').toLowerCase();
+        if (status === 'healthy' || status === 'ok') {
+          healthyCount += 1;
+        } else if (status === 'failed' || status === 'erroring') {
+          failingCount += 1;
+        }
+      });
+
       root.innerHTML = [
-        { label: 'FAILING', value: failing, valueClass: failingClass, subtitle: 'WATCHER matched failing or stale jobs.' },
-        { label: 'UNMONITORED', value: unmonitored, valueClass: unmonitoredClass, subtitle: 'Crons without WATCHER coverage.' }
+        { label: 'TOTAL JOBS', value: String(state.crons.length), subtitle: 'system + gateway' },
+        { label: 'HEALTHY', value: String(healthyCount), valueClass: healthyCount > 0 ? 'green' : '', subtitle: 'WATCHER status healthy/ok' },
+        { label: 'FAILING', value: String(failingCount), valueClass: failingCount > 0 ? 'red' : '', subtitle: 'WATCHER status failed/erroring' },
+        { label: 'UNMONITORED', value: String(unmonitoredCount), valueClass: unmonitoredCount > 0 ? 'amber' : '', subtitle: 'not tracked by WATCHER' }
       ].map(renderSummaryCard).join('');
     }
 
@@ -2216,7 +2283,7 @@
               PID ${service.pid || '—'} · ${service.uptime_since ? new Date(service.uptime_since).toLocaleString() : '—'}
             </div>
             ${service.memory_mb ? `<div class="muted">${service.memory_mb} MB</div>` : ''}
-            <button class="btn btn-amber" onclick="restartService('${service.name}', this)">Restart</button>
+            <button class="btn btn-secondary" onclick="restartService('${service.name}', this)">Restart</button>
           </div>
         `;
       }).join('');
@@ -2292,10 +2359,10 @@
         const isEnabled = job.enabled !== false;
         const gwId = job._gatewayId || job.name;
         const toggleButton = isGateway
-          ? ` <button class="btn ${isEnabled ? 'btn-amber' : 'btn-green'}" onclick="toggleGatewayCron('${encodeURIComponent(gwId)}', ${isEnabled ? 'true' : 'false'}, this)">${isEnabled ? 'Disable' : 'Enable'}</button>`
+          ? ` <button class="btn ${isEnabled ? 'btn-secondary' : 'btn-primary'}" onclick="toggleGatewayCron('${encodeURIComponent(gwId)}', ${isEnabled ? 'true' : 'false'}, this)">${isEnabled ? 'Disable' : 'Enable'}</button>`
           : '';
         const runBtn = !isGateway
-          ? `<button class="btn" onclick="triggerCron('${encodeURIComponent(job.name)}', this)">Run Now</button>`
+          ? `<button class="btn btn-primary" onclick="triggerCron('${encodeURIComponent(job.name)}', this)">Run Now</button>`
           : '';
         return `
           <tr data-cron-name="${esc(isGateway ? gwId : job.name)}">
@@ -2358,7 +2425,7 @@
             <td>${fmtBytes(backup.size_bytes)}</td>
             <td>${backup.age_days}d</td>
             <td>
-              <button class="btn btn-amber" onclick="restoreBackup('${filename}', this)">Restore</button>
+              <button class="btn btn-secondary" onclick="restoreBackup('${filename}', this)">Restore</button>
               <button class="btn btn-red" onclick="deleteBackup('${filename}', this)">Delete</button>
             </td>
           </tr>
@@ -2854,13 +2921,14 @@
         else if (!lastIngest) status = 'idle';
         else if (!isRecent) status = 'warn';
         else status = 'ok';
-        return `<div class="ops-logs-health-card">
+        return `<div class="ops-logs-health-card ops-summary-card ops-ingestion-card">
           <div class="ops-logs-health-head">
             <div class="ops-logs-health-label">${esc(sourceLabel(source))}</div>
             <span class="ops-status-dot ${status}"></span>
           </div>
-          <div class="ops-logs-health-value">${Number(item.log_count || 0).toLocaleString()}</div>
+          <div class="ops-logs-health-value ops-summary-value">${Number(item.log_count || 0).toLocaleString()}</div>
           <div class="ops-logs-health-sub">${esc(lastIngest ? rel(lastIngest) : 'never')}</div>
+          <div class="ops-summary-sub">${esc(source === 'watcher' ? 'events ingested' : 'log entries')}</div>
         </div>`;
       }).join('');
       const stale = $('opsLogsHealthStale');
