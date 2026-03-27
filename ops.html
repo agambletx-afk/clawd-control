@@ -1776,7 +1776,7 @@
         const pillBg = statusClass === 'green' ? 'rgba(34,197,94,0.15)' : statusClass === 'amber' ? 'rgba(245,158,11,0.15)' : statusClass === 'gray' ? 'rgba(148,163,184,0.15)' : 'rgba(239,68,68,0.15)';
         const pillColor = statusClass === 'green' ? 'var(--accent-green)' : statusClass === 'amber' ? 'var(--accent-amber)' : statusClass === 'gray' ? 'var(--text-secondary)' : 'var(--accent-red)';
         const pillBorder = statusClass === 'green' ? 'rgba(34,197,94,0.45)' : statusClass === 'amber' ? 'rgba(245,158,11,0.45)' : statusClass === 'gray' ? 'rgba(148,163,184,0.35)' : 'rgba(239,68,68,0.45)';
-        return `<article class="cron-health-card" style="background: var(--bg-elevated); border: 1px solid var(--border-strong); border-radius: 12px; padding: 8px 12px;">
+        return `<article class="cron-health-card" style="background: var(--bg-elevated); border: 1px solid rgba(255,255,255,0.10); border-top: 2px solid rgba(167,139,250,0.20); border-radius: 12px; padding: 8px 12px;">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; gap: 8px;">
             <strong style="font-size: 13px; color: var(--text-primary);">${esc(getWatcherName(row))}</strong>
             <span class="pill" style="text-transform: capitalize; background: ${pillBg}; color: ${pillColor}; border-color: ${pillBorder};">${esc(statusLabel)}</span>
@@ -2280,7 +2280,7 @@
       const data = await api('/api/ops/services/status');
       const html = data.services.map((service) => {
         return `
-          <div class="card ops-service-card" style="background: var(--bg-elevated);">
+          <div class="card ops-service-card" style="background: var(--bg-elevated); border: 1px solid rgba(255,255,255,0.10); border-top: 2px solid rgba(167,139,250,0.20); border-radius: 12px;">
             <div class="row" style="justify-content: space-between;">
               <strong>${service.name}</strong>
               <span>
