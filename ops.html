@@ -808,7 +808,7 @@
       top: 0;
       bottom: 0;
       width: 3px;
-      background: #ef4444;
+      background: #a78bfa;
     }
 
     .ops-logs-health-head {
@@ -1157,7 +1157,7 @@
     </div>
 
     <div id="ops-jobs-view" style="display:none;">
-      <div id="opsJobsSummaryCards" class="ops-summary-grid" aria-label="Cron jobs summary" style="grid-template-columns: repeat(2, minmax(0, 1fr));"></div>
+      
       <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="clock" style="width:16px;height:16px;color:var(--text-secondary);"></i>
@@ -1923,7 +1923,7 @@
         const cronName = row.dataset.cronName;
         const match = getCronWatcherMatch(cronName);
         if (!match) {
-          cell.innerHTML = '<span class="jobs-status-dot gray" title="Not monitored by WATCHER" style="opacity:0.5;"></span>';
+          cell.innerHTML = '<span class="jobs-status-dot gray" title="Not monitored by WATCHER" style="opacity:0.4;"></span>';
           return;
         }
         const dotClass = watcherStatusClass(match.status);
@@ -2066,10 +2066,10 @@
     }
 
     function statusSymbol(status) {
-      if (status === 'pass') return '[PASS]';
-      if (status === 'fail') return '[FAIL]';
-      if (status === 'warn') return '[WARN]';
-      return '[SKIP]';
+      if (status === 'pass') return '<span style="color: var(--accent-green);">[PASS]</span>';
+      if (status === 'fail') return '<span style="color: var(--accent-red);">[FAIL]</span>';
+      if (status === 'warn') return '<span style="color: var(--accent-amber);">[WARN]</span>';
+      return '<span style="color: var(--text-tertiary);">[SKIP]</span>';
     }
 
     function formatDuration(durationMs) {
@@ -2215,7 +2215,7 @@
             <div class="muted">
               PID ${service.pid || '—'} · ${service.uptime_since ? new Date(service.uptime_since).toLocaleString() : '—'}
             </div>
-            <div class="muted">${service.memory_mb ?? '—'} MB</div>
+            ${service.memory_mb ? `<div class="muted">${service.memory_mb} MB</div>` : ''}
             <button class="btn btn-amber" onclick="restartService('${service.name}', this)">Restart</button>
           </div>
         `;
@@ -2671,7 +2671,7 @@
           <div style="font-size: 11px; color: var(--text-secondary); display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
             <span>${esc(serviceHealthTypeLabel(service))}</span>
             <span style="font-family: var(--font-mono); font-variant-numeric: tabular-nums;">${esc(rel(checkedAt))} ${staleText}</span>
-            <span style="font-family: var(--font-mono); font-variant-numeric: tabular-nums;">${esc(response)}</span>
+            ${response !== '—' ? `<span style="font-family: var(--font-mono); font-variant-numeric: tabular-nums;">Response: ${esc(response)}</span>` : ''}
           </div>
           <div style="margin-top: 8px;">
             <button class="btn" style="font-size: 11px; padding: 3px 10px;" onclick='checkServiceNow(${JSON.stringify(serviceId)}, this)'>Check Now</button>
