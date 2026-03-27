@@ -427,7 +427,7 @@
     .ops-service-card:hover,
     .service-health-card:hover,
     .ops-logs-health-card:hover {
-      background: color-mix(in srgb, var(--ops-domain) 4%, var(--bg-elevated));
+      background: linear-gradient(135deg, rgba(167,139,250,0.06) 0%, var(--bg-elevated) 100%);
       border-color: var(--border-strong);
     }
 
@@ -448,8 +448,9 @@
     .service-health-card,
     .ops-ingestion-card,
     .ops-logs-health-card {
-      border-top: 2px solid var(--ops-tint-border, rgba(167, 139, 250, 0.20));
-      background: var(--bg-elevated);
+      border: 1px solid rgba(167, 139, 250, 0.18);
+      border-top: 2px solid rgba(167, 139, 250, 0.35);
+      background: #232a3a;
     }
 
     .ops-table thead th,
@@ -662,7 +663,7 @@
     .gateway-events-panel {
       border: 1px solid rgba(167,139,250,0.12);
       border-radius: var(--radius-md);
-      background: color-mix(in srgb, var(--ops-domain) 4%, var(--bg-surface));
+      background: #1d2039;
       overflow: hidden;
     }
 
@@ -740,9 +741,9 @@
 
     .ops-summary-card {
       position: relative;
-      border: 1px solid var(--border-subtle);
+      border: 1px solid rgba(167, 139, 250, 0.22);
       border-radius: var(--radius-lg);
-      background: linear-gradient(135deg, rgba(167,139,250,0.12) 0%, var(--bg-surface) 100%);
+      background: #252342;
       padding: 12px 12px 12px 14px;
       min-height: 130px;
       overflow: hidden;
@@ -873,7 +874,7 @@
       position: relative;
       border: 1px solid var(--border-subtle);
       border-radius: var(--radius-lg);
-      background: linear-gradient(135deg, rgba(167,139,250,0.12) 0%, var(--bg-surface) 100%);
+      background: #252342;
       padding: 8px 8px 8px 12px;
       overflow: hidden;
     }
@@ -1187,7 +1188,7 @@
     </div>
 
     <div id="ops-health-view">
-      <section class="panel" style="background: color-mix(in srgb, var(--ops-domain) 4%, var(--bg-surface)); border: 1px solid rgba(167,139,250,0.12); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
+      <section class="panel" style="background: #1d2039; border: 1px solid rgba(167,139,250,0.12); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="server" style="width:16px;height:16px;color:var(--text-secondary);"></i>
           <div>
@@ -1198,7 +1199,7 @@
         <div id="serviceCards" class="services"></div>
       </section>
 
-      <section class="panel" style="background: color-mix(in srgb, var(--ops-domain) 4%, var(--bg-surface)); border: 1px solid rgba(167,139,250,0.12); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
+      <section class="panel" style="background: #1d2039; border: 1px solid rgba(167,139,250,0.12); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="heart-pulse" style="width:16px;height:16px;color:var(--text-secondary);"></i>
           <div>
@@ -1209,7 +1210,7 @@
         <div id="cronHealthCards" class="cron-health-grid"></div>
       </section>
 
-      <section class="panel" style="background: color-mix(in srgb, var(--ops-domain) 4%, var(--bg-surface)); border: 1px solid rgba(167,139,250,0.12); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
+      <section class="panel" style="background: #1d2039; border: 1px solid rgba(167,139,250,0.12); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="radio" style="width:16px;height:16px;color:var(--text-secondary);"></i>
           <div>
@@ -1235,7 +1236,7 @@
 
     <div id="ops-jobs-view" style="display:none;">
 
-      <section class="panel" style="background: color-mix(in srgb, var(--ops-domain) 4%, var(--bg-surface)); border: 1px solid rgba(167,139,250,0.12); border-radius: 12px; padding: 16px 20px;">
+      <section class="panel" style="background: #1d2039; border: 1px solid rgba(167,139,250,0.12); border-radius: 12px; padding: 16px 20px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="clock" style="width:16px;height:16px;color:var(--text-secondary);"></i>
           <div>
@@ -1261,7 +1262,7 @@
     </div>
 
     <div id="ops-recovery-view" style="display:none;">
-      <section class="panel" style="background: color-mix(in srgb, var(--ops-domain) 4%, var(--bg-surface)); border: 1px solid rgba(167,139,250,0.12); border-radius: 12px; padding: 16px 20px;">
+      <section class="panel" style="background: #1d2039; border: 1px solid rgba(167,139,250,0.12); border-radius: 12px; padding: 16px 20px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="archive" style="width:16px;height:16px;color:var(--text-secondary);"></i>
           <div>
@@ -1304,7 +1305,7 @@
     <div id="ops-checks-view" style="display:none;">
 
 
-      <section class="panel" style="background: color-mix(in srgb, var(--ops-domain) 4%, var(--bg-surface)); border: 1px solid rgba(167,139,250,0.12); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
+      <section class="panel" style="background: #1d2039; border: 1px solid rgba(167,139,250,0.12); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="database" style="width:16px;height:16px;color:var(--text-secondary);"></i>
           <div>
@@ -1316,7 +1317,7 @@
         <div id="opsLogsHealthGrid" class="ops-logs-health-grid"></div>
       </section>
 
-      <section class="panel" style="background: color-mix(in srgb, var(--ops-domain) 4%, var(--bg-surface)); border: 1px solid rgba(167,139,250,0.12); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
+      <section class="panel" style="background: #1d2039; border: 1px solid rgba(167,139,250,0.12); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="activity" style="width:16px;height:16px;color:var(--text-secondary);"></i>
           <div>
@@ -1346,7 +1347,7 @@
         <div id="versionCheckDetails" class="version-check-details"></div>
       </section>
 
-      <section class="panel" style="background: color-mix(in srgb, var(--ops-domain) 4%, var(--bg-surface)); border: 1px solid rgba(167,139,250,0.12); border-radius: 12px; padding: 16px 20px;" aria-label="Deployment verification results">
+      <section class="panel" style="background: #1d2039; border: 1px solid rgba(167,139,250,0.12); border-radius: 12px; padding: 16px 20px;" aria-label="Deployment verification results">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="shield-check" style="width:16px;height:16px;color:var(--text-secondary);"></i>
           <div>
@@ -1369,7 +1370,7 @@
     </div>
 
     <div id="ops-logs-view" class="ops-logs-view" style="display:none;">
-      <section class="panel" style="background: color-mix(in srgb, var(--ops-domain) 4%, var(--bg-surface)); border: 1px solid rgba(167,139,250,0.12); border-radius: 12px; padding: 16px 20px;">
+      <section class="panel" style="background: #1d2039; border: 1px solid rgba(167,139,250,0.12); border-radius: 12px; padding: 16px 20px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="file-text" style="width:16px;height:16px;color:var(--text-secondary);"></i>
           <div>
@@ -1776,7 +1777,7 @@
         const pillBg = statusClass === 'green' ? 'rgba(34,197,94,0.15)' : statusClass === 'amber' ? 'rgba(245,158,11,0.15)' : statusClass === 'gray' ? 'rgba(148,163,184,0.15)' : 'rgba(239,68,68,0.15)';
         const pillColor = statusClass === 'green' ? 'var(--accent-green)' : statusClass === 'amber' ? 'var(--accent-amber)' : statusClass === 'gray' ? 'var(--text-secondary)' : 'var(--accent-red)';
         const pillBorder = statusClass === 'green' ? 'rgba(34,197,94,0.45)' : statusClass === 'amber' ? 'rgba(245,158,11,0.45)' : statusClass === 'gray' ? 'rgba(148,163,184,0.35)' : 'rgba(239,68,68,0.45)';
-        return `<article class="cron-health-card" style="background: var(--bg-elevated); border: 1px solid rgba(255,255,255,0.10); border-top: 2px solid rgba(167,139,250,0.20); border-radius: 12px; padding: 8px 12px;">
+        return `<article class="cron-health-card" style="background: #232a3a; border: 1px solid rgba(167,139,250,0.18); border-top: 2px solid rgba(167,139,250,0.35); border-radius: 12px; padding: 8px 12px;">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; gap: 8px;">
             <strong style="font-size: 13px; color: var(--text-primary);">${esc(getWatcherName(row))}</strong>
             <span class="pill" style="text-transform: capitalize; background: ${pillBg}; color: ${pillColor}; border-color: ${pillBorder};">${esc(statusLabel)}</span>
@@ -2280,7 +2281,7 @@
       const data = await api('/api/ops/services/status');
       const html = data.services.map((service) => {
         return `
-          <div class="card ops-service-card" style="background: var(--bg-elevated); border: 1px solid rgba(255,255,255,0.10); border-top: 2px solid rgba(167,139,250,0.20); border-radius: 12px;">
+          <div class="card ops-service-card" style="background: #232a3a; border: 1px solid rgba(167,139,250,0.18); border-top: 2px solid rgba(167,139,250,0.35); border-radius: 12px;">
             <div class="row" style="justify-content: space-between;">
               <strong>${service.name}</strong>
               <span>
