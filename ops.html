@@ -28,7 +28,7 @@
       font-size: 20px;
       font-weight: 700;
       color: var(--text-primary);
-      text-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+      text-shadow: 0 0 8px rgba(167, 139, 250, 0.5);
     }
 
     .page-header .subtitle {
@@ -327,7 +327,7 @@
     .ops-service-card {
       border: 1px solid var(--border-subtle);
       border-radius: 12px;
-      background: var(--bg-surface);
+      background: var(--bg-elevated);
     }
 
     .dot {
@@ -421,6 +421,15 @@
       color: #f87171;
     }
 
+
+    
+    .cron-health-card:hover,
+    .ops-service-card:hover,
+    .service-health-card:hover,
+    .ops-logs-health-card:hover {
+      background: color-mix(in srgb, var(--ops-domain) 4%, var(--bg-elevated));
+      border-color: var(--border-strong);
+    }
 
     .ops-domain-capsule {
       display: inline-block;
@@ -1166,7 +1175,7 @@
         <h1>Operations</h1>
         <p class="subtitle">Infrastructure health, jobs, and recovery.</p>
       </div>
-      <button id="freshSessionBtn" class="btn btn-outline-amber" style="margin-top: 4px;">Fresh Session</button>
+      <button id="freshSessionBtn" class="btn btn-secondary" style="margin-top: 4px;">Fresh Session</button>
     </div>
 
     <div class="sub-nav" id="opsSubNav" role="tablist" aria-label="Operations views">
@@ -1767,7 +1776,7 @@
         const pillBg = statusClass === 'green' ? 'rgba(34,197,94,0.15)' : statusClass === 'amber' ? 'rgba(245,158,11,0.15)' : statusClass === 'gray' ? 'rgba(148,163,184,0.15)' : 'rgba(239,68,68,0.15)';
         const pillColor = statusClass === 'green' ? 'var(--accent-green)' : statusClass === 'amber' ? 'var(--accent-amber)' : statusClass === 'gray' ? 'var(--text-secondary)' : 'var(--accent-red)';
         const pillBorder = statusClass === 'green' ? 'rgba(34,197,94,0.45)' : statusClass === 'amber' ? 'rgba(245,158,11,0.45)' : statusClass === 'gray' ? 'rgba(148,163,184,0.35)' : 'rgba(239,68,68,0.45)';
-        return `<article class="cron-health-card" style="background: var(--bg-elevated); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 10px 12px;">
+        return `<article class="cron-health-card" style="background: var(--bg-elevated); border: 1px solid var(--border-strong); border-radius: 12px; padding: 8px 12px;">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; gap: 8px;">
             <strong style="font-size: 13px; color: var(--text-primary);">${esc(getWatcherName(row))}</strong>
             <span class="pill" style="text-transform: capitalize; background: ${pillBg}; color: ${pillColor}; border-color: ${pillBorder};">${esc(statusLabel)}</span>
@@ -2362,7 +2371,7 @@
           ? ` <button class="btn ${isEnabled ? 'btn-secondary' : 'btn-primary'}" onclick="toggleGatewayCron('${encodeURIComponent(gwId)}', ${isEnabled ? 'true' : 'false'}, this)">${isEnabled ? 'Disable' : 'Enable'}</button>`
           : '';
         const runBtn = !isGateway
-          ? `<button class="btn btn-primary" onclick="triggerCron('${encodeURIComponent(job.name)}', this)">Run Now</button>`
+          ? `<button class="btn" onclick="triggerCron('${encodeURIComponent(job.name)}', this)">Run Now</button>`
           : '';
         return `
           <tr data-cron-name="${esc(isGateway ? gwId : job.name)}">
