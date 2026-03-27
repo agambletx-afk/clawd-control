@@ -1266,12 +1266,7 @@
         <div id="verificationDetails" class="verification-details"></div>
       </section>
 
-      <div style="margin-top: 12px; text-align: right;">
-        <a href="#logs" style="color: var(--text-secondary); font-size: 12px; text-decoration: none;"
-           onmouseover="this.style.color='var(--text-primary)'"
-           onmouseout="this.style.color='var(--text-secondary)'"
-           onclick="event.preventDefault(); setOpsView('logs');">View operational logs →</a>
-      </div>
+
     </div>
 
     <div id="ops-logs-view" class="ops-logs-view" style="display:none;">
@@ -1761,12 +1756,11 @@
         const cronName = row.dataset.cronName;
         const match = findMatch(cronName);
         if (!match) {
-          cell.innerHTML = '<span class="jobs-status-dot gray" title="Not monitored by WATCHER"></span>';
+          cell.innerHTML = '<span class="jobs-status-dot gray" title="Not monitored by WATCHER" style="opacity:0.5;"></span>';
           return;
         }
         const dotClass = watcherStatusClass(match.status);
         cell.innerHTML = `<span class="jobs-status-dot ${dotClass}" title="${esc(match.status || 'unknown')}"></span>`;
-        if (match.status === 'disabled') cell.innerHTML = '<span class="jobs-status-dot gray" title="Disabled"></span>';
       });
     }
 
@@ -1810,6 +1804,7 @@
       if (state.opsView === 'health') {
         renderOpsSummaryCards(state.opsSummary.lastRenderedCards || {}, state.opsSummary.lastStaleByCard || {}, false);
       }
+      setTimeout(() => { renderJobsStatusDots(); renderJobsSummaryCards(); }, 200);
       return state.watcherHealth;
     }
 
@@ -2094,6 +2089,22 @@
     }
 
     // Load cron entries.
+    function cronToHumanSimple(expr) {
+      if (!expr || typeof expr !== 'string') return '';
+      const p = expr.trim().split(/\s+/);
+      if (p.length !== 5) return '';
+      const [min, hour, dom, mon, dow] = p;
+      if (min === '*' && hour === '*') return 'Every minute';
+      if (min.startsWith('*/')) return 'Every ' + min.slice(2) + ' minutes';
+      if (hour.startsWith('*/') && min === '0') return 'Every ' + hour.slice(2) + ' hours';
+      if (dow !== '*' && hour !== '*' && min !== '*') {
+        const days = {'0':'Sun','1':'Mon','2':'Tue','3':'Wed','4':'Thu','5':'Fri','6':'Sat'};
+        return (days[dow] || dow) + ' at ' + hour + ':' + min.padStart(2,'0');
+      }
+      if (hour !== '*' && min !== '*' && dom === '*' && mon === '*' && dow === '*') return 'Daily at ' + hour + ':' + min.padStart(2,'0');
+      return '';
+    }
+
     async function loadCrons() {
       const data = await api('/api/ops/crons');
       const systemJobs = Array.isArray(data.jobs) ? data.jobs : [];
@@ -2101,7 +2112,7 @@
       const gwRows = gwResults.map((gw) => ({
         name: gw.name || gw.id,
         schedule: gw.schedule || '—',
-        description: gw.schedule ? gw.schedule : '—',
+        description: cronToHumanSimple(gw.schedule) || gw.schedule || '—',
         command: gw.model ? `model: ${gw.model}` : '(gateway scheduler)',
         source: 'gateway',
         enabled: gw.enabled !== false,
@@ -2571,7 +2582,8 @@
         loadServiceHealth(true).catch(() => {});
       }
       setTimeout(renderLucideIcons, 50);
-      setTimeout(renderLucideIcons, 100);
+      setTimeout(renderLucideIcons, 150);
+      setTimeout(renderLucideIcons, 500);
     }
 
     function setOpsView(view, updateHash = true) {
@@ -2978,6 +2990,8 @@
         toast(error.message);
       }
       setTimeout(renderLucideIcons, 100);
+      setTimeout(renderLucideIcons, 300);
+      setTimeout(renderLucideIcons, 1000);
     }
 
     window.initOpsTab = initOpsTab;
