@@ -839,6 +839,24 @@
     .ops-status-dot.bad { background: var(--accent-red); }
     .ops-status-dot.idle { background: #94a3b8; }
 
+    .cron-health-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .jobs-status-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      display: inline-block;
+    }
+
+    .jobs-status-dot.green { background: #22c55e; }
+    .jobs-status-dot.amber { background: var(--accent-amber); }
+    .jobs-status-dot.red { background: var(--accent-red); }
+    .jobs-status-dot.gray { background: #94a3b8; }
+
     .ops-logs-health-value,
     .ops-logs-health-sub {
       font-family: var(--font-mono);
@@ -1056,6 +1074,10 @@
       .manifest-file-item {
         grid-template-columns: 1fr;
       }
+
+      .cron-health-grid {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 </head>
@@ -1127,9 +1149,21 @@
           </div>
         </div>
       </section>
+
+      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px;">
+        <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+          <i data-lucide="heart-pulse" style="width:16px;height:16px;color:var(--text-secondary);"></i>
+          <div>
+            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;">Cron Health</h2>
+            <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Status of all monitored crons. Sorted by severity.</p>
+          </div>
+        </div>
+        <div id="cronHealthCards" class="cron-health-grid"></div>
+      </section>
     </div>
 
     <div id="ops-jobs-view" style="display:none;">
+      <div id="opsJobsSummaryCards" class="ops-summary-grid" aria-label="Cron jobs summary"></div>
       <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="clock" style="width:16px;height:16px;color:var(--text-secondary);"></i>
@@ -1138,9 +1172,11 @@
             <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Scheduled automation. Missed or failing jobs quietly break the system.</p>
           </div>
         </div>
+        <div id="opsWatcherWarning"></div>
         <table>
           <thead>
             <tr>
+              <th style="width: 36px;">Status</th>
               <th>Name</th>
               <th>Schedule</th>
               <th>Command</th>
@@ -1275,9 +1311,15 @@
       opsSummary: {
         loading: true,
         lastSuccessCards: null,
-        lastMeta: null
+        lastMeta: null,
+        lastRenderedCards: null,
+        lastStaleByCard: {}
       },
+      watcherHealth: null,
+      watcherHealthLoading: false,
+      watcherHealthLoaded: false,
       opsView: 'health',
+      crons: [],
       opsLogs: {
         initialized: false,
         page: 0,
@@ -1406,6 +1448,50 @@
       </article>`;
     }
 
+    function watcherStatusClass(status) {
+      if (status === 'healthy') return 'green';
+      if (status === 'stale') return 'amber';
+      if (status === 'failed' || status === 'erroring') return 'red';
+      return 'amber';
+    }
+
+    function watcherSeverityRank(status) {
+      if (status === 'failed' || status === 'erroring' || status === 'stale') return 0;
+      if (status === 'healthy') return 1;
+      return 2;
+    }
+
+    function getWatcherResults() {
+      const rows = state.watcherHealth?.health?.results;
+      return Array.isArray(rows) ? rows : [];
+    }
+
+    function getWatcherName(result = {}) {
+      const config = state.watcherHealth?.config || {};
+      const configJobs = [
+        ...(Array.isArray(config.jobs) ? config.jobs : []),
+        ...(Array.isArray(config.system_crons) ? config.system_crons : []),
+        ...(Array.isArray(config.gateway_crons) ? config.gateway_crons : [])
+      ];
+      const matched = configJobs.find((job) => (job?.id || job?.name) === result.id);
+      return matched?.name || matched?.description || result.id || 'Unknown cron';
+    }
+
+    function getWatcherJobsOverride() {
+      if (!state.watcherHealth || !state.watcherHealth.health || !Array.isArray(state.watcherHealth.health.results)) {
+        return null;
+      }
+      const results = state.watcherHealth.health.results;
+      const total = results.length;
+      const healthy = results.filter((row) => row?.status === 'healthy').length;
+      const failing = results.filter((row) => ['failed', 'stale', 'erroring'].includes(row?.status)).length;
+      return {
+        total,
+        healthy,
+        failing
+      };
+    }
+
     function renderOpsSummaryCards(opsCards = {}, staleByCard = {}, errorAll = false) {
       const root = $('opsSummaryCards');
       if (!root) return;
@@ -1427,10 +1513,17 @@
         stale: staleByCard.services
       };
 
+      const watcherOverride = state.opsView === 'health' ? getWatcherJobsOverride() : null;
       const jobsStatus = jobs?.scheduler?.status || jobs?.status || 'amber';
       const schedulerHealthy = jobsStatus === 'green';
       const failingCount = Number(jobs?.attention?.failing_count || 0);
-      const jobsCard = errorAll || !jobs ? {
+      const jobsCard = watcherOverride ? {
+        label: 'JOBS',
+        value: watcherOverride.failing > 0 ? `${watcherOverride.failing} failing` : `${watcherOverride.healthy}/${watcherOverride.total} healthy`,
+        valueClass: watcherOverride.failing > 0 ? 'red' : 'green',
+        meta: `${watcherOverride.total} monitored`,
+        subtitle: 'Missed or failing jobs quietly break automation.'
+      } : errorAll || !jobs ? {
         label: 'JOBS',
         value: 'Error',
         valueClass: 'error',
@@ -1491,10 +1584,173 @@
           recovery: cards.recovery && !cards.recovery.source_error ? cards.recovery : previous.recovery
         };
         state.opsSummary.lastMeta = data;
+        state.opsSummary.lastRenderedCards = effectiveCards;
+        state.opsSummary.lastStaleByCard = staleByCard;
         renderOpsSummaryCards(effectiveCards, staleByCard, false);
       } catch {
         renderOpsSummaryCards({}, {}, true);
       }
+    }
+
+    function renderCronHealthCards() {
+      const root = $('cronHealthCards');
+      if (!root) return;
+      if (state.watcherHealthLoading && !state.watcherHealthLoaded) {
+        root.innerHTML = '<div style="color: var(--text-secondary); text-align: center; padding: 20px;">Loading cron health...</div>';
+        return;
+      }
+      const watcher = state.watcherHealth;
+      if (!watcher || !watcher.health) {
+        root.innerHTML = '<div style="color: var(--accent-amber); text-align: center; padding: 20px;">Unable to load cron health data.</div>';
+        return;
+      }
+      const health = watcher.health;
+      const rows = getWatcherResults();
+      if (!health.available) {
+        root.innerHTML = '<div style="color: var(--accent-amber); text-align: center; padding: 20px;">Unable to load cron health data.</div>';
+        return;
+      }
+      if (health.available && rows.length === 0) {
+        root.innerHTML = '<div style="color: var(--text-secondary); text-align: center; padding: 20px;">No monitored crons found. Configure crons in watcher.json.</div>';
+        return;
+      }
+      const sorted = [...rows].sort((a, b) => {
+        const rankDelta = watcherSeverityRank(a?.status) - watcherSeverityRank(b?.status);
+        if (rankDelta !== 0) return rankDelta;
+        return getWatcherName(a).localeCompare(getWatcherName(b));
+      });
+      const staleBanner = Number(health.age_seconds || 0) > 600
+        ? '<div style="color: var(--accent-amber); font-size: 11px; margin-bottom: 8px;">(data may be stale)</div>'
+        : '';
+      root.innerHTML = `${staleBanner}${sorted.map((row) => {
+        const statusClass = watcherStatusClass(row?.status);
+        const statusLabel = row?.status || 'unknown';
+        const duration = Number.isFinite(Number(row?.duration_ms))
+          ? `<span style="font-family: var(--font-mono); font-variant-numeric: tabular-nums;">${Number(row.duration_ms)}ms</span>`
+          : '';
+        const validationBadge = row?.correctness && row.correctness.status && row.correctness.status !== 'pass'
+          ? '<span class="pill" style="background: rgba(245,158,11,0.12); color: var(--accent-amber); border-color: rgba(245,158,11,0.35); font-size: 10px; padding: 1px 6px;">Validation failed</span>'
+          : '';
+        const flappingBadge = Number(row?.flap_count_24h || 0) > 4
+          ? '<span class="pill" style="background: rgba(245,158,11,0.12); color: var(--accent-amber); border-color: rgba(245,158,11,0.35); font-size: 10px; padding: 1px 6px;">Flapping</span>'
+          : '';
+        return `<article class="cron-health-card" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 10px 12px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; gap: 8px;">
+            <strong style="font-size: 13px; color: var(--text-primary);">${esc(getWatcherName(row))}</strong>
+            <span class="pill" style="text-transform: capitalize; background: ${statusClass === 'green' ? 'rgba(34,197,94,0.15)' : statusClass === 'amber' ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)'}; color: ${statusClass === 'green' ? 'var(--accent-green)' : statusClass === 'amber' ? 'var(--accent-amber)' : 'var(--accent-red)'}; border-color: ${statusClass === 'green' ? 'rgba(34,197,94,0.45)' : statusClass === 'amber' ? 'rgba(245,158,11,0.45)' : 'rgba(239,68,68,0.45)'};">${esc(statusLabel)}</span>
+          </div>
+          <div style="font-size: 11px; color: var(--text-secondary); display: flex; gap: 12px; flex-wrap: wrap;">
+            <span style="font-family: var(--font-mono); font-variant-numeric: tabular-nums;">${esc(rel(row?.last_seen))}</span>
+            ${duration}
+            <span class="pill" style="background: rgba(148,163,184,0.1); color: var(--text-secondary); font-size: 10px; padding: 1px 6px; border-color: rgba(148,163,184,0.24);">${esc(row?.method || 'unknown')}</span>
+          </div>
+          ${(validationBadge || flappingBadge) ? `<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px;">${validationBadge}${flappingBadge}</div>` : ''}
+        </article>`;
+      }).join('')}`;
+    }
+
+    function renderJobsSummaryCards() {
+      const root = $('opsJobsSummaryCards');
+      if (!root) return;
+      const total = Array.isArray(state.crons) ? state.crons.length : 0;
+      const results = state.watcherHealth ? getWatcherResults() : null;
+      let healthy = '—';
+      let failing = '—';
+      let unmonitored = '—';
+      if (results) {
+        const byId = new Map(results.map((row) => [row?.id, row]));
+        let healthyCount = 0;
+        let failingCount = 0;
+        let unmonitoredCount = 0;
+        state.crons.forEach((job) => {
+          const match = byId.get(job.name);
+          if (!match) {
+            unmonitoredCount += 1;
+            return;
+          }
+          if (match.status === 'healthy') healthyCount += 1;
+          if (['failed', 'erroring', 'stale'].includes(match.status)) failingCount += 1;
+        });
+        healthy = String(healthyCount);
+        failing = String(failingCount);
+        unmonitored = String(unmonitoredCount);
+      }
+      root.innerHTML = [
+        { label: 'TOTAL JOBS', value: String(total), valueClass: '', subtitle: 'Count from cron registry.' },
+        { label: 'HEALTHY', value: healthy, valueClass: healthy === '—' ? 'tertiary' : 'green', subtitle: 'WATCHER matched healthy jobs.' },
+        { label: 'FAILING', value: failing, valueClass: failing === '—' ? 'tertiary' : (Number(failing) > 0 ? 'red' : 'green'), subtitle: 'WATCHER matched failing or stale jobs.' },
+        { label: 'UNMONITORED', value: unmonitored, valueClass: unmonitored === '—' ? 'tertiary' : (Number(unmonitored) > 0 ? 'amber' : 'green'), subtitle: 'Crons without WATCHER coverage.' }
+      ].map(renderSummaryCard).join('');
+    }
+
+    function renderJobsStatusDots() {
+      const warning = $('opsWatcherWarning');
+      if (!warning) return;
+      if (!state.watcherHealth) {
+        warning.innerHTML = `
+          <div class="ops-watcher-warning" style="background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.2); border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; font-size: 12px; color: var(--accent-amber);">
+            Cron health data unavailable. Status dots hidden.
+          </div>
+        `;
+        return;
+      }
+      warning.innerHTML = '';
+      const byId = new Map(getWatcherResults().map((row) => [row?.id, row]));
+      document.querySelectorAll('#cronRows tr[data-cron-name]').forEach((row) => {
+        const cell = row.querySelector('[data-role="watcher-status-dot"]');
+        if (!cell) return;
+        const cronName = row.dataset.cronName;
+        const match = byId.get(cronName);
+        if (!match) {
+          cell.innerHTML = '<span class="jobs-status-dot gray" title="Not monitored by WATCHER"></span>';
+          return;
+        }
+        const dotClass = watcherStatusClass(match.status);
+        cell.innerHTML = `<span class="jobs-status-dot ${dotClass}" title="${esc(match.status || 'unknown')}"></span>`;
+      });
+    }
+
+    async function toggleGatewayCron(idEncoded, enabled, btn) {
+      const id = decodeURIComponent(idEncoded);
+      const action = enabled ? 'disable' : 'enable';
+      if (!confirm(`${enabled ? 'Disable' : 'Enable'} gateway cron ${id}?`)) return;
+      btn.disabled = true;
+      btn.textContent = enabled ? 'Disabling...' : 'Enabling...';
+      try {
+        const data = await api(`/api/watcher/gateway/${encodeURIComponent(id)}/${action}`, { method: 'POST', body: '{}' });
+        toast(data.success ? `${action} succeeded` : `${action} failed`);
+        await Promise.all([loadCrons(), loadWatcherHealth()]);
+      } catch (error) {
+        toast(`${action} failed: ${error.message}`);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function loadWatcherHealth() {
+      state.watcherHealthLoading = true;
+      renderCronHealthCards();
+      const [healthResult, configResult] = await Promise.allSettled([
+        api('/api/watcher/health'),
+        api('/api/watcher/config')
+      ]);
+      if (healthResult.status === 'fulfilled') {
+        state.watcherHealth = {
+          health: healthResult.value,
+          config: configResult.status === 'fulfilled' ? configResult.value : null
+        };
+      } else {
+        state.watcherHealth = null;
+      }
+      state.watcherHealthLoading = false;
+      state.watcherHealthLoaded = true;
+      renderCronHealthCards();
+      renderJobsStatusDots();
+      renderJobsSummaryCards();
+      if (state.opsView === 'health') {
+        renderOpsSummaryCards(state.opsSummary.lastRenderedCards || {}, state.opsSummary.lastStaleByCard || {}, false);
+      }
+      return state.watcherHealth;
     }
 
     function getVersionCheckView(data = {}) {
@@ -1780,16 +2036,24 @@
     // Load cron entries.
     async function loadCrons() {
       const data = await api('/api/ops/crons');
-      const rows = data.jobs.map((job) => {
+      state.crons = Array.isArray(data.jobs) ? data.jobs : [];
+      const rows = state.crons.map((job) => {
         const cmd = job.command.replace(/"/g, '&quot;');
+        const isGateway = job.source === 'gateway';
+        const isEnabled = job.enabled !== false;
+        const toggleButton = isGateway
+          ? `<button class="btn ${isEnabled ? 'btn-amber' : 'btn-green'}" onclick="toggleGatewayCron('${encodeURIComponent(job.name)}', ${isEnabled ? 'true' : 'false'}, this)">${isEnabled ? 'Disable' : 'Enable'}</button>`
+          : '';
         return `
-          <tr>
-            <td>${job.name}</td>
-            <td title="${job.schedule.replace(/\"/g, '&quot;')}">${job.description || job.schedule}</td>
-            <td title="${cmd}">${job.command.slice(0, 60)}</td>
-            <td>${job.source}</td>
+          <tr data-cron-name="${esc(job.name)}">
+            <td data-role="watcher-status-dot"></td>
+            <td>${esc(job.name)}</td>
+            <td title="${esc(job.schedule)}">${esc(job.description || job.schedule)}</td>
+            <td title="${cmd}">${esc(job.command.slice(0, 60))}</td>
+            <td>${esc(job.source)}</td>
             <td>
               <button class="btn" onclick="triggerCron('${encodeURIComponent(job.name)}', this)">Run Now</button>
+              ${toggleButton}
             </td>
           </tr>
         `;
@@ -1797,9 +2061,11 @@
 
       $('cronRows').innerHTML = rows || `
         <tr>
-          <td colspan="5" class="muted">No matching cron jobs found.</td>
+          <td colspan="6" class="muted">No matching cron jobs found.</td>
         </tr>
       `;
+      renderJobsSummaryCards();
+      renderJobsStatusDots();
     }
 
     // Execute a cron command immediately.
@@ -2387,6 +2653,10 @@
       initOpsLogsView();
       initPanelCollapseState();
       setOpsSummaryLoading();
+      state.watcherHealthLoading = true;
+      renderCronHealthCards();
+      renderJobsSummaryCards();
+      renderJobsStatusDots();
       setTimeout(renderLucideIcons, 50);
 
       $('freshSessionBtn').onclick = handleFreshSession;
@@ -2430,7 +2700,7 @@
       };
 
       try {
-        await Promise.all([loadOpsSummaryCards(), loadServices(), loadVersionCheck(), loadVerification(), loadCrons(), loadBackups(), loadGatewayEvents()]);
+        await Promise.all([loadOpsSummaryCards(), loadServices(), loadVersionCheck(), loadVerification(), loadCrons(), loadBackups(), loadGatewayEvents(), loadWatcherHealth()]);
         applyCollapsibleState();
         if (window.__opsServicesRefreshTimer) clearInterval(window.__opsServicesRefreshTimer);
         window.__opsServicesRefreshTimer = setInterval(() => {
@@ -2440,6 +2710,11 @@
           loadVerification().catch((error) => toast(error.message));
           loadGatewayEvents().catch((error) => toast(error.message));
         }, 60000);
+        if (window.__opsWatcherRefreshTimer) clearInterval(window.__opsWatcherRefreshTimer);
+        window.__opsWatcherRefreshTimer = setInterval(() => {
+          loadWatcherHealth().catch(() => {});
+          loadCrons().catch(() => {});
+        }, 30000);
       } catch (error) {
         toast(error.message);
       }
