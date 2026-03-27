@@ -1157,7 +1157,7 @@
     </div>
 
     <div id="ops-jobs-view" style="display:none;">
-      <div id="opsJobsSummaryCards" class="ops-summary-grid" aria-label="Cron jobs summary"></div>
+      <div id="opsJobsSummaryCards" class="ops-summary-grid" aria-label="Cron jobs summary" style="grid-template-columns: repeat(2, minmax(0, 1fr));"></div>
       <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="clock" style="width:16px;height:16px;color:var(--text-secondary);"></i>
@@ -1173,7 +1173,6 @@
               <th style="width: 36px;">Status</th>
               <th>Name</th>
               <th>Schedule</th>
-              <th>Command</th>
               <th>Source</th>
               <th>Actions</th>
             </tr>
@@ -1239,6 +1238,18 @@
 
       <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px; margin-bottom: 14px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+          <i data-lucide="database" style="width:16px;height:16px;color:var(--text-secondary);"></i>
+          <div>
+            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;">Log Ingestion Health</h2>
+            <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Whether log sources are feeding data. Stale sources mean blind spots.</p>
+          </div>
+        </div>
+        <div id="opsLogsHealthStale" class="ops-logs-stale" style="display:none;"></div>
+        <div id="opsLogsHealthGrid" class="ops-logs-health-grid"></div>
+      </section>
+
+      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px; margin-bottom: 14px;">
+        <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="activity" style="width:16px;height:16px;color:var(--text-secondary);"></i>
           <div>
             <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;">Service Health</h2>
@@ -1280,8 +1291,6 @@
             <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Aggregated logs from task audit, ops log, security hooks, cron health, and WATCHER.</p>
           </div>
         </div>
-        <div id="opsLogsHealthStale" class="ops-logs-stale" style="display:none;"></div>
-        <div id="opsLogsHealthGrid" class="ops-logs-health-grid"></div>
         <div class="ops-logs-filter-bar" style="margin-top:12px;">
           <select id="opsLogSourceFilter" aria-label="Log source filter"></select>
           <div id="opsLogSeverityGroup" class="ops-severity-group" aria-label="Log severity filter"></div>
@@ -1677,7 +1686,7 @@
         const pillBg = statusClass === 'green' ? 'rgba(34,197,94,0.15)' : statusClass === 'amber' ? 'rgba(245,158,11,0.15)' : statusClass === 'gray' ? 'rgba(148,163,184,0.15)' : 'rgba(239,68,68,0.15)';
         const pillColor = statusClass === 'green' ? 'var(--accent-green)' : statusClass === 'amber' ? 'var(--accent-amber)' : statusClass === 'gray' ? 'var(--text-secondary)' : 'var(--accent-red)';
         const pillBorder = statusClass === 'green' ? 'rgba(34,197,94,0.45)' : statusClass === 'amber' ? 'rgba(245,158,11,0.45)' : statusClass === 'gray' ? 'rgba(148,163,184,0.35)' : 'rgba(239,68,68,0.45)';
-        return `<article class="cron-health-card" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 10px 12px;">
+        return `<article class="cron-health-card" style="background: var(--bg-elevated); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 10px 12px;">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; gap: 8px;">
             <strong style="font-size: 13px; color: var(--text-primary);">${esc(getWatcherName(row))}</strong>
             <span class="pill" style="text-transform: capitalize; background: ${pillBg}; color: ${pillColor}; border-color: ${pillBorder};">${esc(statusLabel)}</span>
@@ -1693,11 +1702,11 @@
     function renderJobsSummaryCards() {
       const root = $('opsJobsSummaryCards');
       if (!root) return;
-      const total = Array.isArray(state.crons) ? state.crons.length : 0;
       const results = state.watcherHealth ? getWatcherResults() : null;
-      let healthy = '—';
       let failing = '—';
       let unmonitored = '—';
+      let failingClass = 'tertiary';
+      let unmonitoredClass = 'tertiary';
       if (results) {
         const byId2 = new Map(results.map((row) => [row?.id, row]));
         const cfg2 = [
@@ -1713,7 +1722,6 @@
           for (const [id,row] of byId2) { if ((row?.name||'') === n) return row; }
           return null;
         }
-        let healthyCount = 0;
         let failingCount = 0;
         let unmonitoredCount = 0;
         state.crons.forEach((job) => {
@@ -1722,18 +1730,16 @@
             unmonitoredCount += 1;
             return;
           }
-          if (match.status === 'healthy') healthyCount += 1;
           if (['failed', 'erroring', 'stale'].includes(match.status)) failingCount += 1;
         });
-        healthy = String(healthyCount);
         failing = String(failingCount);
         unmonitored = String(unmonitoredCount);
+        failingClass = Number(failing) > 0 ? 'red' : '';
+        unmonitoredClass = Number(unmonitored) > 0 ? 'amber' : '';
       }
       root.innerHTML = [
-        { label: 'TOTAL JOBS', value: String(total), valueClass: '', subtitle: 'Count from cron registry.' },
-        { label: 'HEALTHY', value: healthy, valueClass: healthy === '—' ? 'tertiary' : 'green', subtitle: 'WATCHER matched healthy jobs.' },
-        { label: 'FAILING', value: failing, valueClass: failing === '—' ? 'tertiary' : (Number(failing) > 0 ? 'red' : 'green'), subtitle: 'WATCHER matched failing or stale jobs.' },
-        { label: 'UNMONITORED', value: unmonitored, valueClass: unmonitored === '—' ? 'tertiary' : (Number(unmonitored) > 0 ? 'amber' : 'green'), subtitle: 'Crons without WATCHER coverage.' }
+        { label: 'FAILING', value: failing, valueClass: failingClass, subtitle: 'WATCHER matched failing or stale jobs.' },
+        { label: 'UNMONITORED', value: unmonitored, valueClass: unmonitoredClass, subtitle: 'Crons without WATCHER coverage.' }
       ].map(renderSummaryCard).join('');
     }
 
@@ -2051,7 +2057,7 @@
       const data = await api('/api/ops/services/status');
       const html = data.services.map((service) => {
         return `
-          <div class="card ops-service-card">
+          <div class="card ops-service-card" style="background: var(--bg-elevated);">
             <div class="row" style="justify-content: space-between;">
               <strong>${service.name}</strong>
               <span>
@@ -2135,7 +2141,6 @@
       }));
       state.crons = [...systemJobs, ...gwRows];
       const rows = state.crons.map((job) => {
-        const cmd = (job.command || '').replace(/"/g, '&quot;');
         const isGateway = job._isGateway || job.source === 'gateway';
         const isEnabled = job.enabled !== false;
         const gwId = job._gatewayId || job.name;
@@ -2150,7 +2155,6 @@
             <td data-role="watcher-status-dot"></td>
             <td>${esc(job.name)}</td>
             <td title="${esc(job.schedule)}">${esc(job.description || job.schedule)}</td>
-            <td title="${cmd}">${esc((job.command || '').slice(0, 60))}</td>
             <td>${esc(job.source)}</td>
             <td>
               ${runBtn}${toggleButton}
@@ -2161,7 +2165,7 @@
 
       $('cronRows').innerHTML = rows || `
         <tr>
-          <td colspan="6" class="muted">No matching cron jobs found.</td>
+          <td colspan="5" class="muted">No matching cron jobs found.</td>
         </tr>
       `;
       renderJobsSummaryCards();
@@ -2438,19 +2442,40 @@
         return;
       }
 
+      const now = Date.now();
+      const staleThresholdMs = 5 * 60 * 1000;
       const healthy = rows.filter((row) => row?.status === 'healthy').length;
       const degraded = rows.filter((row) => row?.status === 'degraded').length;
       const down = rows.filter((row) => row?.status === 'down').length;
+      const staleCount = rows.filter((row) => {
+        const checkedAt = row?.checked_at || row?.last_check || null;
+        const checkedMs = checkedAt ? Date.parse(checkedAt) : NaN;
+        return !Number.isFinite(checkedMs) || ((now - checkedMs) > staleThresholdMs);
+      }).length;
       const total = rows.length;
       const itemStyle = 'display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);';
       const numStyle = 'font-family: var(--font-mono); font-variant-numeric: tabular-nums;';
+
+      const totalItem = `<span style="${itemStyle}">Total: <strong style="${numStyle}; color: var(--text-primary);">${total}</strong></span>`;
+      const healthyItem = `<span class="pill" style="${itemStyle} ${serviceHealthPillStyle('healthy')}">Healthy: <strong style="${numStyle}; color: inherit;">${healthy}</strong></span>`;
+      const staleItem = `<span class="pill" style="${itemStyle} background: rgba(245,158,11,0.15); color: var(--accent-amber); border-color: rgba(245,158,11,0.45);">Stale: <strong style="${numStyle}; color: inherit;">${staleCount}</strong></span>`;
+      const degradedItem = degraded > 0 ? `<span class="pill" style="${itemStyle} ${serviceHealthPillStyle('degraded')}">Degraded: <strong style="${numStyle}; color: inherit;">${degraded}</strong></span>` : '';
+      const downItem = down > 0 ? `<span class="pill" style="${itemStyle} ${serviceHealthPillStyle('down')}">Down: <strong style="${numStyle}; color: inherit;">${down}</strong></span>` : '';
+
+      let statsItems = `${totalItem}${healthyItem}${degradedItem}${downItem}`;
+      let staleBanner = '';
+      if (staleCount === total) {
+        statsItems = `${totalItem}${staleItem}`;
+        staleBanner = '<div style="margin-top: 8px; color: var(--accent-amber); font-size: 12px;">All service checks are stale. Health status may not reflect current state.</div>';
+      } else if (staleCount > 0) {
+        statsItems = `${totalItem}${healthyItem}${staleItem}`;
+      }
+
       root.innerHTML = `
         <div style="display:flex; flex-wrap:wrap; align-items:center; gap:12px; font-size:12px;">
-          <span style="${itemStyle}">Total: <strong style="${numStyle}; color: var(--text-primary);">${total}</strong></span>
-          <span class="pill" style="${itemStyle} ${serviceHealthPillStyle('healthy')}">Healthy: <strong style="${numStyle}; color: inherit;">${healthy}</strong></span>
-          ${degraded > 0 ? `<span class="pill" style="${itemStyle} ${serviceHealthPillStyle('degraded')}">Degraded: <strong style="${numStyle}; color: inherit;">${degraded}</strong></span>` : ''}
-          ${down > 0 ? `<span class="pill" style="${itemStyle} ${serviceHealthPillStyle('down')}">Down: <strong style="${numStyle}; color: inherit;">${down}</strong></span>` : ''}
+          ${statsItems}
         </div>
+        ${staleBanner}
       `;
     }
 
@@ -2490,7 +2515,7 @@
           : '—';
         const stale = checkedAt && Number.isFinite(Date.parse(checkedAt)) && ((Date.now() - Date.parse(checkedAt)) > 5 * 60 * 1000);
         const staleText = stale ? '<span style="color: var(--text-tertiary);">(stale)</span>' : '';
-        return `<article class="service-health-card" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 10px 12px;">
+        return `<article class="service-health-card" style="background: var(--bg-elevated); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 10px 12px;">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; gap: 8px;">
             <strong style="font-size: 13px; color: var(--text-primary);">${esc(service.name || service.id || 'Unknown service')}</strong>
             <span class="pill" style="text-transform: capitalize; ${serviceHealthPillStyle(status)}">${esc(statusLabel)}</span>
@@ -2592,6 +2617,7 @@
       if (view === 'checks') {
         loadServiceHealth(true).catch(() => {});
         loadVersionCheck().catch(() => {});
+        loadOpsLogsHealth().catch(() => {});
       }
       setTimeout(renderLucideIcons, 50);
       setTimeout(renderLucideIcons, 150);
