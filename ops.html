@@ -878,6 +878,7 @@
       background: #232a3a;
       padding: 8px 8px 8px 12px;
       overflow: hidden;
+      min-height: auto;
     }
 
     .ops-logs-health-card::before {
@@ -949,7 +950,7 @@
     }
 
     .ops-logs-health-value {
-      font-size: 28px;
+      font-size: 20px;
       color: var(--text-primary);
       margin-bottom: 2px;
     }
@@ -1357,10 +1358,7 @@
             <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;"><span class="ops-domain-capsule"></span>Deployment Verification</h2>
             <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Confirms the running build matches expected state.</p>
           </div>
-        </div>
-        <div class="verification-header">
-          <div></div>
-          <div>
+          <div style="margin-left:auto; display:flex; gap:4px; align-items:center;">
             <button id="verificationRunBtn" class="btn btn-secondary">Run Verification</button>
             <button id="verificationToggleBtn" class="btn verification-toggle" aria-label="Toggle verification details" aria-expanded="false"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
           </div>
