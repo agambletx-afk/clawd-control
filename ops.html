@@ -1206,13 +1206,19 @@
           </thead>
           <tbody id="backupRows"></tbody>
         </table>
-        <div class="row inputs" style="margin-top: 10px;">
-          <span class="muted">Keep last</span>
-          <input id="maxBackups" type="number" value="10" min="1" style="width: 80px;" />
-          <span class="muted">older than</span>
-          <input id="maxAgeDays" type="number" value="30" min="1" style="width: 80px;" />
-          <span class="muted">days</span>
-          <button id="cleanupBtn" class="btn btn-amber">Run Cleanup</button>
+        <div class="section-header-row" style="margin-top: 12px;">
+          <span style="font-size: 12px; color: var(--text-secondary);">Retention Settings</span>
+          <button id="retentionToggleBtn" class="icon-btn" aria-label="Toggle retention settings" aria-expanded="false"><i data-lucide="chevron-down"></i></button>
+        </div>
+        <div id="retentionBody" class="collapsible-body collapsed">
+          <div class="row inputs" style="margin-top: 8px;">
+            <span class="muted">Keep last</span>
+            <input id="maxBackups" type="number" value="10" min="1" style="width: 80px;" />
+            <span class="muted">older than</span>
+            <input id="maxAgeDays" type="number" value="30" min="1" style="width: 80px;" />
+            <span class="muted">days</span>
+            <button id="cleanupBtn" class="btn btn-amber">Run Cleanup</button>
+          </div>
         </div>
       </section>
     </div>
@@ -1352,6 +1358,10 @@
       serviceHealthError: '',
       opsView: 'health',
       crons: [],
+      jobExpanded: {},
+      jobHistory: {},
+      jobHistoryLoading: {},
+      retentionOpen: false,
       opsLogs: {
         initialized: false,
         page: 0,
@@ -1699,6 +1709,158 @@
       }).join('')}`;
     }
 
+    function getCronWatcherMatch(cronName) {
+      if (!state.watcherHealth) return null;
+      const results = getWatcherResults();
+      const byId = new Map(results.map((row) => [row?.id, row]));
+      const cfgAll = [
+        ...(Array.isArray((state.watcherHealth?.config || {}).system_crons) ? state.watcherHealth.config.system_crons : []),
+        ...(Array.isArray((state.watcherHealth?.config || {}).gateway_crons) ? state.watcherHealth.config.gateway_crons : [])
+      ];
+      const descToId = new Map();
+      cfgAll.forEach((job) => {
+        if (job?.description && job?.id) descToId.set(job.description.toLowerCase(), job.id);
+      });
+      if (byId.has(cronName)) return byId.get(cronName);
+      const lowered = String(cronName || '').toLowerCase();
+      for (const [description, id] of descToId) {
+        if (lowered.startsWith(description)) return byId.get(id) || null;
+      }
+      for (const [, row] of byId) {
+        if ((row?.name || '') === cronName) return row;
+      }
+      return null;
+    }
+
+    function getCronByName(cronName) {
+      return state.crons.find((job) => String((job && (job._isGateway ? (job._gatewayId || job.name) : job.name)) || '') === String(cronName || '')) || null;
+    }
+
+    function getExpandedCronName() {
+      return Object.keys(state.jobExpanded).find((name) => state.jobExpanded[name]) || '';
+    }
+
+    function setExpandedCron(cronName) {
+      state.jobExpanded = {};
+      if (cronName) state.jobExpanded[cronName] = true;
+    }
+
+    function historyDotColor(run) {
+      const status = String(run?.status || '').toLowerCase();
+      if (Number(run?.exit_code) === 0 || ['healthy', 'ok', 'success', 'pass'].includes(status)) return 'var(--accent-green)';
+      if ((run?.exit_code != null && Number(run.exit_code) !== 0) || ['failed', 'error', 'erroring', 'unhealthy'].includes(status)) return 'var(--accent-red)';
+      return 'var(--text-tertiary)';
+    }
+
+    function cronHistoryNodeId(cronName) {
+      return `job-history-${String(cronName || '').replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+    }
+
+    function renderJobHistoryContent(cronName) {
+      const node = $(cronHistoryNodeId(cronName));
+      if (!node) return;
+      if (state.jobHistoryLoading[cronName]) {
+        node.innerHTML = '<span class="muted">Loading...</span>';
+        return;
+      }
+      const cached = state.jobHistory[cronName];
+      if (cached?.unmonitored) {
+        node.innerHTML = '<span class="muted">No run history available (not monitored by WATCHER).</span>';
+        return;
+      }
+      const runs = Array.isArray(cached?.runs) ? cached.runs : [];
+      if (!runs.length) {
+        node.innerHTML = '<span class="muted">No run history available.</span>';
+        return;
+      }
+      node.style.fontFamily = 'var(--font-mono)';
+      node.style.fontVariantNumeric = 'tabular-nums';
+      node.innerHTML = runs.map((run) => {
+        const timestamp = run.started_at || run.finished_at || run.last_run || '';
+        const duration = run.duration_ms != null ? `${run.duration_ms}ms` : 'unknown duration';
+        const exitCode = run.exit_code != null ? run.exit_code : '?';
+        const title = `Exit ${exitCode} · ${duration} · ${timestamp || 'unknown time'}`;
+        return `<span title="${esc(title)}" style="width: 10px; height: 10px; border-radius: 50%; background: ${historyDotColor(run)}; display: inline-block; cursor: help;"></span>`;
+      }).join('');
+    }
+
+    async function ensureJobHistoryLoaded(cronName) {
+      if (!cronName || state.jobHistory[cronName] || state.jobHistoryLoading[cronName]) return;
+      const job = getCronByName(cronName);
+      if (!job) return;
+      const watcherMatch = getCronWatcherMatch(cronName);
+      const isGateway = job._isGateway || job.source === 'gateway';
+      if (!watcherMatch) {
+        state.jobHistory[cronName] = { unmonitored: true, runs: [] };
+        renderJobHistoryContent(cronName);
+        return;
+      }
+      if (isGateway) {
+        state.jobHistory[cronName] = {
+          runs: [{
+            status: watcherMatch.last_status || watcherMatch.status || 'unknown',
+            duration_ms: watcherMatch.last_duration_ms,
+            exit_code: watcherMatch.last_exit_code,
+            started_at: watcherMatch.last_run || watcherMatch.last_seen || null,
+            finished_at: watcherMatch.last_seen || watcherMatch.last_run || null
+          }]
+        };
+        renderJobHistoryContent(cronName);
+        return;
+      }
+
+      state.jobHistoryLoading[cronName] = true;
+      renderJobHistoryContent(cronName);
+      try {
+        const jobId = watcherMatch.id || cronName;
+        const data = await api(`/api/watcher/history/${encodeURIComponent(jobId)}?limit=5`);
+        const runs = (Array.isArray(data?.runs) ? data.runs : []).slice(0, 5);
+        state.jobHistory[cronName] = { runs };
+      } catch (error) {
+        state.jobHistory[cronName] = { runs: [] };
+      } finally {
+        state.jobHistoryLoading[cronName] = false;
+        renderJobHistoryContent(cronName);
+      }
+    }
+
+    function renderCronRowExpansion() {
+      const tbody = $('cronRows');
+      if (!tbody) return;
+      tbody.querySelectorAll('tr.job-expansion').forEach((row) => row.remove());
+      const expandedName = getExpandedCronName();
+      if (!expandedName) return;
+      const row = tbody.querySelector(`tr[data-cron-name="${CSS.escape(expandedName)}"]`);
+      const job = getCronByName(expandedName);
+      if (!row || !job) return;
+      const expansion = document.createElement('tr');
+      expansion.className = 'job-expansion';
+      expansion.style.background = 'var(--bg-elevated)';
+      const lastRun = rel(job.last_run);
+      const historyId = cronHistoryNodeId(expandedName);
+      expansion.innerHTML = `
+        <td colspan="5" style="padding: 12px 16px; border-top: 1px solid var(--border-subtle); overflow-wrap: anywhere;">
+          <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; font-size: 12px;">
+            <div>
+              <div style="color: var(--text-tertiary); text-transform: uppercase; font-size: 10px; margin-bottom: 4px;">Command</div>
+              <div style="font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-secondary); word-break: break-all;">${esc(job.command || '—')}</div>
+            </div>
+            <div>
+              <div style="color: var(--text-tertiary); text-transform: uppercase; font-size: 10px; margin-bottom: 4px;">Last run</div>
+              <div style="font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-secondary);">${esc(lastRun)}</div>
+            </div>
+          </div>
+          <div style="margin-top: 10px; min-width: 0;">
+            <div style="color: var(--text-tertiary); text-transform: uppercase; font-size: 10px; margin-bottom: 6px;">Recent runs</div>
+            <div id="${historyId}" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; min-width: 0;">Loading...</div>
+          </div>
+        </td>
+      `;
+      row.insertAdjacentElement('afterend', expansion);
+      renderJobHistoryContent(expandedName);
+      ensureJobHistoryLoaded(expandedName);
+    }
+
     function renderJobsSummaryCards() {
       const root = $('opsJobsSummaryCards');
       if (!root) return;
@@ -1755,26 +1917,11 @@
         return;
       }
       warning.innerHTML = '';
-      const results = getWatcherResults();
-      const byId = new Map(results.map((row) => [row?.id, row]));
-      const cfgAll = [
-        ...(Array.isArray((state.watcherHealth?.config||{}).system_crons) ? state.watcherHealth.config.system_crons : []),
-        ...(Array.isArray((state.watcherHealth?.config||{}).gateway_crons) ? state.watcherHealth.config.gateway_crons : [])
-      ];
-      const descToId = new Map();
-      cfgAll.forEach((j) => { if (j?.description && j?.id) descToId.set(j.description.toLowerCase(), j.id); });
-      function findMatch(n) {
-        if (byId.has(n)) return byId.get(n);
-        const lo = (n||'').toLowerCase();
-        for (const [d,id] of descToId) { if (lo.startsWith(d)) return byId.get(id)||null; }
-        for (const [id,row] of byId) { if ((row?.name||'') === n) return row; }
-        return null;
-      }
       document.querySelectorAll('#cronRows tr[data-cron-name]').forEach((row) => {
         const cell = row.querySelector('[data-role="watcher-status-dot"]');
         if (!cell) return;
         const cronName = row.dataset.cronName;
-        const match = findMatch(cronName);
+        const match = getCronWatcherMatch(cronName);
         if (!match) {
           cell.innerHTML = '<span class="jobs-status-dot gray" title="Not monitored by WATCHER" style="opacity:0.5;"></span>';
           return;
@@ -2170,6 +2317,7 @@
       `;
       renderJobsSummaryCards();
       renderJobsStatusDots();
+      renderCronRowExpansion();
     }
 
     // Execute a cron command immediately.
@@ -2945,10 +3093,16 @@
       if (gatewayBody) {
         gatewayBody.classList.toggle('collapsed', !state.gatewayEventsOpen);
       }
+      const retentionBody = $('retentionBody');
+      if (retentionBody) {
+        retentionBody.classList.toggle('collapsed', !state.retentionOpen);
+      }
+      setChevronIcon('retentionToggleBtn', state.retentionOpen);
     }
 
     function initPanelCollapseState() {
       state.gatewayEventsOpen = localStorage.getItem('ops_gateway_events_open') === 'true';
+      state.retentionOpen = localStorage.getItem('ops_retention_open') === 'true';
       applyCollapsibleState();
     }
 
@@ -2993,11 +3147,34 @@
         setChevronIcon('verificationToggleBtn', state.verificationExpanded);
       };
       $('cleanupBtn').onclick = handleCleanup;
+      $('retentionToggleBtn').onclick = (event) => {
+        event.stopPropagation();
+        state.retentionOpen = !state.retentionOpen;
+        localStorage.setItem('ops_retention_open', state.retentionOpen ? 'true' : 'false');
+        applyCollapsibleState();
+      };
       $('gatewayEventsHeader').onclick = () => {
         state.gatewayEventsOpen = !state.gatewayEventsOpen;
         localStorage.setItem('ops_gateway_events_open', state.gatewayEventsOpen ? 'true' : 'false');
         renderGatewayEvents();
       };
+      const cronRows = $('cronRows');
+      if (cronRows && !cronRows.dataset.expandBound) {
+        cronRows.dataset.expandBound = '1';
+        cronRows.addEventListener('click', (event) => {
+          if (event.target.closest('button')) return;
+          const row = event.target.closest('tr[data-cron-name]');
+          if (!row) return;
+          const cronName = row.getAttribute('data-cron-name');
+          const expandedName = getExpandedCronName();
+          if (expandedName === cronName) {
+            setExpandedCron('');
+          } else {
+            setExpandedCron(cronName);
+          }
+          renderCronRowExpansion();
+        });
+      }
       $('manifestCloseBtn').onclick = closeManifestModal;
       $('manifestCloseBtnBottom').onclick = closeManifestModal;
       $('manifestModal').onclick = (event) => {
