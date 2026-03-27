@@ -42,17 +42,17 @@
     '/chat.html': 'chat',
   };
   const PAGE_META = {
-    dashboard:  { title: 'Overview', subtitle: 'System health at a glance. Green means go home.', color: '#2dd4bf' },
-    tasks:      { title: 'Tasks', subtitle: 'All durable work, from proposal to archive.', color: '#6366f1' },
-    agents:     { title: 'Agents', subtitle: 'Agent fleet status and per-agent workspace.', color: '#f59e0b' },
-    analytics:  { title: 'Usage', subtitle: 'Where tokens and money go.', color: '#2dd4bf' },
+    dashboard:  { title: 'Overview', subtitle: 'System health at a glance. Green means go home.', color: '#06b6d4' },
+    tasks:      { title: 'Tasks', subtitle: 'All durable work, from proposal to archive.', color: '#3b82f6' },
+    agents:     { title: 'Agents', subtitle: 'Agent fleet status and per-agent workspace.', color: '#6366f1' },
+    analytics:  { title: 'Usage', subtitle: 'Where tokens and money go.', color: '#14b8a6' },
     ops:        { title: 'Operations', subtitle: 'Infrastructure health, jobs, and recovery.', color: '#a78bfa' },
-    security:   { title: 'Security', subtitle: 'Security posture and enforcement status.', color: '#ef4444' },
+    security:   { title: 'Security', subtitle: 'Security posture and enforcement status.', color: '#ec4899' },
     cortex:     { title: 'CORTEX', subtitle: 'Model routing, workload controls, and configuration.', color: '#7c3aed' },
-    sessions:   { title: 'Sessions', subtitle: 'Active and recent gateway sessions.', color: '#6366f1' },
-    memory:     { title: 'Memory', subtitle: 'What the system knows. Pipeline health and knowledge.', color: '#10b981' },
+    sessions:   { title: 'Sessions', subtitle: 'Active and recent gateway sessions.', color: '#38bdf8' },
+    memory:     { title: 'Memory', subtitle: 'What the system knows. Pipeline health and knowledge.', color: '#c084fc' },
     chat:       { title: 'Chat', subtitle: 'Conversation with Jarvis.', color: '#2dd4bf' },
-    'agent-detail': { title: 'Agent Detail', subtitle: 'Per-agent workspace.', color: '#f59e0b' },
+    'agent-detail': { title: 'Agent Detail', subtitle: 'Per-agent workspace.', color: '#6366f1' },
   };
 
   const activePage = PAGE_MAP[path] || (path.startsWith('/agent/') ? 'agent-detail' : 'other');
