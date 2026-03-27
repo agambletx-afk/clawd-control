@@ -1225,7 +1225,7 @@
             <div class="gateway-events-meta">
               <span id="gatewayEventsCount" class="gateway-events-count">0 in last 24h</span>
             </div>
-            <span id="gatewayEventsChevron"><i data-lucide="chevron-down"></i></span>
+            <span id="gatewayEventsChevron"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
           </button>
           <div id="gatewayEventsBody" class="gateway-events-body collapsible-body collapsed">
             <div id="gatewayEventsList" class="gateway-events-list">
@@ -2742,7 +2742,7 @@
           : '—';
         const stale = checkedAt && Number.isFinite(Date.parse(checkedAt)) && ((Date.now() - Date.parse(checkedAt)) > 5 * 60 * 1000);
         const staleText = stale ? '<span style="color: var(--text-tertiary);">(stale)</span>' : '';
-        return `<article class="service-health-card" style="background: var(--bg-elevated); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 10px 12px;">
+        return `<article class="service-health-card" style="background: #232a3a; border: 1px solid rgba(167,139,250,0.18); border-top: 2px solid rgba(167,139,250,0.35); border-radius: 12px; padding: 8px 12px;">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; gap: 8px;">
             <strong style="font-size: 13px; color: var(--text-primary);">${esc(service.name || service.id || 'Unknown service')}</strong>
             <span class="pill" style="text-transform: capitalize; ${serviceHealthPillStyle(status)}">${esc(statusLabel)}</span>
