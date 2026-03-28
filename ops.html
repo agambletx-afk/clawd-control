@@ -454,7 +454,7 @@
     .ops-ingestion-card,
     .ops-logs-health-card {
       border: 1px solid #363b4d;
-      border-left: 3px solid rgba(167, 139, 250, 0.45);
+      border-left: 2px solid rgba(167, 139, 250, 0.35);
       background: #1e2535;
     }
 
@@ -896,7 +896,7 @@
     .ops-logs-health-card {
       position: relative;
       border: 1px solid #363b4d;
-      border-left: 3px solid rgba(167, 139, 250, 0.45);
+      border-left: 2px solid rgba(167, 139, 250, 0.35);
       border-radius: var(--radius-lg);
       background: #1e2535;
       padding: 8px 8px 8px 12px;
@@ -904,15 +904,7 @@
       min-height: auto;
     }
 
-    .ops-logs-health-card::before {
-      content: '';
-      position: absolute;
-      left: 0;
-      top: 0;
-      bottom: 0;
-      width: 3px;
-      background: var(--ops-domain, #a78bfa);
-    }
+
 
     .ops-logs-health-head {
       display: flex;
