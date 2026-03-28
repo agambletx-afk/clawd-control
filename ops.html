@@ -2786,7 +2786,7 @@
           : '—';
         const stale = checkedAt && Number.isFinite(Date.parse(checkedAt)) && ((Date.now() - Date.parse(checkedAt)) > 5 * 60 * 1000);
         const staleText = stale ? '<span style="color: var(--text-tertiary);">(stale)</span>' : '';
-        return `<article class="service-health-card" style="background: #1e2535; border: 1px solid #363b4d; border-radius: 12px; padding: 8px 12px;">
+        return `<article class="service-health-card" style="background: #1e2535; border: 1px solid #363b4d; border-radius: 12px; padding: 8px 12px; display: block; min-height: 80px;">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; gap: 8px;">
             <strong style="font-size: 13px; color: var(--text-primary);">${esc(service.name || service.id || 'Unknown service')}</strong>
             <span class="pill" style="text-transform: capitalize; ${serviceHealthPillStyle(status)}">${esc(statusLabel)}</span>
