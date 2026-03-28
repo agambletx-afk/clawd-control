@@ -478,7 +478,7 @@
     }
 
     .btn-secondary {
-      background: transparent;
+      background: #252a36;
       color: var(--text-primary);
       border: 1px solid #363b4d;
       border-radius: 6px;
@@ -2377,7 +2377,7 @@
           ? ` <button class="btn btn-secondary" onclick="toggleGatewayCron('${encodeURIComponent(gwId)}', ${isEnabled ? 'true' : 'false'}, this)">${isEnabled ? 'Disable' : 'Enable'}</button>`
           : '';
         const runBtn = !isGateway
-          ? `<button class="btn" onclick="triggerCron('${encodeURIComponent(job.name)}', this)">Run Now</button>`
+          ? `<button class="btn btn-secondary" onclick="triggerCron('${encodeURIComponent(job.name)}', this)">Run Now</button>`
           : '';
         return `
           <tr data-cron-name="${esc(isGateway ? gwId : job.name)}">
