@@ -743,6 +743,24 @@
       margin-bottom: 16px;
     }
 
+
+    .ops-summary-card[data-stat] {
+      cursor: pointer;
+      transition: border-color 150ms;
+    }
+    .ops-summary-card[data-stat]:hover {
+      border-color: rgba(167, 139, 250, 0.35);
+    }
+    #cronRows tr.highlight-healthy {
+      background: rgba(34, 197, 94, 0.08);
+    }
+    #cronRows tr.highlight-failing {
+      background: rgba(239, 68, 68, 0.08);
+    }
+    #cronRows tr.highlight-unmonitored {
+      background: rgba(148, 163, 184, 0.08);
+    }
+
     .ops-summary-card {
       position: relative;
       border: 1px solid #363b4d;
@@ -1579,7 +1597,7 @@
 
     function renderSummaryCard(config) {
       const staleSuffix = config.stale ? '<span class="ops-summary-stale">(stale)</span>' : '';
-      return `<article class="ops-summary-card">
+      return `<article class="ops-summary-card" data-stat="${config.stat || ''}">
         <div class="ops-summary-label">${esc(config.label)}</div>
         <div class="ops-summary-value ${esc(config.valueClass || '')}">${esc(config.value)}${staleSuffix}</div>
         ${config.attention ? `<div class="ops-summary-attention">${esc(config.attention)}</div>` : ''}
@@ -1795,6 +1813,23 @@
       }).join('')}`;
     }
 
+    function highlightJobRows(stat) {
+      var rows = document.querySelectorAll("#cronRows tr[data-cron-name]");
+      rows.forEach(function(row) {
+        row.classList.remove("highlight-healthy", "highlight-failing", "highlight-unmonitored");
+        if (!stat || stat === "total") return;
+        var cronName = row.dataset.cronName;
+        var match = getCronWatcherMatch(cronName);
+        if (stat === "healthy" && match && ["healthy", "ok"].indexOf(String(match.status || "").toLowerCase()) >= 0) {
+          row.classList.add("highlight-healthy");
+        } else if (stat === "failing" && match && ["failed", "erroring"].indexOf(String(match.status || "").toLowerCase()) >= 0) {
+          row.classList.add("highlight-failing");
+        } else if (stat === "unmonitored" && !match) {
+          row.classList.add("highlight-unmonitored");
+        }
+      });
+    }
+
     function getCronWatcherMatch(cronName) {
       if (!state.watcherHealth) return null;
       const results = getWatcherResults();
@@ -1984,11 +2019,15 @@
       });
 
       root.innerHTML = [
-        { label: 'TOTAL JOBS', value: String(state.crons.length), subtitle: 'system + gateway' },
-        { label: 'HEALTHY', value: String(healthyCount), valueClass: healthyCount > 0 ? 'green' : '', subtitle: 'WATCHER status healthy/ok' },
-        { label: 'FAILING', value: String(failingCount), valueClass: failingCount > 0 ? 'red' : '', subtitle: 'WATCHER status failed/erroring' },
-        { label: 'UNMONITORED', value: String(unmonitoredCount), valueClass: unmonitoredCount > 0 ? 'amber' : '', subtitle: 'not tracked by WATCHER' }
+        { label: 'TOTAL JOBS', value: String(state.crons.length), subtitle: 'system + gateway', stat: 'total' },
+        { label: 'HEALTHY', value: String(healthyCount), valueClass: healthyCount > 0 ? 'green' : '', subtitle: 'WATCHER status healthy/ok', stat: 'healthy' },
+        { label: 'FAILING', value: String(failingCount), valueClass: failingCount > 0 ? 'red' : '', subtitle: 'WATCHER status failed/erroring', stat: 'failing' },
+        { label: 'UNMONITORED', value: String(unmonitoredCount), valueClass: unmonitoredCount > 0 ? 'amber' : '', subtitle: 'not tracked by WATCHER', stat: 'unmonitored' }
       ].map(renderSummaryCard).join('');
+      root.querySelectorAll('.ops-summary-card[data-stat]').forEach(card => {
+        card.addEventListener('mouseenter', () => highlightJobRows(card.dataset.stat));
+        card.addEventListener('mouseleave', () => highlightJobRows(null));
+      });
     }
 
     function renderJobsStatusDots() {
