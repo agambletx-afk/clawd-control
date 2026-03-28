@@ -99,14 +99,7 @@ port_health_check() {
 }
 
 recent_session_write_check() {
-  python3 -c "import os, time; root='$SESSIONS_PATH'; now=time.time();\
-bad=False\
-\
-for dp,_,fs in os.walk(root):\
-  for n in fs:\
-    if n.endswith('.jsonl') and now-os.path.getmtime(os.path.join(dp,n)) < 5: bad=True\
-\
-raise SystemExit(1 if bad else 0)"
+  python3 "/home/openclaw/.openclaw/workspace/pulse-helpers.py" recent-session-write
 }
 
 refresh_restart_window() {
@@ -158,21 +151,7 @@ f=tempfile.NamedTemporaryFile('w', delete=False, encoding='utf-8', dir=os.path.d
 }
 
 check_kill_switch_staleness() {
-  python3 -c "import json, datetime; ks=json.load(open('$KILL_SWITCH_FILE','r',encoding='utf-8')); st=json.load(open('$STATE_FILE','r',encoding='utf-8')); now=datetime.datetime.now(datetime.timezone.utc); reminders=st.get('kill_switch_reminders',{}); changed=False;\
-for k,v in ks.items():\
-  if not isinstance(v,dict) or not v.get('active') or not v.get('activated_at'): continue\
-  activated=datetime.datetime.fromisoformat(str(v.get('activated_at')).replace('Z','+00:00'))\
-  if (now-activated).total_seconds() < 43200: continue\
-  last=reminders.get(k); send=True\
-  if last:\
-    last_dt=datetime.datetime.fromisoformat(str(last).replace('Z','+00:00')); send=(now-last_dt).total_seconds()>=43200\
-  if send:\
-    print(k)\
-    reminders[k]=now.isoformat().replace('+00:00','Z'); changed=True\
-if changed:\
-  st['kill_switch_reminders']=reminders\
-  import os,tempfile\
-  p='$STATE_FILE'; f=tempfile.NamedTemporaryFile('w',delete=False,encoding='utf-8',dir=os.path.dirname(p)); json.dump(st,f,indent=2,sort_keys=True); f.write('\\n'); f.close(); os.replace(f.name,p)"
+  python3 "/home/openclaw/.openclaw/workspace/pulse-helpers.py" stale-switches
 }
 
 ensure_state_file
@@ -210,7 +189,6 @@ if [ "$http_ok" -eq 1 ] && [ "$proc_ok" -eq 1 ] && [ "$port_ok" -eq 1 ]; then
   set_last_success "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
   STATUS_COLOR="green"
   EXIT_CODE=0
-  append_recovery_log "pulse" "health_check" "healthy" "" "False"
   write_status_contract
   exit "$EXIT_CODE"
 fi
