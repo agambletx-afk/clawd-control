@@ -452,9 +452,12 @@
     .ops-service-card,
     .service-health-card,
     .ops-ingestion-card,
+    .ops-logs-health-card::before {
+      display: none;
+    }
     .ops-logs-health-card {
       border: 1px solid #363b4d;
-      border-left: 2px solid rgba(167, 139, 250, 0.35);
+      border-left: 3px solid rgba(167, 139, 250, 0.45);
       background: #1e2535;
     }
 
@@ -896,7 +899,7 @@
     .ops-logs-health-card {
       position: relative;
       border: 1px solid #363b4d;
-      border-left: 2px solid rgba(167, 139, 250, 0.35);
+      border-left: 3px solid rgba(167, 139, 250, 0.45);
       border-radius: var(--radius-lg);
       background: #1e2535;
       padding: 8px 8px 8px 12px;
