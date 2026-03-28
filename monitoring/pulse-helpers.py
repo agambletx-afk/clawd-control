@@ -1,7 +1,7 @@
 import json, datetime, os, sys, tempfile, time
 
 WORKSPACE = "/home/openclaw/.openclaw/workspace/"
-SESSIONS = "/home/openclaw/.openclaw/sessions/"
+SESSIONS = "/home/openclaw/.openclaw/agents/main/sessions/"
 
 def check_kill_switch_staleness():
     ks = json.load(open(WORKSPACE + ".kill-switches.json", "r", encoding="utf-8"))

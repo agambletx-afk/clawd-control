@@ -3,7 +3,7 @@
 set -uo pipefail
 
 WORKSPACE_PATH="/home/openclaw/.openclaw/workspace/"
-SESSIONS_PATH="/home/openclaw/.openclaw/sessions/"
+SESSIONS_PATH="/home/openclaw/.openclaw/agents/main/sessions/"
 HEALTH_URL="http://localhost:18789/health"
 SERVICE_NAME="openclaw.service"
 STATE_FILE="${WORKSPACE_PATH}.pulse-state.json"
