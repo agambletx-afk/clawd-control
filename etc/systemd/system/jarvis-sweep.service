@@ -1,0 +1,16 @@
+[Unit]
+Description=Jarvis Layer 3 Sweep Runner
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/home/openclaw/.openclaw/workspace
+ExecStart=/home/openclaw/.openclaw/workspace/sweep-check.sh
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=jarvis-sweep
+
+[Install]
+WantedBy=multi-user.target
