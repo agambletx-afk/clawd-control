@@ -1205,7 +1205,151 @@ export function addAuditEntry(data) {
 
 export function getAuditTrail(taskId) {
   const conn = getDb();
-  return conn.prepare('SELECT * FROM task_audit WHERE task_id = ? ORDER BY created_at ASC').all(taskId);
+  const baseAudit = conn.prepare('SELECT * FROM task_audit WHERE task_id = ? ORDER BY created_at ASC').all(taskId)
+    .map(mapTaskAuditEvent);
+
+  const taskIdStr = taskId == null ? '' : String(taskId).trim();
+  if (!taskIdStr) return baseAudit;
+
+  const linkedSessions = getTaskSessionLinksForAudit(taskIdStr);
+  if (linkedSessions.length === 0) return baseAudit;
+
+  const sessionEvents = linkedSessions.map((session) => mapTaskSessionEvent(session));
+  const securityEvents = getSecurityHookEventsForSessions(linkedSessions.map((session) => session.session_id));
+
+  return [...baseAudit, ...sessionEvents, ...securityEvents]
+    .sort((a, b) => {
+      const aTime = Date.parse(a.created_at || '');
+      const bTime = Date.parse(b.created_at || '');
+      if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0;
+      if (Number.isNaN(aTime)) return -1;
+      if (Number.isNaN(bTime)) return 1;
+      return aTime - bTime;
+    });
+}
+
+let securityDecisionsDb;
+let securityDecisionsUnavailable = false;
+const SECURITY_DECISIONS_DB_PATH = join(new URL('.', import.meta.url).pathname, 'security-decisions.db');
+
+function getSecurityDecisionsDb() {
+  if (securityDecisionsDb) return securityDecisionsDb;
+  if (securityDecisionsUnavailable || !existsSync(SECURITY_DECISIONS_DB_PATH)) return null;
+  try {
+    securityDecisionsDb = new Database(SECURITY_DECISIONS_DB_PATH, { readonly: true, fileMustExist: true });
+    return securityDecisionsDb;
+  } catch {
+    securityDecisionsUnavailable = true;
+    return null;
+  }
+}
+
+function getTaskSessionLinksForAudit(taskId) {
+  const conn = getDb();
+  return conn.prepare(`
+    SELECT session_id, link_type, created_at
+    FROM task_sessions
+    WHERE task_id = ?
+    ORDER BY datetime(created_at) ASC, id ASC
+  `).all(taskId);
+}
+
+function getSecurityHookEventsForSessions(sessionIds) {
+  if (!Array.isArray(sessionIds) || sessionIds.length === 0) return [];
+  const normalizedSessionIds = [...new Set(sessionIds
+    .map((id) => (id == null ? '' : String(id).trim()))
+    .filter(Boolean))];
+  if (normalizedSessionIds.length === 0) return [];
+
+  const decisionsDb = getSecurityDecisionsDb();
+  if (!decisionsDb) return [];
+
+  const placeholders = normalizedSessionIds.map(() => '?').join(', ');
+  try {
+    const rows = decisionsDb.prepare(`
+      SELECT timestamp, session_id, agent, tool_name, action, decision, rule_matched
+      FROM hook_decisions
+      WHERE session_id IN (${placeholders})
+      ORDER BY datetime(timestamp) ASC, id ASC
+    `).all(...normalizedSessionIds);
+    return rows.map((row) => mapSecurityDecisionEvent(row));
+  } catch {
+    return [];
+  }
+}
+
+function mapTaskAuditEvent(entry) {
+  return {
+    ...entry,
+    source: 'task_audit',
+    action: entry.action || '',
+    actor: entry.actor || 'system',
+    detail: formatTaskAuditDetail(entry),
+    created_at: entry.created_at || new Date(0).toISOString(),
+    from_status: entry.from_status ?? null,
+    to_status: entry.to_status ?? null,
+    session_id: null,
+    decision: null,
+    tool_name: null,
+    rule_matched: null,
+  };
+}
+
+function mapTaskSessionEvent(session) {
+  return {
+    source: 'session',
+    action: 'session_linked',
+    actor: 'system',
+    detail: `Session ${session.session_id} linked as ${session.link_type || 'primary'}`,
+    created_at: session.created_at || new Date(0).toISOString(),
+    from_status: null,
+    to_status: null,
+    session_id: session.session_id || null,
+    decision: null,
+    tool_name: null,
+    rule_matched: null,
+  };
+}
+
+function mapSecurityDecisionEvent(row) {
+  const decision = row.decision == null ? '' : String(row.decision).trim();
+  const action = `tool_${decision || 'unknown'}`;
+  const ruleSegment = row.rule_matched ? ` (rule: ${row.rule_matched})` : '';
+  return {
+    source: 'security_hook',
+    action,
+    actor: row.agent || 'system',
+    detail: `${row.tool_name || 'tool'}: ${row.action || action}${ruleSegment}`,
+    created_at: row.timestamp || new Date(0).toISOString(),
+    from_status: null,
+    to_status: null,
+    session_id: row.session_id || null,
+    decision: decision || null,
+    tool_name: row.tool_name || null,
+    rule_matched: row.rule_matched || null,
+  };
+}
+
+function formatTaskAuditDetail(entry) {
+  let detail = '';
+  if (entry.details) {
+    try {
+      const parsed = JSON.parse(entry.details);
+      if (parsed && typeof parsed === 'object') {
+        detail = Object.entries(parsed)
+          .map(([key, value]) => `${key}: ${typeof value === 'object' ? JSON.stringify(value) : value}`)
+          .join(', ');
+      } else {
+        detail = String(parsed);
+      }
+    } catch {
+      detail = String(entry.details);
+    }
+  }
+  if (entry.from_status && entry.to_status) {
+    return `${entry.from_status} → ${entry.to_status}${detail ? ` | ${detail}` : ''}`;
+  }
+  return detail;
 }
 
 export function checkArtifactGate(taskId, transition, taskType) {

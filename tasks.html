@@ -684,6 +684,36 @@
       text-transform: uppercase;
       letter-spacing: 0.04em;
     }
+    .timeline-node.security-blocked {
+      background: #ef4444;
+      box-shadow: 0 0 6px rgba(239, 68, 68, 0.4);
+    }
+    .timeline-node.security-confirmed {
+      background: #f59e0b;
+    }
+    .timeline-node.security-allowed {
+      background: #475569;
+    }
+    .timeline-action.security-hook {
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+    .timeline-action.security-blocked {
+      color: #ef4444;
+    }
+    .timeline-action.security-muted {
+      color: var(--text-tertiary);
+    }
+    .timeline-toggle {
+      margin-top: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 0.72rem;
+      cursor: pointer;
+    }
     .timeline-actor {
       font-size: 0.68rem;
       color: var(--text-secondary);
@@ -1728,30 +1758,44 @@
           try {
             const res = await fetch(`/api/tasks/${task.id}/audit`, { credentials: 'same-origin' });
             const data = await res.json();
-            const entries = data.audit || [];
+            const entries = Array.isArray(data.audit) ? data.audit : [];
 
             if (entries.length === 0) {
               container.innerHTML = '<div class="panel-loading">No audit entries.</div>';
               return;
             }
 
-            container.innerHTML = `<div class="timeline">${entries.map((entry, i) => {
+            const allowedEntries = entries.filter((entry) => entry?.source === 'security_hook' && entry?.decision === 'allowed');
+            const shouldCollapseAllowed = allowedEntries.length > 20;
+            const collapsedEntries = shouldCollapseAllowed
+              ? entries.filter((entry) => !(entry?.source === 'security_hook' && entry?.decision === 'allowed'))
+              : entries.slice();
+            const allowedSummary = shouldCollapseAllowed ? {
+              source: 'security_hook',
+              action: 'tool_allowed_summary',
+              actor: 'system',
+              detail: `${allowedEntries.length} tool calls allowed`,
+              created_at: allowedEntries[0]?.created_at || new Date().toISOString(),
+              decision: 'allowed',
+              isAllowedSummary: true,
+            } : null;
+            const renderEntries = shouldCollapseAllowed ? [...collapsedEntries, allowedSummary].sort((a, b) => new Date(a.created_at) - new Date(b.created_at)) : entries;
+
+            const renderTimeline = (timelineEntries, expandedAllowed = false) => `<div class="timeline">${timelineEntries.map((entry, i) => {
               const isFirst = i === 0;
-              const isLast = i === entries.length - 1;
+              const isLast = i === timelineEntries.length - 1;
               const isStateChange = entry.action === 'status_changed' || entry.action === 'checkpoint_created';
-              const nodeClass = isStateChange ? 'timeline-node state-change' : 'timeline-node';
-              let detail = '';
-              if (entry.details) {
-                try {
-                  const d = JSON.parse(entry.details);
-                  detail = Object.entries(d).map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join(', ');
-                } catch {
-                  detail = entry.details;
-                }
-              }
-              if (entry.from_status && entry.to_status) {
-                detail = `${entry.from_status} → ${entry.to_status}${detail ? ` | ${detail}` : ''}`;
-              }
+              const isSecurityHook = entry.source === 'security_hook';
+              const isBlocked = entry.decision === 'blocked';
+              const isConfirmed = entry.decision === 'confirmed' || entry.decision === 'rate_limited';
+              const isAllowed = entry.decision === 'allowed';
+              const nodeClass = isSecurityHook
+                ? (isBlocked ? 'timeline-node security-blocked' : isConfirmed ? 'timeline-node security-confirmed' : 'timeline-node security-allowed')
+                : (isStateChange ? 'timeline-node state-change' : 'timeline-node');
+              const actionClass = isSecurityHook
+                ? `timeline-action security-hook${isBlocked ? ' security-blocked' : isAllowed ? ' security-muted' : ''}`
+                : 'timeline-action';
+              const detail = entry.detail || '';
               return `<div class="timeline-entry${isFirst ? ' first' : ''}${isLast ? ' last' : ''}">
                 <div class="timeline-rail">
                   <span class="${nodeClass}"></span>
@@ -1759,14 +1803,32 @@
                 </div>
                 <div class="timeline-content">
                   <div class="timeline-header">
-                    <span class="timeline-action">${esc(entry.action)}</span>
-                    <span class="timeline-actor">${esc(entry.actor)}</span>
+                    <span class="${actionClass}">${esc(entry.action)}</span>
+                    <span class="timeline-actor">${esc(entry.actor || 'system')}</span>
                     <span class="timeline-time">${esc(cstFormatter.format(new Date(entry.created_at)))}</span>
                   </div>
                   ${detail ? `<div class="timeline-detail">${esc(detail)}</div>` : ''}
                 </div>
               </div>`;
-            }).join('')}</div>`;
+            }).join('')}${shouldCollapseAllowed ? `<button id="allowedToggle" class="timeline-toggle" type="button" data-expanded="${expandedAllowed ? '1' : '0'}">${expandedAllowed ? 'Hide allowed tool calls' : `Show ${allowedEntries.length} allowed tool calls`}</button>` : ''}</div>`;
+
+            const bindAllowedToggle = () => {
+              if (!shouldCollapseAllowed) return;
+              const toggle = container.querySelector('#allowedToggle');
+              if (!toggle) return;
+              toggle.addEventListener('click', () => {
+                const expanded = toggle.dataset.expanded === '1';
+                const nextExpanded = !expanded;
+                const entriesToRender = nextExpanded
+                  ? [...collapsedEntries, ...allowedEntries].sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+                  : renderEntries;
+                container.innerHTML = renderTimeline(entriesToRender, nextExpanded);
+                bindAllowedToggle();
+              });
+            };
+
+            container.innerHTML = renderTimeline(renderEntries, false);
+            bindAllowedToggle();
           } catch {
             container.innerHTML = '<div class="panel-loading">Unable to load audit trail.</div>';
           }
