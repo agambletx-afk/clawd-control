@@ -428,7 +428,7 @@
     .service-health-card:hover,
     .ops-logs-health-card:hover {
       background: linear-gradient(135deg, rgba(167,139,250,0.06) 0%, var(--bg-elevated) 100%);
-      border-color: var(--border-strong);
+      border-color: var(--border);
     }
 
     .panel-header svg {
@@ -453,9 +453,8 @@
     .service-health-card,
     .ops-ingestion-card,
     .ops-logs-health-card {
-      border: 1px solid rgba(167, 139, 250, 0.18);
-      border-top: 2px solid rgba(167, 139, 250, 0.35);
-      background: #232a3a;
+      border: 1px solid #363b4d;
+      background: #1e2535;
     }
 
     .ops-table thead th,
@@ -479,9 +478,9 @@
     }
 
     .btn-secondary {
-      background: var(--bg-elevated, #1e2535);
+      background: transparent;
       color: var(--text-primary);
-      border: 1px solid var(--border-subtle);
+      border: 1px solid #363b4d;
       border-radius: 6px;
       padding: 4px 10px;
       font-size: 12px;
@@ -490,7 +489,7 @@
 
     .btn-secondary:hover {
       background: rgba(167, 139, 250, 0.08);
-      border-color: var(--border-strong);
+      border-color: var(--border);
     }
 
     /* =========================================================
@@ -666,9 +665,9 @@
 
 
     .gateway-events-panel {
-      border: 1px solid var(--border-subtle);
+      border: 1px solid var(--border);
       border-radius: var(--radius-md);
-      background: var(--bg-surface);
+      background: #161b26;
       overflow: hidden;
     }
 
@@ -877,10 +876,10 @@
 
     .ops-logs-health-card {
       position: relative;
-      border: 1px solid rgba(167, 139, 250, 0.18);
-      border-top: 2px solid rgba(167, 139, 250, 0.35);
+      border: 1px solid #363b4d;
+      border-top: 2px solid rgba(167, 139, 250, 0.45);
       border-radius: var(--radius-lg);
-      background: #232a3a;
+      background: #1e2535;
       padding: 8px 8px 8px 12px;
       overflow: hidden;
       min-height: auto;
@@ -1197,9 +1196,9 @@
     </div>
 
     <div id="ops-health-view">
-      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
+      <section class="panel" style="background: #161b26; border: 1px solid #363b4d; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
-          <i data-lucide="server" style="width:16px;height:16px;color:var(--text-secondary);"></i>
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/></svg>
           <div>
             <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;"><span class="ops-domain-capsule"></span>Service Controls</h2>
             <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Whether the core control plane is up right now.</p>
@@ -1208,9 +1207,9 @@
         <div id="serviceCards" class="services"></div>
       </section>
 
-      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
+      <section class="panel" style="background: #161b26; border: 1px solid #363b4d; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
-          <i data-lucide="heart-pulse" style="width:16px;height:16px;color:var(--text-secondary);"></i>
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/><path d="M3.22 12H9.5l.5-1 2 4.5 2-7 1.5 3.5h5.27"/></svg>
           <div>
             <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;"><span class="ops-domain-capsule"></span>Cron Health</h2>
             <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Status of all monitored crons. Sorted by severity.</p>
@@ -1219,9 +1218,9 @@
         <div id="cronHealthCards" class="cron-health-grid"></div>
       </section>
 
-      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
+      <section class="panel" style="background: #161b26; border: 1px solid #363b4d; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
-          <i data-lucide="radio" style="width:16px;height:16px;color:var(--text-secondary);"></i>
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"/></svg>
           <div>
             <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;"><span class="ops-domain-capsule"></span>Gateway Events</h2>
             <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Live gateway events from the OpenClaw process.</p>
@@ -1245,9 +1244,9 @@
 
     <div id="ops-jobs-view" style="display:none;">
 
-      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px;">
+      <section class="panel" style="background: #161b26; border: 1px solid #363b4d; border-radius: 12px; padding: 16px 20px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
-          <i data-lucide="clock" style="width:16px;height:16px;color:var(--text-secondary);"></i>
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
           <div>
             <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;"><span class="ops-domain-capsule"></span>Cron Jobs</h2>
             <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Scheduled automation. Missed or failing jobs quietly break the system.</p>
@@ -1271,9 +1270,9 @@
     </div>
 
     <div id="ops-recovery-view" style="display:none;">
-      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px;">
+      <section class="panel" style="background: #161b26; border: 1px solid #363b4d; border-radius: 12px; padding: 16px 20px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
-          <i data-lucide="archive" style="width:16px;height:16px;color:var(--text-secondary);"></i>
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>
           <div>
             <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;"><span class="ops-domain-capsule"></span>Backups</h2>
             <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Create, restore, and manage recovery snapshots.</p>
@@ -1314,7 +1313,7 @@
     <div id="ops-checks-view" style="display:none;">
 
 
-      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
+      <section class="panel" style="background: #161b26; border: 1px solid #363b4d; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg>
           <div>
@@ -1326,7 +1325,7 @@
         <div id="opsLogsHealthGrid" class="ops-logs-health-grid"></div>
       </section>
 
-      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
+      <section class="panel" style="background: #161b26; border: 1px solid #363b4d; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>
           <div>
@@ -1356,7 +1355,7 @@
         <div id="versionCheckDetails" class="version-check-details"></div>
       </section>
 
-      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px;" aria-label="Deployment verification results">
+      <section class="panel" style="background: #161b26; border: 1px solid #363b4d; border-radius: 12px; padding: 16px 20px;" aria-label="Deployment verification results">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
           <div>
@@ -1376,9 +1375,9 @@
     </div>
 
     <div id="ops-logs-view" class="ops-logs-view" style="display:none;">
-      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px;">
+      <section class="panel" style="background: #161b26; border: 1px solid #363b4d; border-radius: 12px; padding: 16px 20px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
-          <i data-lucide="file-text" style="width:16px;height:16px;color:var(--text-secondary);"></i>
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
           <div>
             <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;"><span class="ops-domain-capsule"></span>Unified Logs Viewer</h2>
             <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Aggregated logs from task audit, ops log, security hooks, cron health, and WATCHER.</p>
@@ -1783,7 +1782,7 @@
         const pillBg = statusClass === 'green' ? 'rgba(34,197,94,0.15)' : statusClass === 'amber' ? 'rgba(245,158,11,0.15)' : statusClass === 'gray' ? 'rgba(148,163,184,0.15)' : 'rgba(239,68,68,0.15)';
         const pillColor = statusClass === 'green' ? 'var(--accent-green)' : statusClass === 'amber' ? 'var(--accent-amber)' : statusClass === 'gray' ? 'var(--text-secondary)' : 'var(--accent-red)';
         const pillBorder = statusClass === 'green' ? 'rgba(34,197,94,0.45)' : statusClass === 'amber' ? 'rgba(245,158,11,0.45)' : statusClass === 'gray' ? 'rgba(148,163,184,0.35)' : 'rgba(239,68,68,0.45)';
-        return `<article class="cron-health-card" style="background: #232a3a; border: 1px solid rgba(167,139,250,0.18); border-top: 2px solid rgba(167,139,250,0.35); border-radius: 12px; padding: 8px 12px;">
+        return `<article class="cron-health-card" style="background: #1e2535; border: 1px solid #363b4d; border-radius: 12px; padding: 8px 12px;">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; gap: 8px;">
             <strong style="font-size: 13px; color: var(--text-primary);">${esc(getWatcherName(row))}</strong>
             <span class="pill" style="text-transform: capitalize; background: ${pillBg}; color: ${pillColor}; border-color: ${pillBorder};">${esc(statusLabel)}</span>
@@ -2287,7 +2286,7 @@
       const data = await api('/api/ops/services/status');
       const html = data.services.map((service) => {
         return `
-          <div class="card ops-service-card" style="background: #232a3a; border: 1px solid rgba(167,139,250,0.18); border-top: 2px solid rgba(167,139,250,0.35); border-radius: 12px;">
+          <div class="card ops-service-card" style="background: #1e2535; border: 1px solid #363b4d; border-radius: 12px;">
             <div class="row" style="justify-content: space-between;">
               <strong>${service.name}</strong>
               <span>
@@ -2608,7 +2607,9 @@
       body.classList.toggle('collapsed', !state.gatewayEventsOpen);
       body.style.maxHeight = state.gatewayEventsOpen ? `${body.scrollHeight}px` : '0';
       $('gatewayEventsHeader').setAttribute('aria-expanded', state.gatewayEventsOpen ? 'true' : 'false');
-      chevron.innerHTML = `<i data-lucide="${state.gatewayEventsOpen ? 'chevron-up' : 'chevron-down'}"></i>`;
+      chevron.innerHTML = state.gatewayEventsOpen
+          ? '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg>'
+          : '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
       renderLucideIcons();
     }
 
@@ -2746,7 +2747,7 @@
           : '—';
         const stale = checkedAt && Number.isFinite(Date.parse(checkedAt)) && ((Date.now() - Date.parse(checkedAt)) > 5 * 60 * 1000);
         const staleText = stale ? '<span style="color: var(--text-tertiary);">(stale)</span>' : '';
-        return `<article class="service-health-card" style="background: #232a3a; border: 1px solid rgba(167,139,250,0.18); border-top: 2px solid rgba(167,139,250,0.35); border-radius: 12px; padding: 8px 12px;">
+        return `<article class="service-health-card" style="background: #1e2535; border: 1px solid #363b4d; border-radius: 12px; padding: 8px 12px;">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; gap: 8px;">
             <strong style="font-size: 13px; color: var(--text-primary);">${esc(service.name || service.id || 'Unknown service')}</strong>
             <span class="pill" style="text-transform: capitalize; ${serviceHealthPillStyle(status)}">${esc(statusLabel)}</span>
