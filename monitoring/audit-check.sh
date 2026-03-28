@@ -20,27 +20,31 @@ FAILURES=()
 
 append_result() {
   local check_name="$1"
-  local payload="$2"
-  CHECK_NAME="$check_name" PAYLOAD_JSON="$payload" RESULTS_PATH="$RESULTS_FILE" python3 -c "import json, os, tempfile; p=os.environ['RESULTS_PATH']; arr=json.load(open(p,'r',encoding='utf-8')); arr.append({'check':os.environ['CHECK_NAME'],'result':json.loads(os.environ['PAYLOAD_JSON'])}); tmp=tempfile.NamedTemporaryFile('w',delete=False,encoding='utf-8',dir=os.path.dirname(p)); json.dump(arr,tmp,sort_keys=True); tmp.write(chr(10)); tmp.close(); os.replace(tmp.name,p)"
-}
-
-append_failure() {
-  local check_name="$1"
-  local payload="$2"
-  local message
-  message="$(PAYLOAD_JSON="$payload" python3 -c "import json, os; d=json.loads(os.environ['PAYLOAD_JSON']); print(d.get('message','alert'))")"
-  FAILURES+=("${check_name}: ${message}")
-  EXIT_CODE=1
+  local payload_file="$2"
+  python3 -c "
+import json, os, tempfile
+p = '${RESULTS_FILE}'
+arr = json.load(open(p, 'r', encoding='utf-8'))
+result = json.load(open('${payload_file}', 'r', encoding='utf-8'))
+arr.append({'check': '${check_name}', 'result': result})
+tmp = tempfile.NamedTemporaryFile('w', delete=False, encoding='utf-8', dir=os.path.dirname(p))
+json.dump(arr, tmp, sort_keys=True)
+tmp.write(chr(10))
+tmp.close()
+os.replace(tmp.name, p)
+"
 }
 
 record_result() {
   local check_name="$1"
-  local payload="$2"
-  local status
-  append_result "$check_name" "$payload"
-  status="$(PAYLOAD_JSON="$payload" python3 -c "import json, os; d=json.loads(os.environ['PAYLOAD_JSON']); print(d.get('status','alert'))")"
+  local payload_file="$2"
+  local status message
+  append_result "$check_name" "$payload_file"
+  status="$(python3 -c "import json; d=json.load(open('${payload_file}')); print(d.get('status','alert'))")"
+  message="$(python3 -c "import json; d=json.load(open('${payload_file}')); print(d.get('message','alert'))")"
   if [ "$status" = "alert" ]; then
-    append_failure "$check_name" "$payload"
+    FAILURES+=("${check_name}: ${message}")
+    EXIT_CODE=1
   fi
 }
 
@@ -64,16 +68,39 @@ write_status_contract() {
   if [ "${#FAILURES[@]}" -gt 0 ]; then
     status="red"
   fi
-  RESULTS_PATH="$RESULTS_FILE" STATUS_VAL="$status" python3 -c "import json, os, tempfile; p='${AUDIT_STATUS_FILE}'; results=json.load(open(os.environ['RESULTS_PATH'],'r',encoding='utf-8')); success_at=None if int(${EXIT_CODE})!=0 else '${end_iso}'; d={'check_id':'${CHECK_ID}','last_started_at':'${START_ISO}','last_finished_at':'${end_iso}','last_success_at':success_at,'exit_code':int(${EXIT_CODE}),'duration_ms':int(${duration_ms}),'status':os.environ['STATUS_VAL'],'results':results}; f=tempfile.NamedTemporaryFile('w',delete=False,encoding='utf-8',dir=os.path.dirname(p)); json.dump(d,f,indent=2,sort_keys=True); f.write(chr(10)); f.close(); os.replace(f.name,p)"
+  python3 -c "
+import json, os, tempfile
+p = '${AUDIT_STATUS_FILE}'
+results = json.load(open('${RESULTS_FILE}', 'r', encoding='utf-8'))
+success_at = None if int(${EXIT_CODE}) != 0 else '${end_iso}'
+d = {
+    'check_id': '${CHECK_ID}',
+    'last_started_at': '${START_ISO}',
+    'last_finished_at': '${end_iso}',
+    'last_success_at': success_at,
+    'exit_code': int(${EXIT_CODE}),
+    'duration_ms': int(${duration_ms}),
+    'status': '${status}',
+    'results': results,
+}
+f = tempfile.NamedTemporaryFile('w', delete=False, encoding='utf-8', dir=os.path.dirname(p))
+json.dump(d, f, indent=2, sort_keys=True)
+f.write(chr(10))
+f.close()
+os.replace(f.name, p)
+"
 }
 
 run_check() {
   local check_name="$1"
   local subcommand="$2"
-  local payload
-  payload="$(python3 "${HELPER_SCRIPT}" "$subcommand")"
-  record_result "$check_name" "$payload"
+  local payload_file="${WORKSPACE_PATH}/.audit-payload.${CHECK_ID}.${check_name}.json"
+  python3 "${HELPER_SCRIPT}" "$subcommand" > "$payload_file"
+  record_result "$check_name" "$payload_file"
+  rm -f "$payload_file"
 }
+
+# --- Main execution ---
 
 if ! preflight_workspace_writable_check >/dev/null; then
   send_telegram "<b>Layer 4 audit alert</b>%0AWorkspace is not writable at <code>${WORKSPACE_PATH}</code>. Audit aborted."

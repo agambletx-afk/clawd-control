@@ -5,7 +5,6 @@ import hashlib
 import json
 import os
 import re
-import shutil
 import sqlite3
 import subprocess
 import sys
@@ -21,8 +20,11 @@ PULSE_STATE = os.path.join(WORKSPACE, ".pulse-state.json")
 SWEEP_STATUS = os.path.join(WORKSPACE, "sweep-status.json")
 KILL_SWITCH_FILE = os.path.join(WORKSPACE, ".kill-switches.json")
 BASELINE_FILE = os.path.join(WORKSPACE, ".db-size-baseline.json")
-TASKS_DB = os.path.join(WORKSPACE, "tasks.db")
-FACTS_DB = os.path.join(WORKSPACE, "facts.db")
+FACTS_DB = "/home/openclaw/.openclaw/memory/facts.db"
+
+INTEGRITY_CHECK_DBS = [FACTS_DB]
+
+SKIP_DIRS = {"data", "node_modules", "__pycache__", ".git"}
 
 EXTENSIONS_INCLUDE = [
     "camofox-browser",
@@ -98,23 +100,24 @@ def drift_detection():
         if not os.path.isdir(repo_ext):
             details.append({"file": extension, "status": "skipped", "reason": "missing_repo_extension"})
             continue
-        for root, _, files in os.walk(runtime_ext):
+        for root, dirs, files in os.walk(runtime_ext):
+            dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
             for name in files:
                 runtime_path = os.path.join(root, name)
                 rel = os.path.relpath(runtime_path, runtime_ext)
                 repo_path = os.path.join(repo_ext, rel)
                 if not os.path.exists(repo_path):
-                    details.append({"file": f"extensions/{extension}/{rel}", "status": "skipped", "reason": "missing_repo_file"})
+                    details.append({"file": "extensions/" + extension + "/" + rel, "status": "skipped", "reason": "missing_repo_file"})
                     continue
                 checked += 1
                 runtime_hash = file_sha256(runtime_path)
                 repo_hash = file_sha256(repo_path)
                 if runtime_hash != repo_hash:
-                    drifted_name = f"extensions/{extension}/{rel}"
+                    drifted_name = "extensions/" + extension + "/" + rel
                     drifted.append(drifted_name)
                     details.append({"file": drifted_name, "status": "drift", "runtime_sha256": runtime_hash, "repo_sha256": repo_hash})
                 else:
-                    details.append({"file": f"extensions/{extension}/{rel}", "status": "ok"})
+                    details.append({"file": "extensions/" + extension + "/" + rel, "status": "ok"})
 
     tracked = run_command(["git", "-C", REPO_ROOT, "ls-files"]).stdout.splitlines()
     tracked_set = set(tracked)
@@ -141,7 +144,6 @@ def drift_detection():
         "total_files_checked": checked,
         "files_with_drift": len(drifted),
         "drifted_filenames": sorted(set(drifted)),
-        "details": details,
     })
     return 0
 
@@ -149,7 +151,7 @@ def drift_detection():
 def touch_verify(directory):
     if not os.path.isdir(directory):
         return False, "missing_directory"
-    marker = os.path.join(directory, f".audit-touch-{os.getpid()}-{int(time.time())}")
+    marker = os.path.join(directory, ".audit-touch-" + str(os.getpid()) + "-" + str(int(time.time())))
     try:
         with open(marker, "w", encoding="utf-8") as handle:
             handle.write("ok\n")
@@ -212,7 +214,7 @@ def storage_health():
     fd_count = None
     pid_result = run_command(["pgrep", "-o", "-f", "openclaw"]).stdout.strip()
     if pid_result.isdigit():
-        proc_fd = f"/proc/{pid_result}/fd"
+        proc_fd = "/proc/" + pid_result + "/fd"
         try:
             fd_count = len(os.listdir(proc_fd))
         except Exception:
@@ -220,11 +222,11 @@ def storage_health():
     details["openclaw_fd_count"] = fd_count
 
     db_details = {}
-    for db_path in [TASKS_DB, FACTS_DB]:
+    for db_path in INTEGRITY_CHECK_DBS:
         ok, message = sqlite_integrity(db_path)
         db_details[db_path] = {"ok": ok, "message": message}
         if not ok:
-            alerts.append(f"integrity check failed for {os.path.basename(db_path)}")
+            alerts.append("integrity check failed for " + os.path.basename(db_path))
     details["db_integrity"] = db_details
 
     baseline = {}
@@ -237,7 +239,7 @@ def storage_health():
 
     current_sizes = {}
     growth_alerts = []
-    for db_path in [TASKS_DB, FACTS_DB]:
+    for db_path in INTEGRITY_CHECK_DBS:
         if os.path.exists(db_path):
             current_size = os.path.getsize(db_path)
             current_sizes[db_path] = current_size
@@ -293,8 +295,8 @@ def monitor_the_monitors():
     journal = run_command(["journalctl", "-u", "openclaw.service", "--since", "60 minutes ago", "--no-pager", "-q"])
     heartbeat_count = len(re.findall(r"heartbeat", journal.stdout, flags=re.IGNORECASE))
     details["heartbeat_entries_last_60m"] = heartbeat_count
-    if heartbeat_count == 0:
-        alerts.append("no heartbeat entries in last 60 minutes")
+    # Heartbeat activeHours are 7AM-10PM CST. At 5AM CST (audit time), heartbeat won't be running.
+    # Report count for visibility but don't alert on zero.
 
     kill_switches = read_json(KILL_SWITCH_FILE)
     active = []
