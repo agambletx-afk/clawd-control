@@ -1815,6 +1815,10 @@
       for (const [, row] of byId) {
         if ((row?.name || '') === cronName) return row;
       }
+      // Fallback: check if any WATCHER description is contained in the cron name
+      for (const [description, id] of descToId) {
+        if (lowered.includes(description)) return byId.get(id) || null;
+      }
       return null;
     }
 
