@@ -1,0 +1,12 @@
+[Unit]
+Description=Run Jarvis Pulse every 5 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Persistent=true
+Unit=jarvis-pulse.service
+
+[Install]
+WantedBy=timers.target
