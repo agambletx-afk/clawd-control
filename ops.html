@@ -666,9 +666,9 @@
 
 
     .gateway-events-panel {
-      border: 1px solid rgba(167,139,250,0.12);
+      border: 1px solid var(--border-subtle);
       border-radius: var(--radius-md);
-      background: #1d2039;
+      background: var(--bg-surface);
       overflow: hidden;
     }
 
@@ -1197,7 +1197,7 @@
     </div>
 
     <div id="ops-health-view">
-      <section class="panel" style="background: #1d2039; border: 1px solid rgba(167,139,250,0.12); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
+      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="server" style="width:16px;height:16px;color:var(--text-secondary);"></i>
           <div>
@@ -1208,7 +1208,7 @@
         <div id="serviceCards" class="services"></div>
       </section>
 
-      <section class="panel" style="background: #1d2039; border: 1px solid rgba(167,139,250,0.12); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
+      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="heart-pulse" style="width:16px;height:16px;color:var(--text-secondary);"></i>
           <div>
@@ -1219,7 +1219,7 @@
         <div id="cronHealthCards" class="cron-health-grid"></div>
       </section>
 
-      <section class="panel" style="background: #1d2039; border: 1px solid rgba(167,139,250,0.12); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
+      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="radio" style="width:16px;height:16px;color:var(--text-secondary);"></i>
           <div>
@@ -1245,7 +1245,7 @@
 
     <div id="ops-jobs-view" style="display:none;">
 
-      <section class="panel" style="background: #1d2039; border: 1px solid rgba(167,139,250,0.12); border-radius: 12px; padding: 16px 20px;">
+      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="clock" style="width:16px;height:16px;color:var(--text-secondary);"></i>
           <div>
@@ -1271,7 +1271,7 @@
     </div>
 
     <div id="ops-recovery-view" style="display:none;">
-      <section class="panel" style="background: #1d2039; border: 1px solid rgba(167,139,250,0.12); border-radius: 12px; padding: 16px 20px;">
+      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="archive" style="width:16px;height:16px;color:var(--text-secondary);"></i>
           <div>
@@ -1314,7 +1314,7 @@
     <div id="ops-checks-view" style="display:none;">
 
 
-      <section class="panel" style="background: #1d2039; border: 1px solid rgba(167,139,250,0.12); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
+      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg>
           <div>
@@ -1326,7 +1326,7 @@
         <div id="opsLogsHealthGrid" class="ops-logs-health-grid"></div>
       </section>
 
-      <section class="panel" style="background: #1d2039; border: 1px solid rgba(167,139,250,0.12); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
+      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>
           <div>
@@ -1338,7 +1338,7 @@
         <div id="serviceHealthGrid" class="service-health-grid"></div>
       </section>
 
-      <section id="versionCheckBanner" class="version-check-banner" style="background: #1d2039; border-color: rgba(167,139,250,0.12);" aria-label="OpenClaw version check">
+      <section id="versionCheckBanner" class="version-check-banner" style="background: var(--bg-surface); border-color: rgba(167,139,250,0.12);" aria-label="OpenClaw version check">
         <div class="version-check-main">
           <div>
             <div class="version-check-summary" style="margin-bottom: 2px; display:flex; align-items:center; gap:8px;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 16px;"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><path d="M11 18H8a2 2 0 0 1-2-2V9"/></svg><span class="ops-domain-capsule"></span>Version Check</div>
@@ -1356,7 +1356,7 @@
         <div id="versionCheckDetails" class="version-check-details"></div>
       </section>
 
-      <section class="panel" style="background: #1d2039; border: 1px solid rgba(167,139,250,0.12); border-radius: 12px; padding: 16px 20px;" aria-label="Deployment verification results">
+      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px;" aria-label="Deployment verification results">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
           <div>
@@ -1376,7 +1376,7 @@
     </div>
 
     <div id="ops-logs-view" class="ops-logs-view" style="display:none;">
-      <section class="panel" style="background: #1d2039; border: 1px solid rgba(167,139,250,0.12); border-radius: 12px; padding: 16px 20px;">
+      <section class="panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 20px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="file-text" style="width:16px;height:16px;color:var(--text-secondary);"></i>
           <div>
