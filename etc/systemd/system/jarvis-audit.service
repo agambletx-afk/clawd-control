@@ -1,0 +1,16 @@
+[Unit]
+Description=Jarvis Layer 4 Daily Audit
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/home/openclaw/.openclaw/workspace
+ExecStart=/home/openclaw/.openclaw/workspace/audit-check.sh
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=jarvis-audit
+
+[Install]
+WantedBy=multi-user.target
