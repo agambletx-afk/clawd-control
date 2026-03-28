@@ -454,6 +454,7 @@
     .ops-ingestion-card,
     .ops-logs-health-card {
       border: 1px solid #363b4d;
+      border-left: 3px solid rgba(167, 139, 250, 0.45);
       background: #1e2535;
     }
 
@@ -895,7 +896,7 @@
     .ops-logs-health-card {
       position: relative;
       border: 1px solid #363b4d;
-      border-top: 2px solid rgba(167, 139, 250, 0.45);
+      border-left: 3px solid rgba(167, 139, 250, 0.45);
       border-radius: var(--radius-lg);
       background: #1e2535;
       padding: 8px 8px 8px 12px;
@@ -1355,7 +1356,7 @@
         <div id="serviceHealthGrid" class="service-health-grid"></div>
       </section>
 
-      <section id="versionCheckBanner" class="version-check-banner" style="background: var(--bg-surface); border-color: rgba(167,139,250,0.12);" aria-label="OpenClaw version check">
+      <section id="versionCheckBanner" class="version-check-banner" style="background: #161b26; border: 1px solid #363b4d;" aria-label="OpenClaw version check">
         <div class="version-check-main">
           <div>
             <div class="version-check-summary" style="margin-bottom: 2px; display:flex; align-items:center; gap:8px;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 16px;"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><path d="M11 18H8a2 2 0 0 1-2-2V9"/></svg><span class="ops-domain-capsule"></span>Version Check</div>
