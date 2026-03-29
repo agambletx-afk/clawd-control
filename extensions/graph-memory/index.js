@@ -781,6 +781,73 @@ module.exports = {
                     };
                 },
             }));
+
+            api.registerTool((ctx) => ({
+                name: 'memory_checkpoint',
+                label: 'Memory Checkpoint',
+                description: 'Save working state before risky operations. Creates checkpoint-class facts (4-hour TTL) that capture current task context. Use before Codex delegations, gateway restarts, or any operation that might reset the session.',
+                parameters: {
+                    type: 'object',
+                    required: ['summary'],
+                    properties: {
+                        summary: { type: 'string', description: 'Brief description of current task state.' },
+                        facts: {
+                            type: 'array',
+                            items: { type: 'string' },
+                            description: 'Specific facts to checkpoint.',
+                        },
+                        label: { type: 'string', description: 'Short label for the checkpoint.' },
+                        entity: { type: 'string', description: 'Subject of the work being checkpointed.' },
+                    },
+                },
+                async execute(_toolCallId, params = {}) {
+                    if (!db) return { content: [{ type: 'text', text: 'Memory database is unavailable.' }], details: { success: false } };
+
+                    const summary = String(params.summary || '').trim();
+                    if (!summary) return { content: [{ type: 'text', text: 'summary parameter is required.' }], details: { success: false } };
+
+                    const label = String(params.label || 'checkpoint').trim() || 'checkpoint';
+                    const parsed = extractStructuredFields(summary);
+                    const entity = String(params.entity || parsed.entity || 'Jarvis').trim() || 'Jarvis';
+                    const source = `checkpoint:${label}`;
+
+                    const factInputs = [
+                        { key: 'checkpoint-summary', value: summary },
+                        ...((Array.isArray(params.facts) ? params.facts : [])
+                            .map((fact, index) => ({
+                                key: `checkpoint-fact-${index + 1}`,
+                                value: String(fact || '').trim(),
+                            }))
+                            .filter((fact) => fact.value)),
+                    ];
+
+                    let storedCount = 0;
+                    let skippedCount = 0;
+                    for (const fact of factInputs) {
+                        if (hasDuplicate(db, entity, fact.key, fact.value)) {
+                            skippedCount += 1;
+                            continue;
+                        }
+
+                        insertFact(db, {
+                            text: fact.value,
+                            category: 'checkpoint',
+                            entity,
+                            key: fact.key,
+                            value: fact.value,
+                            decayClass: 'checkpoint',
+                        });
+                        db.prepare('UPDATE facts SET source = ?, importance = ? WHERE rowid = last_insert_rowid()').run(source, 0.8);
+                        storedCount += 1;
+                    }
+
+                    api.logger?.info?.(`[graph-memory] memory_checkpoint saved: ${label} (${storedCount} stored, ${skippedCount} skipped)`);
+                    return {
+                        content: [{ type: 'text', text: `Checkpoint '${label}' saved: ${storedCount} facts stored (${skippedCount} skipped as duplicates)` }],
+                        details: { action: 'checkpoint', label, entity, storedCount, skippedCount },
+                    };
+                },
+            }));
         }
     },
 };
