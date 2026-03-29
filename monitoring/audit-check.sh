@@ -128,3 +128,4 @@ fi
 
 rm -f "$RESULTS_FILE"
 exit "$EXIT_CODE"
+chown openclaw:openclaw "${AUDIT_STATUS_FILE}" 2>/dev/null || true

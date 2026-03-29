@@ -155,3 +155,4 @@ if [ "${#FAILURES[@]}" -gt 0 ]; then
 fi
 
 exit "${EXIT_CODE}"
+chown openclaw:openclaw "${SWEEP_STATUS_FILE}" 2>/dev/null || true
