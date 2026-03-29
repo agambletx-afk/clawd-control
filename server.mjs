@@ -143,6 +143,16 @@ const CONFIG_DRIFT_BASELINE_PATH = '/var/tmp/config-drift-baseline.json';
 const CREDENTIAL_ALLOWLIST_PATH = '/home/openclaw/.openclaw/workspace/credential-allowlist.json';
 const WATCHER_STATUS_PATH = '/home/openclaw/.openclaw/workspace/watcher-status.json';
 const WATCHER_CONFIG_PATH = '/etc/jarvis/watcher.json';
+const OPS_PULSE_STATE_PATH = join(OPENCLAW_WORKSPACE, '.pulse-state.json');
+const OPS_SWEEP_STATUS_PATH = join(OPENCLAW_WORKSPACE, 'sweep-status.json');
+const OPS_AUDIT_STATUS_PATH = join(OPENCLAW_WORKSPACE, 'audit-status.json');
+const OPS_KILL_SWITCHES_PATH = join(OPENCLAW_WORKSPACE, '.kill-switches.json');
+const OPS_RECOVERY_LOG_PATH = join(OPENCLAW_WORKSPACE, '.recovery-log.jsonl');
+const OPS_DOCTOR_STATUS_PATH = join(OPENCLAW_WORKSPACE, '.doctor-status.json');
+const OPS_DOCTOR_SUPPRESSED_PATH = join(OPENCLAW_WORKSPACE, '.doctor-suppressed.json');
+const OPS_CRITICAL_HASHES_PATH = join(OPENCLAW_WORKSPACE, '.critical-file-hashes.json');
+const OPS_KILL_SWITCH_NAMES = new Set(['heartbeat_injection', 'outbound_telegram', 'compaction', 'autonomous_cron_rerun']);
+const doctorRepairTokens = new Map();
 let lastStoredSecurityGeneratedAt = null;
 let verificationRunning = false;
 let lastWatcherPruneAt = 0;
@@ -396,6 +406,98 @@ function parseNumberOrNull(value) {
   if (value == null || value === '') return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+function readJsonSafe(filePath, fallback = {}) {
+  try {
+    if (!existsSync(filePath)) return fallback;
+    return JSON.parse(readFileSync(filePath, 'utf8'));
+  } catch {
+    return fallback;
+  }
+}
+
+function writeJsonAtomic(filePath, payload) {
+  const tmpPath = `${filePath}.tmp`;
+  writeFileSync(tmpPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+  renameSync(tmpPath, filePath);
+}
+
+function ageSecondsFromIso(value) {
+  const ts = parseIsoSafe(value);
+  if (!ts) return null;
+  return Math.max(0, Math.floor((Date.now() - ts) / 1000));
+}
+
+function stripAnsiAndBoxChars(text = '') {
+  const ansi = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
+  const box = /[┌┐└┘├┤┬┴┼│─]+/g;
+  return String(text || '')
+    .split('\n')
+    .map((line) => line.replace(ansi, '').replace(box, '').trim())
+    .filter((line) => line && !line.startsWith('[plugins]'));
+}
+
+function parseDoctorSectionsFromLines(lines = []) {
+  const sections = [];
+  const sectionPattern = /^\s*◇\s*(.+?)\s*─+\s*$/;
+  let current = null;
+  for (const line of lines) {
+    const m = line.match(sectionPattern);
+    if (m) {
+      current = { name: m[1].trim(), findings: [] };
+      sections.push(current);
+      continue;
+    }
+    if (line.startsWith('- ')) {
+      const finding = line.slice(2).trim();
+      if (!finding) continue;
+      if (!current) {
+        current = { name: 'General', findings: [] };
+        sections.push(current);
+      }
+      current.findings.push(finding);
+    }
+  }
+  return sections;
+}
+
+function mergeDoctorSuppressions(statusPayload, suppressedMap) {
+  const rawSections = Array.isArray(statusPayload?.sections) ? statusPayload.sections : [];
+  const suppressed = (suppressedMap && typeof suppressedMap === 'object') ? suppressedMap : {};
+  const sections = rawSections.map((section) => {
+    const findings = Array.isArray(section?.findings) ? section.findings : [];
+    return {
+      name: section?.name || 'General',
+      findings: findings.map((text) => ({
+        text,
+        suppressed: !!suppressed[text],
+        suppression: suppressed[text] || null,
+      })),
+    };
+  });
+  return {
+    generated_at: statusPayload?.generated_at || null,
+    exit_code: Number.isFinite(Number(statusPayload?.exit_code)) ? Number(statusPayload.exit_code) : null,
+    sections,
+  };
+}
+
+function runOpenclawDoctor(commandArgs, timeoutMs) {
+  const run = spawnSync('sudo', ['-u', 'openclaw', ...commandArgs], {
+    encoding: 'utf8',
+    timeout: timeoutMs,
+    shell: false,
+  });
+  const lines = stripAnsiAndBoxChars(`${run.stdout || ''}\n${run.stderr || ''}`);
+  const sections = parseDoctorSectionsFromLines(lines);
+  return {
+    generated_at: new Date().toISOString(),
+    exit_code: Number.isFinite(run.status) ? run.status : 1,
+    sections,
+    output_lines: lines,
+    timed_out: run.error?.code === 'ETIMEDOUT',
+  };
 }
 
 // ── Security constants ──
@@ -4682,6 +4784,272 @@ const server = createServer(async (req, res) => {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: e.message }));
     }
+    return;
+  }
+
+  if (path === '/api/ops/monitoring-layers' && req.method === 'GET') {
+    try {
+      const now = Date.now();
+      const buildLayer = (name, filePath, staleThresholdSeconds, extra = {}) => {
+        if (!existsSync(filePath)) {
+          return { name, last_success_at: null, age_seconds: null, status: 'red', source_available: false, ...extra };
+        }
+        try {
+          const payload = JSON.parse(readFileSync(filePath, 'utf8'));
+          const lastSuccessAt = payload?.last_success_at || null;
+          const parsed = parseIsoSafe(lastSuccessAt);
+          if (!parsed) {
+            return { name, last_success_at: null, age_seconds: null, status: 'red', source_available: false, ...extra };
+          }
+          const ageSeconds = Math.max(0, Math.floor((now - parsed) / 1000));
+          return {
+            name,
+            last_success_at: lastSuccessAt,
+            age_seconds: ageSeconds,
+            status: ageSeconds < staleThresholdSeconds ? 'green' : 'amber',
+            source_available: true,
+            ...extra,
+          };
+        } catch {
+          return { name, last_success_at: null, age_seconds: null, status: 'red', source_available: false, ...extra };
+        }
+      };
+
+      const pulseRaw = readJsonSafe(OPS_PULSE_STATE_PATH, {});
+      const sweepRaw = readJsonSafe(OPS_SWEEP_STATUS_PATH, {});
+      const auditRaw = readJsonSafe(OPS_AUDIT_STATUS_PATH, {});
+      const pulse = buildLayer('Pulse', OPS_PULSE_STATE_PATH, 10 * 60, {
+        consecutive_failures: Number(pulseRaw?.consecutive_failures || 0),
+        last_restart_at: pulseRaw?.last_restart_at || null,
+      });
+      const sweep = buildLayer('Sweep', OPS_SWEEP_STATUS_PATH, 90 * 60, {
+        last_check_count: Number(sweepRaw?.results?.length || 0),
+      });
+      const audit = buildLayer('Audit', OPS_AUDIT_STATUS_PATH, 26 * 60 * 60, {
+        last_run_duration_ms: Number(auditRaw?.duration_ms || 0),
+      });
+
+      let heartbeatCount = 0;
+      try {
+        const journalRaw = execSync('journalctl -u openclaw.service --since "60 minutes ago" --no-pager -q', {
+          encoding: 'utf8',
+          timeout: 30000,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        heartbeatCount = (journalRaw.match(/heartbeat/gi) || []).length;
+      } catch {
+        heartbeatCount = 0;
+      }
+      const heartbeat = {
+        name: 'Heartbeat',
+        status: heartbeatCount > 0 ? 'green' : 'amber',
+        age_seconds: null,
+        last_success_at: null,
+        gateway_dependent: true,
+        heartbeat_count_last_60m: heartbeatCount,
+        note: 'Gateway-dependent',
+        source_available: true,
+      };
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ layers: [pulse, sweep, audit, heartbeat] }));
+    } catch (e) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ layers: [] }));
+    }
+    return;
+  }
+
+  if (path === '/api/ops/kill-switches' && req.method === 'GET') {
+    const stateRaw = readJsonSafe(OPS_KILL_SWITCHES_PATH, {});
+    const stateWithAge = {};
+    for (const [name, value] of Object.entries(stateRaw || {})) {
+      const item = (value && typeof value === 'object') ? { ...value } : {};
+      const age = item.active ? ageSecondsFromIso(item.activated_at) : null;
+      stateWithAge[name] = { ...item, age_seconds: age };
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ switches: stateWithAge }));
+    return;
+  }
+
+  if (path.startsWith('/api/ops/kill-switches/') && path.endsWith('/clear') && req.method === 'POST') {
+    const name = decodeURIComponent(path.split('/')[4] || '');
+    if (!OPS_KILL_SWITCH_NAMES.has(name)) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Unknown kill switch name' }));
+      return;
+    }
+    const switches = readJsonSafe(OPS_KILL_SWITCHES_PATH, {});
+    const next = { ...(switches && typeof switches === 'object' ? switches : {}) };
+    next[name] = { active: false, reason: null, activated_at: null, activated_by: null };
+    try {
+      writeJsonAtomic(OPS_KILL_SWITCHES_PATH, next);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ switches: next }));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to write kill switch state' }));
+    }
+    return;
+  }
+
+  if (path === '/api/ops/recovery-log' && req.method === 'GET') {
+    const items = [];
+    if (existsSync(OPS_RECOVERY_LOG_PATH)) {
+      for (const line of readFileSync(OPS_RECOVERY_LOG_PATH, 'utf8').split('\n').filter(Boolean)) {
+        try {
+          items.push(JSON.parse(line));
+        } catch {
+          // ignore malformed lines
+        }
+      }
+    }
+    const entries = items
+      .sort((a, b) => (parseIsoSafe(b?.timestamp) || 0) - (parseIsoSafe(a?.timestamp) || 0))
+      .slice(0, 50);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ entries }));
+    return;
+  }
+
+  if (path === '/api/ops/doctor' && req.method === 'GET') {
+    const statusPayload = readJsonSafe(OPS_DOCTOR_STATUS_PATH, { generated_at: null, exit_code: null, sections: [] });
+    const suppressed = readJsonSafe(OPS_DOCTOR_SUPPRESSED_PATH, {});
+    const merged = mergeDoctorSuppressions(statusPayload, suppressed);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ...merged, suppressed }));
+    return;
+  }
+
+  if (path === '/api/ops/doctor/run' && req.method === 'POST') {
+    try {
+      const payload = runOpenclawDoctor(['timeout', '30', 'openclaw', 'doctor', '--non-interactive'], 35000);
+      writeJsonAtomic(OPS_DOCTOR_STATUS_PATH, {
+        generated_at: payload.generated_at,
+        exit_code: payload.exit_code,
+        sections: payload.sections,
+      });
+      const suppressed = readJsonSafe(OPS_DOCTOR_SUPPRESSED_PATH, {});
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(mergeDoctorSuppressions(payload, suppressed)));
+    } catch (e) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ generated_at: new Date().toISOString(), exit_code: 1, sections: [], error: e.message }));
+    }
+    return;
+  }
+
+  if (path === '/api/ops/doctor/suppress' && req.method === 'POST') {
+    readJsonBody(req).then((body) => {
+      const finding = String(body?.finding || '').trim();
+      const reason = String(body?.reason || '').trim();
+      if (!finding || !reason) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'finding and reason are required' }));
+        return;
+      }
+      const suppressed = readJsonSafe(OPS_DOCTOR_SUPPRESSED_PATH, {});
+      suppressed[finding] = {
+        suppressed_at: new Date().toISOString(),
+        suppressed_by: 'dashboard',
+        reason,
+        expires_at: null,
+      };
+      writeJsonAtomic(OPS_DOCTOR_SUPPRESSED_PATH, suppressed);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ suppressed }));
+    }).catch(() => {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+    });
+    return;
+  }
+
+  if (path === '/api/ops/doctor/unsuppress' && req.method === 'POST') {
+    readJsonBody(req).then((body) => {
+      const finding = String(body?.finding || '').trim();
+      if (!finding) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'finding is required' }));
+        return;
+      }
+      const suppressed = readJsonSafe(OPS_DOCTOR_SUPPRESSED_PATH, {});
+      delete suppressed[finding];
+      writeJsonAtomic(OPS_DOCTOR_SUPPRESSED_PATH, suppressed);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ suppressed }));
+    }).catch(() => {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+    });
+    return;
+  }
+
+  if (path === '/api/ops/doctor/prepare-repair' && req.method === 'POST') {
+    const payload = runOpenclawDoctor(['timeout', '30', 'openclaw', 'doctor', '--non-interactive'], 35000);
+    const token = randomBytes(4).toString('hex');
+    doctorRepairTokens.set(token, Date.now() + 5 * 60 * 1000);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      confirmation_token: token,
+      confirmation_token_expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+      command: 'openclaw doctor --repair',
+      sections: payload.sections,
+    }));
+    return;
+  }
+
+  if (path === '/api/ops/doctor/execute-repair' && req.method === 'POST') {
+    readJsonBody(req).then((body) => {
+      const confirmationToken = String(body?.confirmation_token || '');
+      const typedConfirmation = String(body?.typed_confirmation || '');
+      const expiresAt = doctorRepairTokens.get(confirmationToken);
+      if (!expiresAt || expiresAt < Date.now()) {
+        if (confirmationToken) doctorRepairTokens.delete(confirmationToken);
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Confirmation token invalid or expired' }));
+        return;
+      }
+      if (typedConfirmation !== 'REPAIR') {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Typed confirmation must be REPAIR' }));
+        return;
+      }
+      doctorRepairTokens.delete(confirmationToken);
+      const payload = runOpenclawDoctor(['timeout', '45', 'openclaw', 'doctor', '--repair'], 50000);
+      writeJsonAtomic(OPS_DOCTOR_STATUS_PATH, {
+        generated_at: payload.generated_at,
+        exit_code: payload.exit_code,
+        sections: payload.sections,
+      });
+      const suppressed = readJsonSafe(OPS_DOCTOR_SUPPRESSED_PATH, {});
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(mergeDoctorSuppressions(payload, suppressed)));
+    }).catch(() => {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+    });
+    return;
+  }
+
+  if (path === '/api/ops/integrity' && req.method === 'GET') {
+    const hashes = readJsonSafe(OPS_CRITICAL_HASHES_PATH, { files: {}, generated_at: null });
+    const auditStatus = readJsonSafe(OPS_AUDIT_STATUS_PATH, {});
+    const driftResult = (Array.isArray(auditStatus?.results) ? auditStatus.results : [])
+      .find((item) => item?.check === 'runtime_repo_drift')?.result || {};
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      hashes: {
+        files: hashes?.files && typeof hashes.files === 'object' ? hashes.files : {},
+        generated_at: hashes?.generated_at || null,
+      },
+      drift: {
+        total_files_checked: Number(driftResult?.total_files_checked || 0),
+        files_with_drift: Number(driftResult?.files_with_drift || 0),
+        drifted_filenames: Array.isArray(driftResult?.drifted_filenames) ? driftResult.drifted_filenames : [],
+      },
+    }));
     return;
   }
 

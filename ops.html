@@ -1189,6 +1189,14 @@
         grid-template-columns: 1fr;
       }
     }
+
+    .ops-monitoring-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+    .ops-kill-switch-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .ops-monocard { background: #1e2535; border: 1px solid #363b4d; border-radius: 12px; padding: 10px 12px; display: block; min-height: 80px; }
+    .ops-doctor-finding { background: #1e2535; border: 1px solid #363b4d; border-radius: 12px; padding: 10px 12px; display: block; min-height: 80px; }
+    @media (max-width: 1024px) { .ops-monitoring-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ops-kill-switch-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 900px) { .ops-kill-switch-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 768px) { .ops-monitoring-grid { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -1210,6 +1218,18 @@
     </div>
 
     <div id="ops-health-view">
+      <section class="panel" style="background: #161b26; border: 1px solid rgba(167, 139, 250, 0.20); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
+        <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+          <div>
+            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: #e2e8f0; margin: 0;"><span class="ops-domain-capsule"></span>Monitoring Layers</h2>
+            <p class="panel-sub" style="font-size: 12px; color: #94a3b8; margin: 2px 0 0 0;">Independent health check layers. If these are stale, other data may be unreliable.</p>
+          </div>
+        </div>
+        <div id="opsMonitoringLayersStale" style="display:none; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); color: #f59e0b; border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; font-size: 12px;"></div>
+        <div id="opsMonitoringLayersCards" class="ops-monitoring-grid"></div>
+      </section>
+
       <section class="panel" style="background: #161b26; border: 1px solid #363b4d; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/></svg>
@@ -1284,6 +1304,17 @@
     </div>
 
     <div id="ops-recovery-view" style="display:none;">
+      <section class="panel" style="background: #161b26; border: 1px solid #363b4d; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
+        <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="5"/><circle cx="8" cy="16" r="3"/></svg>
+          <div>
+            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: #e2e8f0; margin: 0;"><span class="ops-domain-capsule"></span>Kill Switches</h2>
+            <p class="panel-sub" style="font-size: 12px; color: #94a3b8; margin: 2px 0 0 0;">Emergency feature shutoffs. Activated automatically. Cleared manually after investigation.</p>
+          </div>
+        </div>
+        <div id="opsKillSwitchCards" class="ops-kill-switch-grid"></div>
+      </section>
+
       <section class="panel" style="background: #161b26; border: 1px solid #363b4d; border-radius: 12px; padding: 16px 20px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>
@@ -1322,10 +1353,52 @@
           </div>
         </div>
       </section>
+
+      <section class="panel" style="background: #161b26; border: 1px solid #363b4d; border-radius: 12px; padding: 16px 20px; margin-top: 16px;">
+        <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg>
+          <div>
+            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: #e2e8f0; margin: 0;"><span class="ops-domain-capsule"></span>Autonomous Actions</h2>
+            <p class="panel-sub" style="font-size: 12px; color: #94a3b8; margin: 2px 0 0 0;">Recovery actions taken by monitoring layers. Append-only audit trail.</p>
+          </div>
+          <button id="opsRecoveryLogToggle" class="icon-btn" style="margin-left:auto;" aria-expanded="false" aria-label="Toggle recovery log"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+        </div>
+        <div id="opsRecoveryLogBody" class="collapsible-body collapsed">
+          <div id="opsRecoveryLogTableWrap"></div>
+          <div style="margin-top: 10px;"><button id="opsRecoveryLogMore" class="btn btn-secondary" style="display:none;">Show More</button></div>
+        </div>
+      </section>
     </div>
 
     <div id="ops-checks-view" style="display:none;">
 
+      <section class="panel" style="background: #161b26; border: 1px solid rgba(167, 139, 250, 0.20); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
+        <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 2v4"/><path d="M5 2v4"/><path d="M12 2v20"/><path d="M19 8H5"/><path d="M9 16h6"/></svg>
+          <div>
+            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: #e2e8f0; margin: 0;"><span class="ops-domain-capsule"></span>System Doctor</h2>
+            <p class="panel-sub" style="font-size: 12px; color: #94a3b8; margin: 2px 0 0 0;">OpenClaw doctor diagnostics. Runs daily at 5 AM or on demand.</p>
+          </div>
+          <div style="margin-left:auto; display:flex; gap:6px;">
+            <button id="opsDoctorRun" class="btn btn-primary">Run Now</button>
+            <button id="opsDoctorPrepareRepair" class="btn btn-red">Prepare Repair</button>
+          </div>
+        </div>
+        <div id="opsDoctorHeaderMeta" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom: 10px;"></div>
+        <div id="opsDoctorRepairReview" style="display:none;"></div>
+        <div id="opsDoctorSections"></div>
+      </section>
+
+      <section class="panel" style="background: #161b26; border: 1px solid #363b4d; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
+        <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="m9 15 2 2 4-4"/></svg>
+          <div>
+            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: #e2e8f0; margin: 0;"><span class="ops-domain-capsule"></span>Integrity</h2>
+            <p class="panel-sub" style="font-size: 12px; color: #94a3b8; margin: 2px 0 0 0;">File hash monitoring and runtime/repo drift detection.</p>
+          </div>
+        </div>
+        <div id="opsIntegrityPanel"></div>
+      </section>
 
       <section class="panel" style="background: #161b26; border: 1px solid #363b4d; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
@@ -1462,6 +1535,11 @@
       jobHistory: {},
       jobHistoryLoading: {},
       retentionOpen: false,
+      monitoringLayers: { loading: false, data: [] },
+      killSwitches: { loading: false, data: {} },
+      recoveryLog: { expanded: false, limit: 20, entries: [] },
+      doctor: { loading: false, data: null, sectionsExpanded: {}, repairToken: '', repairInput: '', repairPrepared: null },
+      integrity: { loading: false, data: null },
       opsLogs: {
         initialized: false,
         page: 0,
@@ -3277,6 +3355,19 @@
         localStorage.setItem('ops_retention_open', state.retentionOpen ? 'true' : 'false');
         applyCollapsibleState();
       };
+      const recoveryToggle = $('opsRecoveryLogToggle');
+      if (recoveryToggle) recoveryToggle.onclick = () => {
+        state.recoveryLog.expanded = !state.recoveryLog.expanded;
+        $('opsRecoveryLogBody').classList.toggle('collapsed', !state.recoveryLog.expanded);
+        recoveryToggle.setAttribute('aria-expanded', state.recoveryLog.expanded ? 'true' : 'false');
+        if (state.recoveryLog.expanded) loadRecoveryLog();
+      };
+      const moreBtn = $('opsRecoveryLogMore');
+      if (moreBtn) moreBtn.onclick = () => { state.recoveryLog.limit += 20; renderRecoveryLog(); };
+      const doctorRunBtn = $('opsDoctorRun');
+      if (doctorRunBtn) doctorRunBtn.onclick = () => runDoctorNow().catch((error) => toast(error.message));
+      const doctorPrepareBtn = $('opsDoctorPrepareRepair');
+      if (doctorPrepareBtn) doctorPrepareBtn.onclick = () => prepareDoctorRepair().catch((error) => toast(error.message));
       $('gatewayEventsHeader').onclick = () => {
         state.gatewayEventsOpen = !state.gatewayEventsOpen;
         localStorage.setItem('ops_gateway_events_open', state.gatewayEventsOpen ? 'true' : 'false');
@@ -3308,7 +3399,7 @@
       };
 
       try {
-        await Promise.all([loadServices(), loadVersionCheck(), loadVerification(), loadCrons(), loadBackups(), loadGatewayEvents(), loadWatcherHealth(), loadServiceHealth(true)]);
+        await Promise.all([loadServices(), loadVersionCheck(), loadVerification(), loadCrons(), loadBackups(), loadGatewayEvents(), loadWatcherHealth(), loadServiceHealth(true), loadMonitoringLayers(), loadKillSwitches(), loadDoctorPanel(), loadIntegrityPanel()]);
         applyCollapsibleState();
         if (window.__opsServicesRefreshTimer) clearInterval(window.__opsServicesRefreshTimer);
         window.__opsServicesRefreshTimer = setInterval(() => {
@@ -3319,6 +3410,20 @@
             loadVersionCheck().catch((error) => toast(error.message));
           }
         }, 60000);
+        if (window.__opsSelfHealingRefreshTimer) clearInterval(window.__opsSelfHealingRefreshTimer);
+        window.__opsSelfHealingRefreshTimer = setInterval(() => {
+          loadMonitoringLayers().catch(() => {});
+          loadKillSwitches().catch(() => {});
+        }, 30000);
+        if (window.__opsRecoveryLogRefreshTimer) clearInterval(window.__opsRecoveryLogRefreshTimer);
+        window.__opsRecoveryLogRefreshTimer = setInterval(() => {
+          if (state.recoveryLog.expanded) loadRecoveryLog().catch(() => {});
+        }, 60000);
+        if (window.__opsChecksRefreshTimer) clearInterval(window.__opsChecksRefreshTimer);
+        window.__opsChecksRefreshTimer = setInterval(() => {
+          loadDoctorPanel().catch(() => {});
+          loadIntegrityPanel().catch(() => {});
+        }, 300000);
         if (window.__opsWatcherRefreshTimer) clearInterval(window.__opsWatcherRefreshTimer);
         window.__opsWatcherRefreshTimer = setInterval(() => {
           loadServiceHealth().catch(() => {});
@@ -3332,6 +3437,230 @@
         renderLucideIcons();
         setTimeout(renderLucideIcons, 200);
       });
+    }
+
+
+    function opsHealthPill(status, fallback) {
+      if (fallback) return { bg: 'rgba(148, 163, 184, 0.16)', border: 'rgba(148, 163, 184, 0.35)', color: '#94a3b8', label: fallback };
+      if (status === 'green') return { bg: 'rgba(34, 197, 94, 0.16)', border: 'rgba(34, 197, 94, 0.35)', color: '#22c55e', label: 'Healthy' };
+      if (status === 'red') return { bg: 'rgba(239, 68, 68, 0.16)', border: 'rgba(239, 68, 68, 0.35)', color: '#ef4444', label: 'Alert' };
+      return { bg: 'rgba(245, 158, 11, 0.16)', border: 'rgba(245, 158, 11, 0.35)', color: '#f59e0b', label: 'Stale' };
+    }
+
+    function renderMonitoringLayers() {
+      const root = $('opsMonitoringLayersCards');
+      const stale = $('opsMonitoringLayersStale');
+      if (!root) return;
+      if (state.monitoringLayers.loading && !state.monitoringLayers.data.length) {
+        root.innerHTML = '<div style="color: #94a3b8; text-align: center; padding: 20px; grid-column: 1 / -1;">Loading monitoring layers...</div>';
+        return;
+      }
+      const layers = Array.isArray(state.monitoringLayers.data) ? state.monitoringLayers.data : [];
+      if (!layers.length) {
+        root.innerHTML = '<div style="color: #f59e0b; text-align: center; padding: 20px; grid-column: 1 / -1;">Unable to load monitoring layers.</div>';
+        return;
+      }
+      const unavailable = layers.filter((layer) => layer.source_available === false);
+      if (stale) {
+        stale.style.display = unavailable.length ? '' : 'none';
+        stale.textContent = unavailable.length ? `Some data may be stale. ${unavailable.map((layer) => layer.name).join(', ')} status unavailable.` : '';
+      }
+      root.innerHTML = layers.map((layer) => {
+        const unavailableState = layer.source_available === false;
+        const pill = opsHealthPill(layer.status, unavailableState ? 'Source unavailable' : (layer.gateway_dependent && layer.status === 'amber' ? 'Inactive (gateway down)' : ''));
+        const extras = [];
+        if (layer.name === 'Pulse') {
+          extras.push(`Consecutive failures: <span style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">${esc(layer.consecutive_failures ?? 0)}</span>`);
+          if (layer.last_restart_at) extras.push(`Last restart: <span style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">${esc(rel(layer.last_restart_at))}</span>`);
+        }
+        if (layer.name === 'Sweep') extras.push(`Checks: <span style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">${esc(layer.last_check_count ?? 0)}</span>`);
+        if (layer.name === 'Audit') extras.push(`Duration: <span style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">${esc(layer.last_run_duration_ms ?? 0)}ms</span>`);
+        if (layer.name === 'Heartbeat') extras.push(`Entries/60m: <span style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">${esc(layer.heartbeat_count_last_60m ?? 0)}</span> <span style="color:#94a3b8;">Gateway-dependent</span>`);
+        return `<article class="ops-monocard" style="display: block; min-height: 80px;"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center;"><strong style="color:#e2e8f0;">${esc(layer.name)}</strong><span class="pill" style="background:${pill.bg}; border-color:${pill.border}; color:${pill.color};">${pill.label}</span></div><div style="margin-top:6px;color:#94a3b8;font-size:12px;">Last success: <span style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">${esc(layer.last_success_at ? rel(layer.last_success_at) : '—')}</span></div><div style="margin-top:6px;color:#94a3b8;font-size:12px;">${extras.join(' · ')}</div></article>`;
+      }).join('');
+    }
+
+    async function loadMonitoringLayers() {
+      state.monitoringLayers.loading = true;
+      renderMonitoringLayers();
+      try {
+        const data = await api('/api/ops/monitoring-layers');
+        state.monitoringLayers.data = Array.isArray(data.layers) ? data.layers : [];
+      } catch (error) {
+        toast(error.message || 'Failed to load monitoring layers');
+      } finally {
+        state.monitoringLayers.loading = false;
+        renderMonitoringLayers();
+      }
+    }
+
+    function renderKillSwitches() {
+      const root = $('opsKillSwitchCards');
+      if (!root) return;
+      const raw = state.killSwitches.data || {};
+      const labels = { heartbeat_injection: 'Heartbeat Injection', outbound_telegram: 'Outbound Telegram', compaction: 'Compaction', autonomous_cron_rerun: 'Auto Cron Rerun' };
+      const keys = Object.keys(labels);
+      root.innerHTML = keys.map((key) => {
+        const item = raw[key] || { active: false };
+        const active = !!item.active;
+        return `<article class="ops-monocard" style="display: block; min-height: 80px;"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center;"><strong style="color:#e2e8f0;">${labels[key]}</strong><span class="pill" style="background:${active ? 'rgba(239, 68, 68, 0.16)' : 'rgba(34, 197, 94, 0.16)'}; border-color:${active ? 'rgba(239, 68, 68, 0.35)' : 'rgba(34, 197, 94, 0.35)'}; color:${active ? '#ef4444' : '#22c55e'};">${active ? 'Active' : 'Inactive'}</span></div>${active ? `<div style="margin-top:6px;color:#94a3b8;font-size:12px;">${esc(item.reason || 'No reason provided')}</div><div style="margin-top:4px;color:#94a3b8;font-size:12px;">Activated: <span style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">${esc(rel(item.activated_at))}</span></div><div style="margin-top:4px;color:#94a3b8;font-size:12px;">By: ${esc(item.activated_by || 'unknown')}</div><div style="margin-top:8px;"><button class="btn btn-secondary" onclick="clearKillSwitch('${key}')">Clear</button></div>` : ''}</article>`;
+      }).join('');
+    }
+
+    async function loadKillSwitches() {
+      try {
+        const data = await api('/api/ops/kill-switches');
+        state.killSwitches.data = data.switches || {};
+      } catch (error) {
+        toast(error.message || 'Failed to load kill switches');
+      }
+      renderKillSwitches();
+    }
+
+    async function clearKillSwitch(name) {
+      if (!confirm(`Clear ${name.replace(/_/g, ' ')}? Only clear after investigating the root cause.`)) return;
+      try {
+        await api(`/api/ops/kill-switches/${encodeURIComponent(name)}/clear`, { method: 'POST' });
+        toast('Kill switch cleared');
+        loadKillSwitches();
+      } catch (error) {
+        toast(error.message || 'Failed to clear kill switch');
+      }
+    }
+    window.clearKillSwitch = clearKillSwitch;
+
+    function renderRecoveryLog() {
+      const wrap = $('opsRecoveryLogTableWrap');
+      const more = $('opsRecoveryLogMore');
+      if (!wrap) return;
+      const entries = (state.recoveryLog.entries || []).slice(0, state.recoveryLog.limit);
+      if (!entries.length) { wrap.innerHTML = '<div style="color:#94a3b8; padding: 8px 0;">No recovery actions recorded.</div>'; if (more) more.style.display = 'none'; return; }
+      wrap.innerHTML = `<table class="ops-table"><thead><tr style="background:#1a1e30;"><th>Timestamp</th><th>Layer</th><th>Action</th><th>Result</th></tr></thead><tbody>${entries.map((entry) => `<tr><td style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">${esc(rel(entry.timestamp))}</td><td>${esc(entry.layer || '—')}</td><td>${esc(entry.action || '—')}</td><td>${esc(entry.result || '—')}</td></tr>`).join('')}</tbody></table>`;
+      if (more) more.style.display = state.recoveryLog.entries.length > entries.length ? '' : 'none';
+    }
+
+    async function loadRecoveryLog() {
+      if (!state.recoveryLog.expanded) return;
+      try {
+        const data = await api('/api/ops/recovery-log');
+        state.recoveryLog.entries = Array.isArray(data.entries) ? data.entries : [];
+      } catch (error) {
+        toast(error.message || 'Failed to load recovery log');
+      }
+      renderRecoveryLog();
+    }
+
+    function renderDoctorPanel() {
+      const meta = $('opsDoctorHeaderMeta');
+      const sectionsRoot = $('opsDoctorSections');
+      const repairRoot = $('opsDoctorRepairReview');
+      const data = state.doctor.data;
+      if (!meta || !sectionsRoot || !repairRoot) return;
+      const sections = Array.isArray(data?.sections) ? data.sections : [];
+      const findings = sections.reduce((acc, sec) => acc + (Array.isArray(sec.findings) ? sec.findings.length : 0), 0);
+      const stale = data?.generated_at && ((Date.now() - Date.parse(data.generated_at)) > (26 * 3600 * 1000));
+      meta.innerHTML = `<span class="pill" style="background: rgba(148, 163, 184, 0.16); border-color: rgba(148, 163, 184, 0.35); color: #94a3b8;">Last run <span style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">${esc(data?.generated_at ? rel(data.generated_at) : '—')}</span></span>${stale ? '<span class="pill" style="background: rgba(245, 158, 11, 0.16); border-color: rgba(245, 158, 11, 0.35); color: #f59e0b;">stale</span>' : ''}<span class="pill" style="background: rgba(148, 163, 184, 0.16); border-color: rgba(148, 163, 184, 0.35); color: #94a3b8; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">${findings} findings</span>`;
+      if (!findings) { sectionsRoot.innerHTML = '<div style="color:#22c55e;">No doctor findings. System is clean.</div>'; }
+      else {
+        sectionsRoot.innerHTML = sections.map((section, index) => {
+          const secKey = `s-${index}`;
+          const open = state.doctor.sectionsExpanded[secKey] !== false;
+          const rows = (section.findings || []).map((finding) => {
+            const muted = !!finding.suppressed;
+            return `<div class="ops-doctor-finding" style="display: block; min-height: 80px; opacity: ${muted ? '0.45' : '1'};"><div style="color:#e2e8f0;">${esc(finding.text || '')}</div><div style="margin-top:8px; display:flex; gap:6px; align-items:center; flex-wrap:wrap;">${muted ? `<span class="pill" title="${esc(finding.suppression?.reason || '')}" style="background: rgba(148, 163, 184, 0.16); border-color: rgba(148, 163, 184, 0.35); color: #94a3b8;">Expected</span><span style="color:#94a3b8;font-size:12px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">${esc(rel(finding.suppression?.suppressed_at))}</span><button class="btn btn-secondary" onclick="unsuppressDoctorFinding('${encodeURIComponent(finding.text || '')}')">Unmute</button>` : `<button class="btn btn-secondary" onclick="suppressDoctorFinding('${encodeURIComponent(finding.text || '')}')">Mute</button>`}</div></div>`;
+          }).join('');
+          return `<div style="padding: 8px 0; border-top: ${index === 0 ? 'none' : '1px solid #363b4d'};"><div style="display:flex; justify-content:space-between; align-items:center;"><strong style="color:#e2e8f0;">${esc(section.name || 'General')}</strong><button class="icon-btn" onclick="toggleDoctorSection('${secKey}')" aria-expanded="${open ? 'true' : 'false'}"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button></div><div style="display:${open ? 'block' : 'none'}; margin-top:8px;">${rows}</div></div>`;
+        }).join('');
+      }
+      if (state.doctor.repairPrepared) {
+        const prep = state.doctor.repairPrepared;
+        const list = (prep.sections || []).flatMap((sec) => (sec.findings || []).map((f) => `<li>${esc(f)}</li>`)).join('') || '<li>No findings.</li>';
+        repairRoot.style.display = '';
+        repairRoot.innerHTML = `<div style="margin-bottom:10px; background:#1e2535; border:1px solid #363b4d; border-radius:12px; padding:12px;"><div style="color:#e2e8f0; font-weight:600; margin-bottom:6px;">Repair review</div><div style="color:#94a3b8; font-size:12px; margin-bottom:6px;">Command: <span style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">${esc(prep.command || 'openclaw doctor --repair')}</span></div><ul style="margin: 0 0 8px 18px; color:#94a3b8;">${list}</ul><label style="font-size:12px; color:#94a3b8;">Type REPAIR to confirm</label><input id="opsDoctorRepairInput" type="text" value="${esc(state.doctor.repairInput || '')}" style="margin-left:8px;"/><div style="margin-top:8px; display:flex; gap:6px;"><button id="opsDoctorExecuteRepair" class="btn btn-red" ${state.doctor.repairInput === 'REPAIR' ? '' : 'disabled'}>Execute</button><button id="opsDoctorCancelRepair" class="btn btn-secondary">Cancel</button></div></div>`;
+        const input = $('opsDoctorRepairInput');
+        if (input) input.oninput = (event) => { state.doctor.repairInput = event.target.value; renderDoctorPanel(); };
+        const execBtn = $('opsDoctorExecuteRepair');
+        if (execBtn) execBtn.onclick = executeDoctorRepair;
+        const cancelBtn = $('opsDoctorCancelRepair');
+        if (cancelBtn) cancelBtn.onclick = () => { state.doctor.repairPrepared = null; state.doctor.repairInput = ''; renderDoctorPanel(); };
+      } else {
+        repairRoot.style.display = 'none';
+        repairRoot.innerHTML = '';
+      }
+    }
+
+    async function loadDoctorPanel() {
+      try {
+        const data = await api('/api/ops/doctor');
+        state.doctor.data = data;
+      } catch (error) {
+        toast(error.message || 'Failed to load doctor data');
+      }
+      renderDoctorPanel();
+    }
+
+    async function suppressDoctorFinding(encodedFinding) {
+      const finding = decodeURIComponent(encodedFinding || '');
+      const reason = prompt('Mute reason:');
+      if (!reason) return;
+      await api('/api/ops/doctor/suppress', { method: 'POST', body: JSON.stringify({ finding, reason }) });
+      loadDoctorPanel();
+    }
+    window.suppressDoctorFinding = suppressDoctorFinding;
+
+    async function unsuppressDoctorFinding(encodedFinding) {
+      const finding = decodeURIComponent(encodedFinding || '');
+      await api('/api/ops/doctor/unsuppress', { method: 'POST', body: JSON.stringify({ finding }) });
+      loadDoctorPanel();
+    }
+    window.unsuppressDoctorFinding = unsuppressDoctorFinding;
+
+    function toggleDoctorSection(key) {
+      state.doctor.sectionsExpanded[key] = state.doctor.sectionsExpanded[key] === false;
+      renderDoctorPanel();
+    }
+    window.toggleDoctorSection = toggleDoctorSection;
+
+    async function runDoctorNow() {
+      await api('/api/ops/doctor/run', { method: 'POST' });
+      loadDoctorPanel();
+    }
+
+    async function prepareDoctorRepair() {
+      const data = await api('/api/ops/doctor/prepare-repair', { method: 'POST' });
+      state.doctor.repairPrepared = data;
+      state.doctor.repairInput = '';
+      renderDoctorPanel();
+    }
+
+    async function executeDoctorRepair() {
+      if (!state.doctor.repairPrepared) return;
+      await api('/api/ops/doctor/execute-repair', { method: 'POST', body: JSON.stringify({ confirmation_token: state.doctor.repairPrepared.confirmation_token, typed_confirmation: state.doctor.repairInput }) });
+      state.doctor.repairPrepared = null;
+      state.doctor.repairInput = '';
+      loadDoctorPanel();
+    }
+
+    function renderIntegrityPanel() {
+      const root = $('opsIntegrityPanel');
+      if (!root) return;
+      const data = state.integrity.data || {};
+      const files = data.hashes?.files || {};
+      const fileRows = Object.entries(files);
+      const drift = data.drift || {};
+      if (!fileRows.length) { root.innerHTML = '<div style="color:#94a3b8;">No baseline established. Next sweep cycle will create one.</div>'; return; }
+      const changed = fileRows.filter(([, meta]) => meta && meta.status === 'changed').length;
+      root.innerHTML = `${changed ? '<div style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); color: #f59e0b; border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; font-size: 12px;">Hash changes detected. Review changes before updating baseline.</div>' : ''}<div style="font-weight:600; color:#e2e8f0; margin-bottom:8px;">Critical Files</div><table class="ops-table"><thead><tr><th>File</th><th>Status</th><th>Size</th><th>Last Checked</th></tr></thead><tbody>${fileRows.map(([name, meta]) => { const status = meta?.status || 'ok'; const color = status === 'ok' ? '#22c55e' : (status === 'missing' ? '#f59e0b' : '#ef4444'); const label = status === 'ok' ? 'OK' : (status === 'missing' ? 'Missing' : 'Changed'); return `<tr><td style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">${esc(name.split('/').pop())}</td><td><span style="display:inline-block; width:8px; height:8px; border-radius:999px; background:${color}; margin-right:6px;"></span>${label}</td><td style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">${esc(meta?.size ?? '—')}</td><td style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">${esc(rel(data.hashes?.generated_at))}</td></tr>`; }).join('')}</tbody></table><div style="border-top:1px solid #363b4d; margin-top:10px; padding-top:10px;"><div style="font-weight:600; color:#e2e8f0; margin-bottom:6px;">Runtime/Repo Drift</div>${Number(drift.files_with_drift || 0) > 0 ? `<div><span class="pill" style="background: rgba(245, 158, 11, 0.16); border-color: rgba(245, 158, 11, 0.35); color: #f59e0b; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">${esc(drift.files_with_drift)} drifted</span><ul style="margin:8px 0 0 18px; color:#94a3b8;">${(drift.drifted_filenames || []).map((f) => `<li>${esc(f)}</li>`).join('')}</ul></div>` : '<div style="color:#22c55e;">No drift detected.</div>'}</div>`;
+    }
+
+    async function loadIntegrityPanel() {
+      try {
+        const data = await api('/api/ops/integrity');
+        state.integrity.data = data;
+      } catch (error) {
+        toast(error.message || 'Failed to load integrity data');
+      }
+      renderIntegrityPanel();
     }
 
     window.initOpsTab = initOpsTab;
