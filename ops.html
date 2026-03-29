@@ -447,11 +447,6 @@
       flex: 0 0 auto;
     }
 
-    .cron-card,
-    .cron-health-card,
-    .ops-service-card,
-    .service-health-card,
-    .ops-ingestion-card,
     .ops-logs-health-card::before {
       display: none;
     }
@@ -1874,7 +1869,7 @@
         const pillBg = statusClass === 'green' ? 'rgba(34,197,94,0.15)' : statusClass === 'amber' ? 'rgba(245,158,11,0.15)' : statusClass === 'gray' ? 'rgba(148,163,184,0.15)' : 'rgba(239,68,68,0.15)';
         const pillColor = statusClass === 'green' ? 'var(--accent-green)' : statusClass === 'amber' ? 'var(--accent-amber)' : statusClass === 'gray' ? 'var(--text-secondary)' : 'var(--accent-red)';
         const pillBorder = statusClass === 'green' ? 'rgba(34,197,94,0.45)' : statusClass === 'amber' ? 'rgba(245,158,11,0.45)' : statusClass === 'gray' ? 'rgba(148,163,184,0.35)' : 'rgba(239,68,68,0.45)';
-        return `<article class="cron-health-card" style="background: #1e2535; border: 1px solid #363b4d; border-radius: 12px; padding: 8px 12px; display: block; min-height: 60px;">
+        return `<article class="cron-health-card" style="background: #1e2535; border: 1px solid #363b4d; border-radius: 12px; padding: 8px 12px; ">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; gap: 8px;">
             <strong style="font-size: 13px; color: var(--text-primary);">${esc(getWatcherName(row))}</strong>
             <span class="pill" style="text-transform: capitalize; background: ${pillBg}; color: ${pillColor}; border-color: ${pillBorder};">${esc(statusLabel)}</span>
@@ -2403,7 +2398,7 @@
       const data = await api('/api/ops/services/status');
       const html = data.services.map((service) => {
         return `
-          <div class="card ops-service-card" style="background: #1e2535; border: 1px solid #363b4d; border-radius: 12px; display: block; min-height: 60px;">
+          <div class="card ops-service-card" style="background: #1e2535; border: 1px solid #363b4d; border-radius: 12px; ">
             <div class="row" style="justify-content: space-between;">
               <strong>${service.name}</strong>
               <span>
@@ -2864,7 +2859,7 @@
           : '—';
         const stale = checkedAt && Number.isFinite(Date.parse(checkedAt)) && ((Date.now() - Date.parse(checkedAt)) > 5 * 60 * 1000);
         const staleText = stale ? '<span style="color: var(--text-tertiary);">(stale)</span>' : '';
-        return `<article class="service-health-card" style="background: #1e2535; border: 1px solid #363b4d; border-radius: 12px; padding: 8px 12px; display: block; min-height: 80px;">
+        return `<article class="service-health-card" style="background: #1e2535; border: 1px solid #363b4d; border-radius: 12px; padding: 8px 12px; ">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; gap: 8px;">
             <strong style="font-size: 13px; color: var(--text-primary);">${esc(service.name || service.id || 'Unknown service')}</strong>
             <span class="pill" style="text-transform: capitalize; ${serviceHealthPillStyle(status)}">${esc(statusLabel)}</span>
@@ -3476,7 +3471,7 @@
         if (layer.name === 'Sweep') extras.push(`Checks: <span style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">${esc(layer.last_check_count ?? 0)}</span>`);
         if (layer.name === 'Audit') extras.push(`Duration: <span style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">${esc(layer.last_run_duration_ms ?? 0)}ms</span>`);
         if (layer.name === 'Heartbeat') extras.push(`Entries/60m: <span style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">${esc(layer.heartbeat_count_last_60m ?? 0)}</span>`);
-        return `<article class="ops-monocard" style="display: block; min-height: 80px;"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center;"><strong style="color:#e2e8f0;">${esc(layer.name)}</strong><span class="pill" style="background:${pill.bg}; border-color:${pill.border}; color:${pill.color};">${pill.label}</span></div><div style="margin-top:6px;color:#94a3b8;font-size:12px;">Last success: <span style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">${esc(layer.last_success_at ? rel(layer.last_success_at) : '—')}</span></div><div style="margin-top:6px;color:#94a3b8;font-size:12px;">${extras.join(' · ')}</div>${layer.gateway_dependent ? '<div style="margin-top:4px;"><span style="background:rgba(148,163,184,0.12);border:1px solid rgba(148,163,184,0.25);color:#94a3b8;font-size:10px;padding:2px 6px;border-radius:4px;">Gateway-dependent</span></div>' : ''}</article>`;
+        return `<article class="ops-monocard" style=""><div style="display:flex;justify-content:space-between;gap:8px;align-items:center;"><strong style="color:#e2e8f0;">${esc(layer.name)}</strong><span class="pill" style="background:${pill.bg}; border-color:${pill.border}; color:${pill.color};">${pill.label}</span></div><div style="margin-top:6px;color:#94a3b8;font-size:12px;">Last success: <span style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">${esc(layer.last_success_at ? rel(layer.last_success_at) : '—')}</span></div><div style="margin-top:6px;color:#94a3b8;font-size:12px;">${extras.join(' · ')}</div>${layer.gateway_dependent ? '<div style="margin-top:4px;"><span style="background:rgba(148,163,184,0.12);border:1px solid rgba(148,163,184,0.25);color:#94a3b8;font-size:10px;padding:2px 6px;border-radius:4px;">Gateway-dependent</span></div>' : ''}</article>`;
       }).join('');
     }
 
@@ -3503,7 +3498,7 @@
       root.innerHTML = keys.map((key) => {
         const item = raw[key] || { active: false };
         const active = !!item.active;
-        return `<article class="ops-monocard" style="display: block; min-height: 80px;"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center;"><strong style="color:#e2e8f0;">${labels[key]}</strong><span class="pill" style="background:${active ? 'rgba(239, 68, 68, 0.16)' : 'rgba(34, 197, 94, 0.16)'}; border-color:${active ? 'rgba(239, 68, 68, 0.35)' : 'rgba(34, 197, 94, 0.35)'}; color:${active ? '#ef4444' : '#22c55e'};">${active ? 'Active' : 'Inactive'}</span></div>${active ? `<div style="margin-top:6px;color:#94a3b8;font-size:12px;">${esc(item.reason || 'No reason provided')}</div><div style="margin-top:4px;color:#94a3b8;font-size:12px;">Activated: <span style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">${esc(rel(item.activated_at))}</span></div><div style="margin-top:4px;color:#94a3b8;font-size:12px;">By: ${esc(item.activated_by || 'unknown')}</div><div style="margin-top:8px;"><button class="btn btn-secondary" onclick="clearKillSwitch('${key}')">Clear</button></div>` : ''}</article>`;
+        return `<article class="ops-monocard" style=""><div style="display:flex;justify-content:space-between;gap:8px;align-items:center;"><strong style="color:#e2e8f0;">${labels[key]}</strong><span class="pill" style="background:${active ? 'rgba(239, 68, 68, 0.16)' : 'rgba(34, 197, 94, 0.16)'}; border-color:${active ? 'rgba(239, 68, 68, 0.35)' : 'rgba(34, 197, 94, 0.35)'}; color:${active ? '#ef4444' : '#22c55e'};">${active ? 'Active' : 'Inactive'}</span></div>${active ? `<div style="margin-top:6px;color:#94a3b8;font-size:12px;">${esc(item.reason || 'No reason provided')}</div><div style="margin-top:4px;color:#94a3b8;font-size:12px;">Activated: <span style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">${esc(rel(item.activated_at))}</span></div><div style="margin-top:4px;color:#94a3b8;font-size:12px;">By: ${esc(item.activated_by || 'unknown')}</div><div style="margin-top:8px;"><button class="btn btn-secondary" onclick="clearKillSwitch('${key}')">Clear</button></div>` : ''}</article>`;
       }).join('');
     }
 
