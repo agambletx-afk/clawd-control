@@ -431,7 +431,7 @@ function ageSecondsFromIso(value) {
 
 function stripAnsiAndBoxChars(text = '') {
   const ansi = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
-  const box = /[┌┐└┘├┤┬┴┼│─]+/g;
+  const box = /[┌┐└┘├┤┬┴┼│─╮╯╰╭]+/g;
   return String(text || '')
     .split('\n')
     .map((line) => line.replace(ansi, '').replace(box, '').trim())
@@ -452,6 +452,7 @@ function parseDoctorSectionsFromLines(lines = []) {
     if (line.startsWith('- ')) {
       const finding = line.slice(2).trim();
       if (!finding) continue;
+      if (/^(No .+ warnings detected|Run:|Eligible:|Missing requirements:|Blocked by|Loaded:|Disabled:)/i.test(finding)) continue;
       if (!current) {
         current = { name: 'General', findings: [] };
         sections.push(current);
@@ -484,7 +485,7 @@ function mergeDoctorSuppressions(statusPayload, suppressedMap) {
 }
 
 function runOpenclawDoctor(commandArgs, timeoutMs) {
-  const run = spawnSync('sudo', ['-u', 'openclaw', ...commandArgs], {
+  const run = spawnSync(commandArgs[0], commandArgs.slice(1), {
     encoding: 'utf8',
     timeout: timeoutMs,
     shell: false,
@@ -4924,7 +4925,7 @@ const server = createServer(async (req, res) => {
 
   if (path === '/api/ops/doctor/run' && req.method === 'POST') {
     try {
-      const payload = runOpenclawDoctor(['timeout', '30', 'openclaw', 'doctor', '--non-interactive'], 35000);
+      const payload = runOpenclawDoctor(['timeout', '60', 'openclaw', 'doctor', '--non-interactive'], 65000);
       writeJsonAtomic(OPS_DOCTOR_STATUS_PATH, {
         generated_at: payload.generated_at,
         exit_code: payload.exit_code,
@@ -4987,7 +4988,7 @@ const server = createServer(async (req, res) => {
   }
 
   if (path === '/api/ops/doctor/prepare-repair' && req.method === 'POST') {
-    const payload = runOpenclawDoctor(['timeout', '30', 'openclaw', 'doctor', '--non-interactive'], 35000);
+    const payload = runOpenclawDoctor(['timeout', '60', 'openclaw', 'doctor', '--non-interactive'], 65000);
     const token = randomBytes(4).toString('hex');
     doctorRepairTokens.set(token, Date.now() + 5 * 60 * 1000);
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -5017,7 +5018,7 @@ const server = createServer(async (req, res) => {
         return;
       }
       doctorRepairTokens.delete(confirmationToken);
-      const payload = runOpenclawDoctor(['timeout', '45', 'openclaw', 'doctor', '--repair'], 50000);
+      const payload = runOpenclawDoctor(['timeout', '90', 'openclaw', 'doctor', '--repair'], 95000);
       writeJsonAtomic(OPS_DOCTOR_STATUS_PATH, {
         generated_at: payload.generated_at,
         exit_code: payload.exit_code,
