@@ -1,6 +1,7 @@
 #!/bin/bash
 
 set -uo pipefail
+umask 0002
 
 WORKSPACE_PATH="/home/openclaw/.openclaw/workspace/"
 SESSIONS_PATH="/home/openclaw/.openclaw/agents/main/sessions/"
