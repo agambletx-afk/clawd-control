@@ -440,7 +440,7 @@ function stripAnsiAndBoxChars(text = '') {
 
 function parseDoctorSectionsFromLines(lines = []) {
   const sections = [];
-  const sectionPattern = /^\s*◇\s*(.+?)\s*─+\s*$/;
+  const sectionPattern = /^\s*◇\s*(.+?)\s*$/;
   let current = null;
   for (const line of lines) {
     const m = line.match(sectionPattern);
@@ -452,6 +452,7 @@ function parseDoctorSectionsFromLines(lines = []) {
     if (line.startsWith('- ')) {
       const finding = line.slice(2).trim();
       if (!finding) continue;
+      if (/^(No .+ detected|Run:|Eligible:|Missing requirements:|Blocked by allowlist:|Loaded:|Disabled:|agent:main:cron:)/i.test(finding)) continue;
       if (/^(No .+ warnings detected|Run:|Eligible:|Missing requirements:|Blocked by|Loaded:|Disabled:)/i.test(finding)) continue;
       if (!current) {
         current = { name: 'General', findings: [] };
@@ -4797,7 +4798,7 @@ const server = createServer(async (req, res) => {
         }
         try {
           const payload = JSON.parse(readFileSync(filePath, 'utf8'));
-          const lastSuccessAt = payload?.last_success_at || null;
+          const lastSuccessAt = payload?.last_finished_at || payload?.last_success_at || null;
           const parsed = parseIsoSafe(lastSuccessAt);
           if (!parsed) {
             return { name, last_success_at: null, age_seconds: null, status: 'red', source_available: false, ...extra };
