@@ -21,6 +21,8 @@ SWEEP_STATUS = os.path.join(WORKSPACE, "sweep-status.json")
 KILL_SWITCH_FILE = os.path.join(WORKSPACE, ".kill-switches.json")
 BASELINE_FILE = os.path.join(WORKSPACE, ".db-size-baseline.json")
 FACTS_DB = "/home/openclaw/.openclaw/memory/facts.db"
+DOCTOR_STATUS_FILE = os.path.join(WORKSPACE, ".doctor-status.json")
+DOCTOR_SUPPRESSED_FILE = os.path.join(WORKSPACE, ".doctor-suppressed.json")
 
 INTEGRITY_CHECK_DBS = [FACTS_DB]
 
@@ -387,6 +389,99 @@ def append_recovery_log(args):
     return 0
 
 
+def doctor_diagnostic():
+    ansi_re = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
+    section_re = re.compile(r"^\s*◇\s*(.+?)\s*─+\s*$")
+    box_chars_re = re.compile(r"[┌┐└┘├┤┬┴┼│─]+")
+    command = ["sudo", "-u", "openclaw", "timeout", "30", "openclaw", "doctor", "--non-interactive"]
+
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, check=False)
+    except Exception as exc:
+        payload = {
+            "generated_at": iso_now(),
+            "exit_code": 1,
+            "sections": [],
+            "error": str(exc),
+        }
+        atomic_write_json(DOCTOR_STATUS_FILE, payload)
+        print_json({
+            "status": "alert",
+            "message": "doctor diagnostic command failed to start",
+            "finding_count": 0,
+            "unsuppressed_count": 0,
+        })
+        return 0
+
+    combined_output = "\n".join([result.stdout or "", result.stderr or ""])
+    cleaned_lines = []
+    for raw_line in combined_output.splitlines():
+        no_ansi = ansi_re.sub("", raw_line)
+        no_box = box_chars_re.sub("", no_ansi).strip()
+        if not no_box:
+            continue
+        if no_box.startswith("[plugins]"):
+            continue
+        cleaned_lines.append(no_box)
+
+    sections = []
+    current = None
+    for line in cleaned_lines:
+        section_match = section_re.match(line)
+        if section_match:
+            current = {"name": section_match.group(1).strip(), "findings": []}
+            sections.append(current)
+            continue
+        if line.startswith("- "):
+            finding = line[2:].strip()
+            if not finding:
+                continue
+            if current is None:
+                current = {"name": "General", "findings": []}
+                sections.append(current)
+            current["findings"].append(finding)
+
+    suppressed = read_json(DOCTOR_SUPPRESSED_FILE)
+    if not isinstance(suppressed, dict):
+        suppressed = {}
+
+    finding_count = 0
+    unsuppressed_count = 0
+    annotated_sections = []
+    for section in sections:
+        annotated_findings = []
+        for finding in section.get("findings", []):
+            finding_count += 1
+            suppression = suppressed.get(finding)
+            is_suppressed = isinstance(suppression, dict)
+            if not is_suppressed:
+                unsuppressed_count += 1
+            annotated_findings.append({
+                "text": finding,
+                "suppressed": bool(is_suppressed),
+                "suppression": suppression if is_suppressed else None,
+            })
+        annotated_sections.append({"name": section.get("name", "General"), "findings": annotated_findings})
+
+    payload = {
+        "generated_at": iso_now(),
+        "exit_code": int(result.returncode if result.returncode is not None else 1),
+        "sections": sections,
+        "annotated_sections": annotated_sections,
+    }
+    atomic_write_json(DOCTOR_STATUS_FILE, payload)
+
+    status = "ok" if unsuppressed_count == 0 else "alert"
+    message = "doctor findings suppressed or clean" if unsuppressed_count == 0 else "doctor findings require review"
+    print_json({
+        "status": status,
+        "message": message,
+        "finding_count": finding_count,
+        "unsuppressed_count": unsuppressed_count,
+    })
+    return 0
+
+
 def build_parser():
     parser = argparse.ArgumentParser(description="Helpers for Layer 4 daily audit checks")
     subparsers = parser.add_subparsers(dest="command")
@@ -395,6 +490,7 @@ def build_parser():
     subparsers.add_parser("storage-health")
     subparsers.add_parser("monitor-the-monitors")
     subparsers.add_parser("backup-rotation")
+    subparsers.add_parser("doctor-diagnostic")
 
     append_parser = subparsers.add_parser("append-recovery-log")
     append_parser.add_argument("check_id")
@@ -417,6 +513,8 @@ def main():
         return monitor_the_monitors()
     if args.command == "backup-rotation":
         return backup_rotation()
+    if args.command == "doctor-diagnostic":
+        return doctor_diagnostic()
     if args.command == "append-recovery-log":
         return append_recovery_log(args)
 
