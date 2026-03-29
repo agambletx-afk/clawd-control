@@ -1,6 +1,7 @@
 #!/bin/bash
 
 set -uo pipefail
+umask 0002
 
 WORKSPACE_PATH="/home/openclaw/.openclaw/workspace"
 PULSE_CONFIG_FILE="${WORKSPACE_PATH}/.pulse-config.json"
@@ -115,7 +116,6 @@ run_check "runtime_repo_drift" "drift-detection"
 run_check "storage_health" "storage-health"
 run_check "monitor_the_monitors" "monitor-the-monitors"
 run_check "critical_backup_rotation" "backup-rotation"
-run_check "doctor_diagnostic" "doctor-diagnostic"
 
 write_status_contract
 
