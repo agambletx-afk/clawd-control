@@ -40,10 +40,24 @@ def connect_read_only(db_path):
     return conn
 
 
-def format_date(epoch_sec):
-    if not epoch_sec:
+def format_date(ts_value):
+    if not ts_value:
         return "unknown"
-    return datetime.fromtimestamp(int(epoch_sec), timezone.utc).strftime("%Y-%m-%d")
+    # Handle both epoch seconds (int) and ISO 8601 strings
+    if isinstance(ts_value, (int, float)):
+        return datetime.fromtimestamp(int(ts_value), timezone.utc).strftime("%Y-%m-%d")
+    s = str(ts_value).strip()
+    try:
+        return datetime.fromtimestamp(int(s), timezone.utc).strftime("%Y-%m-%d")
+    except (ValueError, OverflowError):
+        pass
+    # ISO 8601 string (e.g., 2026-03-19T16:02:48.000Z)
+    try:
+        cleaned = s.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(cleaned)
+        return dt.strftime("%Y-%m-%d")
+    except (ValueError, TypeError):
+        return s[:10] if len(s) >= 10 else "unknown"
 
 
 def format_age(seconds):
