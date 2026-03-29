@@ -29,3 +29,7 @@ ops-log.db-shm
 ops-log.db-wal
 extensions/graph-memory/node_modules/
 watcher.db*
+logs.db
+logs.db-shm
+logs.db-wal
+security-decisions.db
