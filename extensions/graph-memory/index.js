@@ -459,16 +459,19 @@ module.exports = {
                 let scored = filtered;
                 if (db && factIds.length > 0) {
                     const activations = getActivations(db, factIds);
+                    const factMeta = getFactMetadata(db, factIds);
 
                     // Normalize activations for scoring
                     const actValues = Object.values(activations);
                     const maxAct = Math.max(...actValues, 1);
 
                     scored = filtered.map(r => {
+                        const meta = factMeta[r.fact_id] || {};
+                        const enriched = { ...r, created_at: meta.created_at, decay_class: meta.decay_class };
                         const act = activations[r.fact_id] || 1.0;
                         const normAct = Math.min(act / maxAct, 1.0);
                         const normRelevance = r.score / 100; // search score is 0-100
-                        const freshnessScore = _computeFreshnessScore(r, config);
+                        const freshnessScore = _computeFreshnessScore(enriched, config);
                         // Use tier-preserved scoring: entity matches get +100 boost
                         const tierBoost = r.score >= 65 ? 100 : 0;
                         const combinedScore = tierBoost + (normRelevance * config.relevanceWeight)
@@ -798,12 +801,36 @@ function _extractText(message) {
     return '';
 }
 
+function getFactMetadata(db, factIds) {
+    if (!db || factIds.length === 0) return {};
+    try {
+        const placeholders = factIds.map(() => '?').join(',');
+        const rows = db.prepare(
+            `SELECT id, created_at, decay_class FROM facts WHERE id IN (${placeholders})`
+        ).all(...factIds);
+        const map = {};
+        for (const r of rows) map[r.id] = { created_at: r.created_at, decay_class: r.decay_class };
+        return map;
+    } catch (err) {
+        console.error(`[graph-memory] getFactMetadata error: ${err.message}`);
+        return {};
+    }
+}
+
 function _computeFreshnessScore(result, config) {
     const createdAt = result?.created_at;
-    const createdMs = createdAt ? Date.parse(createdAt) : NaN;
-    if (!Number.isFinite(createdMs)) {
-        return 0.5;
+    if (createdAt == null) return 0.5;
+
+    // facts.db stores created_at as epoch seconds (integer)
+    let createdMs;
+    if (typeof createdAt === 'number') {
+        // Epoch seconds (e.g., 1773936513) — multiply to get ms
+        createdMs = createdAt < 1e12 ? createdAt * 1000 : createdAt;
+    } else {
+        // ISO string fallback
+        createdMs = Date.parse(createdAt);
     }
+    if (!Number.isFinite(createdMs)) return 0.5;
 
     const windowDays = Math.max(Number(config.freshnessWindowDays) || 90, 1);
     const ageMs = Math.max(Date.now() - createdMs, 0);
