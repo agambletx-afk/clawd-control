@@ -269,3 +269,4 @@ send_telegram "<b>Pulse gateway alert</b>%0AStatus: DOWN (red).%0AFailed checks:
 EXIT_CODE=1
 write_status_contract
 exit "$EXIT_CODE"
+chown openclaw:openclaw "${STATE_FILE}" "${STATUS_FILE}" 2>/dev/null || true
