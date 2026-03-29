@@ -421,11 +421,11 @@ function insertFact(db, fact) {
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
         fact.category,
-        0.7,
+        fact.importance != null ? fact.importance : 0.7,
         fact.entity,
         fact.key,
         fact.value,
-        'auto-capture:session',
+        fact.source || 'auto-capture:session',
         nowIso,
         fact.decayClass,
         getExpiresAt(nowSec, fact.decayClass),

@@ -836,8 +836,9 @@ module.exports = {
                             key: fact.key,
                             value: fact.value,
                             decayClass: 'checkpoint',
+                            source,
+                            importance: 0.8,
                         });
-                        db.prepare('UPDATE facts SET source = ?, importance = ? WHERE rowid = last_insert_rowid()').run(source, 0.8);
                         storedCount += 1;
                     }
 
