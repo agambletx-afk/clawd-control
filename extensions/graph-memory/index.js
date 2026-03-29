@@ -40,14 +40,19 @@ const DEFAULTS = {
     minScore: 50,
     timeoutMs: 500,           // Reduced from 2000ms for faster fallback
     activationBump: 0.5,
-    activationWeight: 0.3,    // 30% of combined score from activation
-    relevanceWeight: 0.7,     // 70% of combined score from search relevance
+    activationWeight: 0.25,   // 25% of combined score from activation
+    relevanceWeight: 0.60,    // 60% of combined score from search relevance
+    freshnessWeight: 0.15,    // 15% of combined score from freshness
+    freshnessWindowDays: 90,  // Linear freshness decay window
+    permanentFreshnessFloor: 0.5, // Permanent facts never decay below this freshness
     coOccurrenceLimit: 4,     // max co-occurring facts to pull in
     coOccurrenceMinWeight: 2, // minimum co-occurrence weight to consider
     cacheSize: 10,            // LRU cache size for repeated queries
     cacheTTL: 60000,          // Cache TTL in ms (60 seconds)
     showEmptyResults: false,  // Set to true to show "[GRAPH MEMORY] No matching entities found"
     telemetryPath: "/tmp/openclaw/memory-telemetry.jsonl",
+    memoryDir: "/home/openclaw/.openclaw/memory",
+    rootMaxBytes: 3072,
     capture: true,
     debug: false,             // Set true for redacted diagnostics
 };
@@ -381,6 +386,17 @@ module.exports = {
 
         api.on('before_agent_start', async (event, ctx) => {
             try {
+                let rootContent = '';
+                try {
+                    const rootPath = path.join(config.memoryDir || '/home/openclaw/.openclaw/memory', 'ROOT.md');
+                    const rawRoot = fs.readFileSync(rootPath, 'utf8');
+                    if (rawRoot && rawRoot.trim()) {
+                        rootContent = _truncateToBytes(rawRoot.trim(), config.rootMaxBytes || 3072);
+                    }
+                } catch (_err) {
+                    // ROOT.md is optional; fail silently by design
+                }
+
                 const messages = event.messages || [];
                 const lastUser = [...messages].reverse().find(m => m?.role === 'user');
                 if (!lastUser) return { prependContext: '' };
@@ -452,21 +468,28 @@ module.exports = {
                         const act = activations[r.fact_id] || 1.0;
                         const normAct = Math.min(act / maxAct, 1.0);
                         const normRelevance = r.score / 100; // search score is 0-100
+                        const freshnessScore = _computeFreshnessScore(r, config);
                         // Use tier-preserved scoring: entity matches get +100 boost
                         const tierBoost = r.score >= 65 ? 100 : 0;
                         const combinedScore = tierBoost + (normRelevance * config.relevanceWeight)
-                                            + (normAct * config.activationWeight);
-                        return { ...r, combinedScore, activation: act };
+                                            + (normAct * config.activationWeight)
+                                            + (freshnessScore * config.freshnessWeight);
+                        return { ...r, combinedScore, activation: act, freshnessScore };
                     });
 
                     scored.sort((a, b) => b.combinedScore - a.combinedScore);
                 } else {
-                    // No DB: just sort by relevance score, but preserve tiers
-                    scored = filtered.sort((a, b) => {
-                        const tierDiff = (b.score >= 65 ? 1 : 0) - (a.score >= 65 ? 1 : 0);
-                        if (tierDiff !== 0) return tierDiff;
-                        return b.score - a.score;
+                    // No DB: use relevance + freshness scoring with neutral activation, preserving tiers
+                    scored = filtered.map(r => {
+                        const normRelevance = r.score / 100;
+                        const freshnessScore = _computeFreshnessScore(r, config);
+                        const tierBoost = r.score >= 65 ? 100 : 0;
+                        const combinedScore = tierBoost + (normRelevance * config.relevanceWeight)
+                            + (1.0 * config.activationWeight)
+                            + (freshnessScore * config.freshnessWeight);
+                        return { ...r, combinedScore, activation: 1.0, freshnessScore };
                     });
+                    scored.sort((a, b) => b.combinedScore - a.combinedScore);
                 }
 
                 const topResults = scored.slice(0, config.maxResults);
@@ -491,8 +514,8 @@ module.exports = {
                     );
                 }
 
-                // Format context block
-                const lines = ['[GRAPH MEMORY]'];
+                // Format matched-facts context block
+                const matchedLines = [];
 
                 // Group main results by entity
                 const byEntity = new Map();
@@ -510,14 +533,14 @@ module.exports = {
                         return true;
                     });
                     for (const f of uniqueFacts) {
-                        lines.push(`• ${f.answer}`);
+                        matchedLines.push(`• ${f.answer}`);
                     }
                 }
 
                 // Add co-occurring facts (clearly marked)
                 if (coOccurring.length > 0) {
                     for (const co of coOccurring) {
-                        lines.push(`• ${co.entity}.${co.key} = ${co.value} [linked]`);
+                        matchedLines.push(`• ${co.entity}.${co.key} = ${co.value} [linked]`);
                     }
                     // Bump co-occurring facts too (lighter bump)
                     const coIds = coOccurring.map(c => c.id);
@@ -543,7 +566,22 @@ module.exports = {
                     writeTelemetry(telemetry);
                 } catch (_telErr) { /* non-blocking */ }
 
-                return { prependContext: lines.join('\n') };
+                const matchedFactsBody = matchedLines.join('\n');
+                const matchedSectionHeader = rootContent ? '[GRAPH MEMORY - MATCHED FACTS]' : '[GRAPH MEMORY]';
+                const matchedContext = [matchedSectionHeader, matchedFactsBody].filter(Boolean).join('\n');
+
+                if (rootContent) {
+                    const totalBudgetBytes = 8192;
+                    const matchedBytes = Buffer.byteLength(matchedContext, 'utf8');
+                    const allowedRootBytes = Math.max(0, totalBudgetBytes - matchedBytes - 2);
+                    const rootBudgeted = _budgetRootContent(rootContent, allowedRootBytes);
+                    if (rootBudgeted) {
+                        const prependContext = `[GRAPH MEMORY - SESSION CONTEXT]\n${rootBudgeted}\n\n${matchedContext}`;
+                        return { prependContext };
+                    }
+                }
+
+                return { prependContext: matchedContext };
 
             } catch (err) {
                 console.error(`[graph-memory] before_agent_start failed: ${err.message}`);
@@ -760,6 +798,63 @@ function _extractText(message) {
     return '';
 }
 
+function _computeFreshnessScore(result, config) {
+    const createdAt = result?.created_at;
+    const createdMs = createdAt ? Date.parse(createdAt) : NaN;
+    if (!Number.isFinite(createdMs)) {
+        return 0.5;
+    }
+
+    const windowDays = Math.max(Number(config.freshnessWindowDays) || 90, 1);
+    const ageMs = Math.max(Date.now() - createdMs, 0);
+    const daysSinceCreation = ageMs / (24 * 60 * 60 * 1000);
+    let freshnessScore = Math.max(0, 1 - (daysSinceCreation / windowDays));
+
+    if (result?.decay_class === 'permanent') {
+        freshnessScore = Math.max(freshnessScore, Number(config.permanentFreshnessFloor) || 0.5);
+    }
+
+    return freshnessScore;
+}
+
+function _truncateToBytes(text, maxBytes) {
+    if (!text) return '';
+    if (Buffer.byteLength(text, 'utf8') <= maxBytes) return text;
+    let out = text;
+    while (out && Buffer.byteLength(out, 'utf8') > maxBytes) {
+        out = out.slice(0, -1);
+    }
+    return out;
+}
+
+function _dropMarkdownSection(markdown, sectionName) {
+    const escaped = sectionName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const sectionRegex = new RegExp(`(^##\\s+${escaped}\\s*$\\n?[\\s\\S]*?)(?=^##\\s+|$)`, 'm');
+    return markdown.replace(sectionRegex, '').trim();
+}
+
+function _budgetRootContent(rootContent, maxBytes) {
+    if (!rootContent || maxBytes <= 0) return '';
+    let content = rootContent;
+    if (Buffer.byteLength(content, 'utf8') <= maxBytes) return content.trim();
+
+    const dropOrder = [
+        'Stale Zones',
+        'Knowledge Coverage',
+        'Recent Decisions',
+        'Recent Checkpoints',
+        'Active Topics',
+    ];
+
+    for (const section of dropOrder) {
+        if (Buffer.byteLength(content, 'utf8') <= maxBytes) break;
+        content = _dropMarkdownSection(content, section);
+        if (!content) return '';
+    }
+
+    return _truncateToBytes(content, maxBytes).trim();
+}
+
 function _stripContextBlocks(text, debug = false) {
     // Strategy: find the last metadata/context marker, take everything after it as user text.
     // Markers: ```\n (end of JSON block), "Speak from this memory naturally.", System: lines
@@ -793,7 +888,7 @@ function _stripContextBlocks(text, debug = false) {
             .replace(/^Principles:.*\n?/gm, '')
             .replace(/^\[STABILITY CONTEXT\][\s\S]*?(?=\n\n)/gm, '')
             .replace(/^\[CONTINUITY CONTEXT\][\s\S]*?(?=\n\n)/gm, '')
-            .replace(/^\[GRAPH MEMORY\][\s\S]*?(?=\n\n)/gm, '')
+            .replace(/^\[(?:GRAPH MEMORY|GRAPH MEMORY - SESSION CONTEXT|GRAPH MEMORY - MATCHED FACTS)\][\s\S]*?(?=\n\n)/gm, '')
             .trim();
         if (debug) {
             console.log(`[graph-memory:strip] After fence clean ${_fingerprintText(cleaned)}`);
@@ -808,7 +903,7 @@ function _stripContextBlocks(text, debug = false) {
     result = result
         .replace(/\[CONTINUITY CONTEXT\][\s\S]*?\n\n/g, '')
         .replace(/\[STABILITY CONTEXT\][\s\S]*?\n\n/g, '')
-        .replace(/\[GRAPH MEMORY\][\s\S]*?\n\n/g, '')
+        .replace(/\[(?:GRAPH MEMORY|GRAPH MEMORY - SESSION CONTEXT|GRAPH MEMORY - MATCHED FACTS)\][\s\S]*?\n\n/g, '')
         .replace(/\[TOPIC NOTE\].*?\n/g, '')
         .replace(/Conversation info \(untrusted metadata\):[\s\S]*?```\s*\n?/g, '')
         .replace(/Replied message \(untrusted[\s\S]*?```\s*\n?/g, '')
