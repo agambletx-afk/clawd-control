@@ -1,0 +1,2 @@
+# Description: Nightly session bootstrap index generation
+15 8 * * * openclaw /usr/bin/python3 /home/openclaw/.openclaw/scripts/graph-generate-root.py >> /home/openclaw/.openclaw/memory/root-gen.log 2>&1
