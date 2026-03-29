@@ -1193,7 +1193,7 @@
     .ops-monitoring-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
     .ops-kill-switch-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
     .ops-monocard { background: #1e2535; border: 1px solid #363b4d; border-radius: 12px; padding: 10px 12px; display: block; min-height: 80px; }
-    .ops-doctor-finding { background: #1e2535; border: 1px solid #363b4d; border-radius: 12px; padding: 10px 12px; display: block; min-height: 80px; }
+    .ops-doctor-finding { background: #1e2535; border: 1px solid #363b4d; border-radius: 12px; padding: 8px 12px; display: block; min-height: 40px; font-size: 12px; }
     @media (max-width: 1024px) { .ops-monitoring-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ops-kill-switch-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     @media (max-width: 900px) { .ops-kill-switch-grid { grid-template-columns: 1fr; } }
     @media (max-width: 768px) { .ops-monitoring-grid { grid-template-columns: 1fr; } }
@@ -3467,7 +3467,7 @@
       }
       root.innerHTML = layers.map((layer) => {
         const unavailableState = layer.source_available === false;
-        const pill = opsHealthPill(layer.status, unavailableState ? 'Source unavailable' : (layer.gateway_dependent && layer.status === 'amber' ? 'Inactive (gateway down)' : ''));
+        const pill = opsHealthPill(layer.status, unavailableState ? 'Source unavailable' : '');
         const extras = [];
         if (layer.name === 'Pulse') {
           extras.push(`Consecutive failures: <span style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">${esc(layer.consecutive_failures ?? 0)}</span>`);
@@ -3475,8 +3475,8 @@
         }
         if (layer.name === 'Sweep') extras.push(`Checks: <span style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">${esc(layer.last_check_count ?? 0)}</span>`);
         if (layer.name === 'Audit') extras.push(`Duration: <span style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">${esc(layer.last_run_duration_ms ?? 0)}ms</span>`);
-        if (layer.name === 'Heartbeat') extras.push(`Entries/60m: <span style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">${esc(layer.heartbeat_count_last_60m ?? 0)}</span> <span style="color:#94a3b8;">Gateway-dependent</span>`);
-        return `<article class="ops-monocard" style="display: block; min-height: 80px;"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center;"><strong style="color:#e2e8f0;">${esc(layer.name)}</strong><span class="pill" style="background:${pill.bg}; border-color:${pill.border}; color:${pill.color};">${pill.label}</span></div><div style="margin-top:6px;color:#94a3b8;font-size:12px;">Last success: <span style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">${esc(layer.last_success_at ? rel(layer.last_success_at) : '—')}</span></div><div style="margin-top:6px;color:#94a3b8;font-size:12px;">${extras.join(' · ')}</div></article>`;
+        if (layer.name === 'Heartbeat') extras.push(`Entries/60m: <span style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">${esc(layer.heartbeat_count_last_60m ?? 0)}</span>`);
+        return `<article class="ops-monocard" style="display: block; min-height: 80px;"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center;"><strong style="color:#e2e8f0;">${esc(layer.name)}</strong><span class="pill" style="background:${pill.bg}; border-color:${pill.border}; color:${pill.color};">${pill.label}</span></div><div style="margin-top:6px;color:#94a3b8;font-size:12px;">Last success: <span style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">${esc(layer.last_success_at ? rel(layer.last_success_at) : '—')}</span></div><div style="margin-top:6px;color:#94a3b8;font-size:12px;">${extras.join(' · ')}</div>${layer.gateway_dependent ? '<div style="margin-top:4px;"><span style="background:rgba(148,163,184,0.12);border:1px solid rgba(148,163,184,0.25);color:#94a3b8;font-size:10px;padding:2px 6px;border-radius:4px;">Gateway-dependent</span></div>' : ''}</article>`;
       }).join('');
     }
 
@@ -3567,7 +3567,7 @@
           const open = state.doctor.sectionsExpanded[secKey] !== false;
           const rows = (section.findings || []).map((finding) => {
             const muted = !!finding.suppressed;
-            return `<div class="ops-doctor-finding" style="display: block; min-height: 80px; opacity: ${muted ? '0.45' : '1'};"><div style="color:#e2e8f0;">${esc(finding.text || '')}</div><div style="margin-top:8px; display:flex; gap:6px; align-items:center; flex-wrap:wrap;">${muted ? `<span class="pill" title="${esc(finding.suppression?.reason || '')}" style="background: rgba(148, 163, 184, 0.16); border-color: rgba(148, 163, 184, 0.35); color: #94a3b8;">Expected</span><span style="color:#94a3b8;font-size:12px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">${esc(rel(finding.suppression?.suppressed_at))}</span><button class="btn btn-secondary" onclick="unsuppressDoctorFinding('${encodeURIComponent(finding.text || '')}')">Unmute</button>` : `<button class="btn btn-secondary" onclick="suppressDoctorFinding('${encodeURIComponent(finding.text || '')}')">Mute</button>`}</div></div>`;
+            return `<div class="ops-doctor-finding" style="display: block; min-height: 80px; opacity: ${muted ? '0.45' : '1'};"><div style="color:#e2e8f0; font-size:12px; line-height:1.4;">${esc(finding.text || '')}</div><div style="margin-top:8px; display:flex; gap:6px; align-items:center; flex-wrap:wrap;">${muted ? `<span class="pill" title="${esc(finding.suppression?.reason || '')}" style="background: rgba(148, 163, 184, 0.16); border-color: rgba(148, 163, 184, 0.35); color: #94a3b8;">Expected</span><span style="color:#94a3b8;font-size:12px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">${esc(rel(finding.suppression?.suppressed_at))}</span><button class="btn btn-secondary" onclick="unsuppressDoctorFinding('${encodeURIComponent(finding.text || '')}')">Unmute</button>` : `<button class="btn btn-secondary" onclick="suppressDoctorFinding('${encodeURIComponent(finding.text || '')}')">Mute</button>`}</div></div>`;
           }).join('');
           return `<div style="padding: 8px 0; border-top: ${index === 0 ? 'none' : '1px solid #363b4d'};"><div style="display:flex; justify-content:space-between; align-items:center;"><strong style="color:#e2e8f0;">${esc(section.name || 'General')}</strong><button class="icon-btn" onclick="toggleDoctorSection('${secKey}')" aria-expanded="${open ? 'true' : 'false'}"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button></div><div style="display:${open ? 'block' : 'none'}; margin-top:8px;">${rows}</div></div>`;
         }).join('');
@@ -3622,8 +3622,16 @@
     window.toggleDoctorSection = toggleDoctorSection;
 
     async function runDoctorNow() {
-      await api('/api/ops/doctor/run', { method: 'POST' });
-      loadDoctorPanel();
+      const btn = $('opsDoctorRun');
+      if (btn) { btn.disabled = true; btn.textContent = 'Running...'; }
+      try {
+        await api('/api/ops/doctor/run', { method: 'POST' });
+        await loadDoctorPanel();
+      } catch (error) {
+        toast(error.message || 'Doctor run failed');
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Run Now'; }
+      }
     }
 
     async function prepareDoctorRepair() {
