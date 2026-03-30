@@ -9,6 +9,38 @@
         .page-header h1 { font-size: 20px; font-weight: 700; margin-bottom: 8px; color: var(--text-primary); text-shadow: 0 0 8px rgba(99, 102, 241, 0.5); }
         .page-header .subtitle { font-size: 13px; font-weight: 400; color: var(--text-secondary); margin-top: 4px; }
 
+        .sub-nav {
+          display: flex;
+          gap: 2px;
+          background: var(--bg-input, var(--bg-tertiary));
+          border-radius: 9999px;
+          padding: 3px;
+          margin-bottom: 16px;
+          width: fit-content;
+        }
+        .sub-nav-btn {
+          padding: 6px 16px;
+          border-radius: 9999px;
+          border: none;
+          background: transparent;
+          color: var(--text-secondary);
+          font-size: 12px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 150ms;
+          white-space: nowrap;
+        }
+        .sub-nav-btn:hover { color: var(--text-primary); }
+        .sub-nav-btn.active {
+          background: #1e2535;
+          color: #e2e8f0;
+          font-weight: 600;
+          box-shadow: inset 0 -2px 0 #38bdf8;
+        }
+
+        .view-section { display: none; }
+        .view-section.active { display: block; }
+
         .filters-bar {
             display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;
             background: var(--bg-secondary);
@@ -52,6 +84,7 @@
         .event-log-table tbody tr:last-child td { border-bottom: none; }
         .event-log-table tbody tr:nth-child(even) { background: var(--bg-tertiary); }
         .event-log-table tbody tr:hover { background: var(--surface-hover); }
+        .session-row-clickable { cursor: pointer; }
 
         .type-badge {
             padding: 4px 8px; border-radius: var(--radius-sm);
@@ -60,9 +93,47 @@
         }
         .type-badge.message { background: var(--info-bg); color: var(--info); }
         .type-badge.tool_call { background: var(--warning-bg); color: var(--warning); }
-        .type-badge.model_change { background: #9333ea20; color: #9333ea; } /* Purple */
+        .type-badge.model_change { background: #9333ea20; color: #9333ea; }
         .type-badge.session { background: var(--success-bg); color: var(--success); }
         .type-badge.heartbeat { background: var(--text-tertiary); color: var(--bg-secondary); }
+
+        .transcript-header { background: #161b26; border: 1px solid #363b4d; border-radius: 10px; padding: 14px; margin-bottom: 12px; }
+        .transcript-title { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; color: #e2e8f0; margin-bottom: 12px; }
+        .transcript-title-capsule { width: 14px; height: 4px; border-radius: 999px; background: #38bdf8; }
+        .transcript-meta-grid { display: grid; grid-template-columns: repeat(3, minmax(180px, 1fr)); gap: 10px; }
+        .meta-item { background: #1e2535; border: 1px solid #363b4d; border-radius: 8px; padding: 10px; }
+        .meta-k { font-size: 11px; color: #94a3b8; text-transform: uppercase; margin-bottom: 4px; }
+        .meta-v { font-size: 13px; color: #e2e8f0; font-weight: 600; }
+        .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+        .status-pill { display: inline-flex; border-radius: 999px; padding: 2px 8px; font-size: 11px; font-weight: 700; }
+        .status-available { background: #0f2a3b; color: #7dd3fc; }
+        .status-live { background: #123826; color: #86efac; }
+        .status-summary_only { background: #3a2b13; color: #fde68a; }
+
+        .transcript-toolbar { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 10px; align-items: center; }
+        .toggle-row { display: flex; gap: 12px; color: #94a3b8; font-size: 12px; }
+        .transcript-btn { border: 1px solid #363b4d; border-radius: 8px; background: #1e2535; color: #e2e8f0; padding: 6px 10px; cursor: pointer; }
+        .transcript-btn:hover { border-color: #38bdf8; }
+
+        .transcript-picker { background: #161b26; border: 1px solid #363b4d; border-radius: 10px; padding: 12px; margin-bottom: 10px; }
+        .picker-item { padding: 8px; border-radius: 8px; background: #1e2535; border: 1px solid #363b4d; margin-bottom: 8px; cursor: pointer; }
+
+        .timeline-wrap { background: #161b26; border: 1px solid #363b4d; border-radius: 10px; padding: 12px; }
+        .timeline-item { background: #1e2535; border: 1px solid #363b4d; border-radius: 8px; margin-bottom: 8px; padding: 10px; }
+        .timeline-item.slim { background: transparent; border-style: dashed; color: #94a3b8; }
+        .timeline-head { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+        .chip { font-size: 11px; border-radius: 999px; padding: 2px 8px; font-weight: 700; }
+        .chip-user, .chip-assistant { background: #0f2a3b; color: #7dd3fc; }
+        .chip-muted { background: #2a3245; color: #cbd5e1; }
+        .timeline-preview { color: #e2e8f0; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .timeline-full { display: none; margin-top: 8px; max-height: 180px; overflow: auto; white-space: pre-wrap; border: 1px solid #363b4d; border-radius: 6px; padding: 8px; }
+        .timeline-item.expanded .timeline-full { display: block; }
+        .timeline-item .show-more { color: #7dd3fc; cursor: pointer; font-size: 12px; }
+        .indent-1 { margin-left: 24px; }
+        .indent-2 { margin-left: 48px; }
+        .banner { margin: 8px 0; padding: 8px; border-radius: 6px; border: 1px solid #363b4d; background: #1e2535; color: #cbd5e1; font-size: 12px; }
+        .raw-panel { display: none; background: #0b1020; color: #cbd5e1; border: 1px solid #363b4d; border-radius: 8px; padding: 10px; white-space: pre; overflow: auto; max-height: 450px; }
+        .waterfall-placeholder { background: #161b26; border: 1px solid #363b4d; border-radius: 10px; padding: 20px; color: #94a3b8; }
     </style>
 </head>
 <body>
@@ -72,41 +143,73 @@
             <p class="subtitle">Active and recent gateway sessions.</p>
         </div>
 
-        <div class="filters-bar">
-            <label for="timeRange">Time Range:</label>
-            <button id="filter24h" class="active" data-range="24h">24h</button>
-            <button id="filter3d" data-range="3d">3d</button>
-            <button id="filter7d" data-range="7d">7d</button>
-            <button id="filter30d" data-range="30d">30d</button>
-
-            <label for="sourceFilter" style="margin-left: 20px;">Source:</label>
-            <button id="filterSourceAll" class="active" data-source="all">All</button>
-            <button id="filterSourceTelegram" data-source="Telegram">Telegram</button>
-            <button id="filterSourceHeartbeat" data-source="Heartbeat">Heartbeat</button>
+        <div class="sub-nav" role="tablist" aria-label="Sessions views">
+            <button class="sub-nav-btn active" data-view="list">List</button>
+            <button class="sub-nav-btn" data-view="transcript">Transcript</button>
+            <button class="sub-nav-btn" data-view="waterfall">Waterfall</button>
         </div>
 
-        <table class="event-log-table" id="eventLogTable">
-            <thead>
-                <tr>
-                    <th>Time (CST)</th>
-                    <th>Session</th>
-                    <th>Type</th>
-                    <th>Model</th>
-                    <th>Role</th>
-                    <th>Preview</th>
-                    <th>Tokens</th>
-                    <th>Cost</th>
-                </tr>
-            </thead>
-            <tbody>
-                <!-- Event data will be injected here -->
-                <tr><td colspan="8" style="text-align: center;">Loading events...</td></tr>
-            </tbody>
-        </table>
+        <section id="listView" class="view-section active">
+            <div class="filters-bar">
+                <label for="timeRange">Time Range:</label>
+                <button id="filter24h" class="active" data-range="24h">24h</button>
+                <button id="filter3d" data-range="3d">3d</button>
+                <button id="filter7d" data-range="7d">7d</button>
+                <button id="filter30d" data-range="30d">30d</button>
 
-        <div id="loadMoreButtonContainer" style="text-align: center; margin-top: 20px;">
-            <button id="loadMoreButton" style="padding: 10px 20px;" class="nav-item">Load More</button>
-        </div>
+                <label for="sourceFilter" style="margin-left: 20px;">Source:</label>
+                <button id="filterSourceAll" class="active" data-source="all">All</button>
+                <button id="filterSourceTelegram" data-source="Telegram">Telegram</button>
+                <button id="filterSourceHeartbeat" data-source="Heartbeat">Heartbeat</button>
+            </div>
+
+            <table class="event-log-table" id="eventLogTable">
+                <thead>
+                    <tr>
+                        <th>Time (CST)</th>
+                        <th>Session</th>
+                        <th>Type</th>
+                        <th>Model</th>
+                        <th>Role</th>
+                        <th>Preview</th>
+                        <th>Tokens</th>
+                        <th>Cost</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td colspan="8" style="text-align: center;">Loading events...</td></tr>
+                </tbody>
+            </table>
+
+            <div id="loadMoreButtonContainer" style="text-align: center; margin-top: 20px;">
+                <button id="loadMoreButton" style="padding: 10px 20px;" class="nav-item">Load More</button>
+            </div>
+        </section>
+
+        <section id="transcriptView" class="view-section">
+            <div id="backLinkWrap"></div>
+            <div id="transcriptPicker" class="transcript-picker"></div>
+            <div id="transcriptHeader" class="transcript-header"></div>
+            <div id="transcriptBanners"></div>
+            <div class="transcript-toolbar">
+                <div class="toggle-row">
+                    <label><input id="toggleToolResults" type="checkbox" checked> Tool results</label>
+                    <label><input id="toggleSystem" type="checkbox"> System internals</label>
+                    <label><input id="toggleCompaction" type="checkbox" checked> Compaction markers</label>
+                </div>
+                <div>
+                    <button id="loadEarlier" class="transcript-btn">Load earlier</button>
+                    <button id="jumpLatest" class="transcript-btn">Jump to latest</button>
+                    <button id="toggleRaw" class="transcript-btn">View raw</button>
+                </div>
+            </div>
+            <div id="rawPanel" class="raw-panel"></div>
+            <div id="timeline" class="timeline-wrap"></div>
+        </section>
+
+        <section id="waterfallView" class="view-section">
+            <div class="waterfall-placeholder">Waterfall view is planned for multi-agent deployment.</div>
+        </section>
 
         <script>
             const CST_OFFSET_MS = -6 * 60 * 60 * 1000;
@@ -115,9 +218,205 @@
             let currentSource = 'all';
             let isLoading = false;
             let hasMore = true;
+            let transcriptState = { sessionId: null, entries: [], pagination: null, raw: '', current: null, rawOpen: false };
+
+            const FETCH_OPTS = { credentials: 'same-origin' };
+
+            function parseHash() {
+                const raw = (window.location.hash || '#list').replace(/^#/, '');
+                const [viewPart, ...rest] = raw.split('&');
+                const params = new URLSearchParams(rest.join('&'));
+                return { view: viewPart || 'list', params };
+            }
+
+            function setHash(view, extras = {}) {
+                const params = new URLSearchParams(extras);
+                const suffix = params.toString();
+                window.location.hash = suffix ? `#${view}&${suffix}` : `#${view}`;
+            }
+
+            function applyView() {
+                const parsed = parseHash();
+                const view = parsed.view;
+                document.querySelectorAll('.sub-nav-btn').forEach((btn) => btn.classList.toggle('active', btn.dataset.view === view));
+                document.querySelectorAll('.view-section').forEach((s) => s.classList.remove('active'));
+                if (view === 'transcript') {
+                    document.getElementById('transcriptView').classList.add('active');
+                    const sid = parsed.params.get('session') || null;
+                    renderBackLink(parsed.params);
+                    if (sid && sid !== transcriptState.sessionId) loadTranscript(sid, true);
+                    if (!sid) loadSessionPicker();
+                } else if (view === 'waterfall') {
+                    document.getElementById('waterfallView').classList.add('active');
+                } else {
+                    document.getElementById('listView').classList.add('active');
+                }
+            }
+
+            function renderBackLink(params) {
+                const from = params.get('from');
+                const taskId = params.get('taskId');
+                const wrap = document.getElementById('backLinkWrap');
+                if (from === 'usage') {
+                    wrap.innerHTML = '<a href="analytics.html" style="color:#7dd3fc;display:inline-block;margin-bottom:8px">← Back to Usage</a>';
+                } else if (from === 'tasks') {
+                    wrap.innerHTML = `<a href="tasks.html#task=${taskId || ''}" style="color:#7dd3fc;display:inline-block;margin-bottom:8px">← Back to Task #${taskId || ''} audit</a>`;
+                } else {
+                    wrap.innerHTML = '';
+                }
+            }
+
+            function normalizePreview(text, maxLen) {
+                return String(text || '').replace(/[#*_`>\[\]\(\)!-]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, maxLen);
+            }
+            function friendlyTool(name) {
+                return String(name || 'Tool').split('_').map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+            }
+
+            async function loadSessionPicker() {
+                const picker = document.getElementById('transcriptPicker');
+                picker.innerHTML = 'Loading recent sessions...';
+                const res = await fetch('/api/sessions?limit=20', FETCH_OPTS);
+                const data = await res.json();
+                const sessions = data.sessions || [];
+                if (sessions.length === 0) {
+                    picker.innerHTML = 'No recent sessions found.';
+                    return;
+                }
+                picker.innerHTML = sessions.map((s) => `<div class="picker-item" data-session-id="${s.sessionId}">${s.agentEmoji || '🤖'} ${s.displayName || s.sessionId} · <span class="mono">${(s.model || 'unknown')}</span> · ${new Date(s.updatedAt || Date.now()).toLocaleString()}</div>`).join('');
+                picker.querySelectorAll('.picker-item').forEach((el) => {
+                    el.addEventListener('click', () => setHash('transcript', { session: el.dataset.sessionId }));
+                });
+            }
+
+            function renderTranscriptHeader(session) {
+                const wrap = document.getElementById('transcriptHeader');
+                if (!session) {
+                    wrap.innerHTML = '<div class="transcript-title"><span class="transcript-title-capsule"></span>Transcript</div><div class="meta-v">Transcript not available.</div>';
+                    return;
+                }
+                const started = session.startedAt ? new Date(session.startedAt).toLocaleString() : '--';
+                wrap.innerHTML = `
+                    <div class="transcript-title"><span class="transcript-title-capsule"></span>Transcript</div>
+                    <div class="transcript-meta-grid">
+                        <div class="meta-item"><div class="meta-k">Agent</div><div class="meta-v">${session.agentEmoji || '🤖'} ${session.agent || '--'}</div></div>
+                        <div class="meta-item"><div class="meta-k">Source</div><div class="meta-v">${session.source || 'Direct'}</div></div>
+                        <div class="meta-item"><div class="meta-k">Model</div><div class="meta-v mono">${session.model || '--'}</div></div>
+                        <div class="meta-item"><div class="meta-k">Timing</div><div class="meta-v">${started}${session.active ? ' · Active' : ''}</div></div>
+                        <div class="meta-item" style="display:${session.taskId ? 'block' : 'none'}"><div class="meta-k">Task</div><div class="meta-v"><a href="tasks.html#task=${session.taskId || ''}" style="color:#7dd3fc">Task #${session.taskId || ''}</a></div></div>
+                        <div class="meta-item"><div class="meta-k">Status</div><div class="meta-v"><span class="status-pill status-${session.transcriptStatus}">${(session.transcriptStatus || '').replace('_', ' ')}</span></div></div>
+                    </div>`;
+            }
+
+            function renderTranscriptBanners(session) {
+                const wrap = document.getElementById('transcriptBanners');
+                const bits = [];
+                if (session?.active) bits.push('<div class="banner">Session active. Showing last complete entry.</div>');
+                if (session?.branchDetected) bits.push('<div class="banner">This transcript contains branches. Showing chronological view.</div>');
+                if ((session?.corruptionCount || 0) > 0) bits.push(`<div class="banner">Some entries in this transcript could not be read. ${session.corruptionCount} entries skipped.</div>`);
+                wrap.innerHTML = bits.join('');
+            }
+
+            function getIndentClass(entry) {
+                if (entry.type === 'tool_call') return 'indent-1';
+                if (entry.type === 'tool_result') return 'indent-2';
+                return '';
+            }
+
+            function summarizeEntry(entry) {
+                if (entry.type === 'tool_call') return `Called ${friendlyTool(entry.toolName)}`.slice(0, 80);
+                if (entry.type === 'tool_result') return entry.isError ? `Failed: ${normalizePreview(entry.content || '', 70)}` : 'Returned successfully';
+                if (entry.type === 'branch_summary') return `Branch summary ${normalizePreview(entry.summary || '', 60)}`;
+                if (entry.type === 'compaction') return 'Context compacted';
+                if (entry.type === 'system_internal') return 'System note';
+                if (entry.type === 'unknown') return `Unknown event (${entry.rawType || 'unknown'})`;
+                if (entry.type === 'corruption') return 'Entry could not be read';
+                return normalizePreview(entry.content || '', 150);
+            }
+
+            function chipFor(entry) {
+                if (entry.type === 'user_message') return '<span class="chip chip-user">User</span>';
+                if (entry.type === 'assistant_message') return '<span class="chip chip-assistant">Assistant</span>';
+                if (entry.type === 'tool_call') return '<span class="chip chip-muted">Tool Call</span>';
+                if (entry.type === 'tool_result') return '<span class="chip chip-muted">Tool Result</span>';
+                if (entry.type === 'system_internal') return '<span class="chip chip-muted">System</span>';
+                if (entry.type === 'unknown') return '<span class="chip chip-muted">Unknown event</span>';
+                return '';
+            }
+
+            function renderTimeline() {
+                const showToolResults = document.getElementById('toggleToolResults').checked;
+                const showSystem = document.getElementById('toggleSystem').checked;
+                const showCompaction = document.getElementById('toggleCompaction').checked;
+                const target = document.getElementById('timeline');
+                const filtered = transcriptState.entries.filter((entry) => {
+                    if (!showToolResults && entry.type === 'tool_result') return false;
+                    if (!showSystem && entry.type === 'system_internal') return false;
+                    if (!showCompaction && entry.type === 'compaction') return false;
+                    return true;
+                });
+
+                if (!transcriptState.current) {
+                    target.innerHTML = '<div class="timeline-item slim">Select a session to view transcript.</div>';
+                    return;
+                }
+
+                if (transcriptState.current.transcriptStatus === 'summary_only') {
+                    const summary = transcriptState.summary || {};
+                    target.innerHTML = `<div class="timeline-item slim">Transcript no longer available. Session ran ${summary.timestamp || '--'}, ${summary.tokens || 0} tokens, model ${summary.model || '--'}.</div>`;
+                    return;
+                }
+
+                if (filtered.length === 0) {
+                    target.innerHTML = '<div class="timeline-item slim">Transcript not available.</div>';
+                    return;
+                }
+
+                target.innerHTML = filtered.map((entry) => {
+                    const slim = entry.type === 'compaction' || entry.type === 'branch_summary' || entry.type === 'corruption';
+                    const full = entry.content || entry.summary || JSON.stringify(entry, null, 2);
+                    const preview = summarizeEntry(entry);
+                    const showMore = (entry.type === 'user_message' || entry.type === 'assistant_message') && (String(entry.content || '').length > 150);
+                    return `<div class="timeline-item ${slim ? 'slim' : ''} ${getIndentClass(entry)}" data-entry-id="${entry.id}">
+                        <div class="timeline-head">${chipFor(entry)} <span class="mono">${entry.timestamp ? new Date(entry.timestamp).toLocaleTimeString() : ''}</span></div>
+                        <div class="timeline-preview">${preview || '--'}</div>
+                        ${showMore ? '<div class="show-more">Show more</div>' : ''}
+                        <div class="timeline-full">${full}</div>
+                    </div>`;
+                }).join('');
+
+                target.querySelectorAll('.show-more').forEach((el) => {
+                    el.addEventListener('click', () => {
+                        const item = el.closest('.timeline-item');
+                        item.classList.toggle('expanded');
+                        el.textContent = item.classList.contains('expanded') ? 'Show less' : 'Show more';
+                    });
+                });
+            }
+
+            async function loadTranscript(sessionId, reset = false) {
+                transcriptState.sessionId = sessionId;
+                document.getElementById('transcriptPicker').innerHTML = '';
+                const limit = 100;
+                const beforeParam = !reset && transcriptState.pagination?.oldestEntryId ? `&before=${encodeURIComponent(transcriptState.pagination.oldestEntryId)}` : '';
+                const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/transcript?limit=${limit}${beforeParam}`, FETCH_OPTS);
+                if (!res.ok) {
+                    renderTranscriptHeader(null);
+                    document.getElementById('timeline').innerHTML = '<div class="timeline-item slim">Transcript not available.</div>';
+                    return;
+                }
+                const data = await res.json();
+                transcriptState.current = data.session;
+                transcriptState.pagination = data.pagination;
+                transcriptState.raw = data.raw || '';
+                transcriptState.summary = data.summary || null;
+                transcriptState.entries = reset ? (data.entries || []) : [...(data.entries || []), ...transcriptState.entries];
+                renderTranscriptHeader(data.session);
+                renderTranscriptBanners(data.session);
+                renderTimeline();
+            }
 
             function initSessionsTab() {
-                const FETCH_OPTS = { credentials: 'same-origin' };
                 const eventLogTableBody = document.querySelector('#eventLogTable tbody');
                 const loadMoreButton = document.getElementById('loadMoreButton');
                 const timeRangeButtons = document.querySelectorAll('.filters-bar button[data-range]');
@@ -156,6 +455,7 @@
 
                         data.events.forEach(event => {
                             const row = eventLogTableBody.insertRow();
+                            row.classList.add('session-row-clickable');
 
                             const timeCell = row.insertCell();
                             timeCell.textContent = toCstString(event.timestamp);
@@ -174,6 +474,8 @@
                             row.insertCell().textContent = event.preview || '--';
                             row.insertCell().textContent = event.tokens || '0';
                             row.insertCell().textContent = `$${(event.cost || 0).toFixed(4)}`;
+
+                            row.addEventListener('click', () => setHash('transcript', { session: event.sessionId }));
                         });
 
                         hasMore = data.hasMore;
@@ -194,7 +496,6 @@
                     }
                 }
 
-                // Event listeners for time range filters
                 timeRangeButtons.forEach(button => {
                     button.addEventListener('click', () => {
                         timeRangeButtons.forEach(btn => btn.classList.remove('active'));
@@ -204,7 +505,6 @@
                     });
                 });
 
-                // Event listeners for source filters
                 sourceFilterButtons.forEach(button => {
                     button.addEventListener('click', () => {
                         sourceFilterButtons.forEach(btn => btn.classList.remove('active'));
@@ -214,11 +514,28 @@
                     });
                 });
 
-                // Load more button
                 loadMoreButton.addEventListener('click', () => fetchAndRenderEvents(true));
+                document.querySelectorAll('.sub-nav-btn').forEach((btn) => btn.addEventListener('click', () => setHash(btn.dataset.view)));
+                window.addEventListener('hashchange', applyView);
+                document.getElementById('loadEarlier').addEventListener('click', () => {
+                    if (transcriptState.sessionId && transcriptState.pagination?.hasMore) loadTranscript(transcriptState.sessionId, false);
+                });
+                document.getElementById('jumpLatest').addEventListener('click', () => {
+                    if (transcriptState.sessionId) loadTranscript(transcriptState.sessionId, true);
+                });
+                document.getElementById('toggleRaw').addEventListener('click', () => {
+                    transcriptState.rawOpen = !transcriptState.rawOpen;
+                    const panel = document.getElementById('rawPanel');
+                    panel.style.display = transcriptState.rawOpen ? 'block' : 'none';
+                    panel.textContent = transcriptState.raw || 'No raw transcript available.';
+                    document.getElementById('toggleRaw').textContent = transcriptState.rawOpen ? 'View formatted' : 'View raw';
+                });
+                ['toggleToolResults', 'toggleSystem', 'toggleCompaction'].forEach((id) => {
+                    document.getElementById(id).addEventListener('change', renderTimeline);
+                });
 
-                // Initial load
                 fetchAndRenderEvents();
+                applyView();
             }
 
             initSessionsTab();

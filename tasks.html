@@ -1796,6 +1796,9 @@
                 ? `timeline-action security-hook${isBlocked ? ' security-blocked' : isAllowed ? ' security-muted' : ''}`
                 : 'timeline-action';
               const detail = entry.detail || '';
+              const transcriptLink = entry.session_id
+                ? `<div class="timeline-detail"><a href="sessions.html#transcript&session=${encodeURIComponent(entry.session_id)}&from=tasks&taskId=${encodeURIComponent(task.id)}" style="color:#7dd3fc;text-decoration:none">View transcript</a></div>`
+                : '';
               return `<div class="timeline-entry${isFirst ? ' first' : ''}${isLast ? ' last' : ''}">
                 <div class="timeline-rail">
                   <span class="${nodeClass}"></span>
@@ -1808,6 +1811,7 @@
                     <span class="timeline-time">${esc(cstFormatter.format(new Date(entry.created_at)))}</span>
                   </div>
                   ${detail ? `<div class="timeline-detail">${esc(detail)}</div>` : ''}
+                  ${transcriptLink}
                 </div>
               </div>`;
             }).join('')}${shouldCollapseAllowed ? `<button id="allowedToggle" class="timeline-toggle" type="button" data-expanded="${expandedAllowed ? '1' : '0'}">${expandedAllowed ? 'Hide allowed tool calls' : `Show ${allowedEntries.length} allowed tool calls`}</button>` : ''}</div>`;

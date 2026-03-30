@@ -199,7 +199,7 @@ cleanup_orphan_jsonl() {
 
   local jsonl_file base file_age_seconds
   local summary_archive="/home/openclaw/.openclaw/workspace/session-summaries.jsonl"
-  local min_orphan_age_seconds=7200  # 2 hours: don't delete young files
+  local min_orphan_age_seconds=604800  # 7 days: retain transcripts for operator review
   while IFS= read -r jsonl_file; do
     base="$(basename "$jsonl_file")"
     if [[ -z "${referenced[$jsonl_file]+x}" && -z "${referenced[$base]+x}" ]]; then

@@ -1,0 +1,6 @@
+{"type":"session","id":"mf0","parentId":null,"timestamp":"2026-03-30T14:00:00.000Z","version":"1","cwd":"/home/openclaw/.openclaw/workspace"}
+{"type":"message","id":"mf1","parentId":"mf0","timestamp":"2026-03-30T14:00:01.000Z","message":{"role":"user","content":[{"type":"text","text":"Hello"}]}}
+{"type":"message","id":"mf2","parentId":"mf1","timestamp":"2026-03-30T14:00:02.000Z","message":{"role":"assistant","model":"gpt-5.3-codex","usage":{"input":10,"output":10,"cacheRead":0,"totalTokens":20,"cost":{"total":0.001}},"content":[{"type":"text","text":"Hi"}]}}
+{"type":"message","id":"mf3","parentId":"mf2","timestamp":"2026-03-30T14:00:03.000Z","message":{"role":"user","content":[{"type":"text","text":"Continue"}]}}
+{"type":"message","id":"mf4","parentId":"mf3","timestamp":"2026-03-30T14:00:04.000Z","message":{"role":"assistant","model":"gpt-5.3-codex","usage":{"input":12,"output":12,"cacheRead":0,"totalTokens":24,"cost":{"total":0.0012}},"content":[{"type":"text","text":"Continuing"}]}}
+{"type":"message","id":"mf5"

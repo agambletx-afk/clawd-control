@@ -86,6 +86,7 @@ import { storeChecks, getHistory as getSecurityHistory, getTransitions } from '.
 import { recordRun, getHistory as getWatcherHistory, getTrends as getWatcherTrends, getJobStats, pruneOldRuns } from './watcher-db.mjs';
 import { createSnapshot, listSnapshots, getSnapshotManifest, restoreSnapshot, deleteSnapshot, enforceRetention } from './ops-backup.mjs';
 import { ChatGatewayClient, getChatMessages, getLatestMessage } from './chat-api.mjs';
+import { parseTranscriptContent } from './lib/session-transcript-parser.mjs';
 
 const PORT = parseInt(process.argv.find((_, i, a) => a[i - 1] === '--port') || '3100');
 const DIR = new URL('.', import.meta.url).pathname;
@@ -2794,6 +2795,160 @@ function getSafeSessionFilePath(sessionFile, agentId) {
   if (!resolvedFile.endsWith('.jsonl')) return null;
 
   return resolvedFile;
+}
+
+function detectSessionSource(sessionKey, sessionMeta) {
+  const key = String(sessionKey || '');
+  if (key.includes(':cron:')) return 'Cron';
+  if (key.includes(':main')) {
+    const originText = JSON.stringify(sessionMeta?.origin || {}).toLowerCase();
+    if (originText.includes('telegram')) return 'Telegram';
+    return 'Chat';
+  }
+  return 'Direct';
+}
+
+function getSummaryTombstone(sessionId) {
+  const summaryPath = join(homedir(), '.openclaw', 'workspace', 'session-summaries.jsonl');
+  if (!existsSync(summaryPath)) return null;
+  try {
+    const lines = readFileSync(summaryPath, 'utf8').split('\n').filter((line) => line.trim());
+    for (const line of lines) {
+      try {
+        const entry = JSON.parse(line);
+        if (entry.session === sessionId) return entry;
+      } catch {}
+    }
+  } catch {}
+  return null;
+}
+
+function getSessionTranscript(sessionId, { limit = 100, before = null } = {}) {
+  if (sessionId.includes('/') || sessionId.includes('\\')) {
+    return { error: 'Invalid session id', code: 400 };
+  }
+
+  const AGENTS_DIR = join(homedir(), '.openclaw', 'agents');
+  let matched = null;
+
+  try {
+    const agentIds = readdirSync(AGENTS_DIR, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
+    for (const agentId of agentIds) {
+      const sessionsPath = join(AGENTS_DIR, agentId, 'sessions', 'sessions.json');
+      if (!existsSync(sessionsPath)) continue;
+      try {
+        const sessData = JSON.parse(readFileSync(sessionsPath, 'utf8'));
+        for (const [key, sess] of Object.entries(sessData)) {
+          if (sess?.sessionId === sessionId) {
+            matched = { agentId, key, session: sess };
+            break;
+          }
+        }
+      } catch {}
+      if (matched) break;
+    }
+  } catch {}
+
+  if (!matched) {
+    const tombstone = getSummaryTombstone(sessionId);
+    if (tombstone) {
+      return {
+        session: {
+          id: sessionId,
+          agent: 'unknown',
+          agentEmoji: '🤖',
+          model: tombstone.model || 'unknown',
+          source: tombstone.source || 'Direct',
+          startedAt: tombstone.timestamp || null,
+          active: false,
+          taskId: tombstone.taskId || null,
+          transcriptStatus: 'summary_only',
+          branchDetected: false,
+          corruptionCount: 0,
+        },
+        entries: [],
+        raw: '',
+        summary: tombstone,
+        pagination: { hasMore: false, oldestEntryId: null, totalEstimate: 0 },
+      };
+    }
+    return null;
+  }
+
+  const safePath = getSafeSessionFilePath(matched.session.sessionFile, matched.agentId);
+  let transcriptPath = safePath && existsSync(safePath) ? safePath : null;
+  if (!transcriptPath) {
+    const archiveDir = join(homedir(), '.openclaw', 'agents', matched.agentId, 'sessions', 'archive');
+    if (existsSync(archiveDir)) {
+      const files = readdirSync(archiveDir).filter((name) => name.startsWith(sessionId) && name.endsWith('.jsonl')).sort();
+      if (files.length > 0) transcriptPath = join(archiveDir, files[files.length - 1]);
+    }
+  }
+
+  if (!transcriptPath || !existsSync(transcriptPath)) {
+    const tombstone = getSummaryTombstone(sessionId);
+    if (tombstone) {
+      const agentInfo = collector.state.get(matched.agentId) || {};
+      return {
+        session: {
+          id: sessionId,
+          agent: matched.agentId,
+          agentEmoji: agentInfo.emoji || '🤖',
+          model: tombstone.model || 'unknown',
+          source: detectSessionSource(matched.key, matched.session),
+          startedAt: tombstone.timestamp || matched.session.updatedAt || null,
+          active: false,
+          taskId: matched.session.taskId || null,
+          transcriptStatus: 'summary_only',
+          branchDetected: false,
+          corruptionCount: 0,
+        },
+        entries: [],
+        raw: '',
+        summary: tombstone,
+        pagination: { hasMore: false, oldestEntryId: null, totalEstimate: 0 },
+      };
+    }
+    return null;
+  }
+
+  const active = Boolean(matched.session.active);
+  const raw = readFileSync(transcriptPath, 'utf8');
+  const parsed = parseTranscriptContent(raw, { active });
+  const allEntries = parsed.entries;
+  let endIndex = allEntries.length;
+  if (before) {
+    const beforeIdx = allEntries.findIndex((entry) => entry.id === before);
+    if (beforeIdx >= 0) endIndex = beforeIdx;
+  }
+  const clampedLimit = Math.min(Math.max(1, Number(limit) || 100), 500);
+  const startIndex = Math.max(0, endIndex - clampedLimit);
+  const pageEntries = allEntries.slice(startIndex, endIndex);
+  const hasMore = startIndex > 0;
+
+  const agentInfo = collector.state.get(matched.agentId) || {};
+  return {
+    session: {
+      id: sessionId,
+      agent: matched.agentId,
+      agentEmoji: agentInfo.emoji || '🤖',
+      model: matched.session.model || 'unknown',
+      source: detectSessionSource(matched.key, matched.session),
+      startedAt: matched.session.createdAt || matched.session.updatedAt || null,
+      active,
+      taskId: matched.session.taskId || null,
+      transcriptStatus: parsed.transcriptStatus,
+      branchDetected: parsed.branchDetected,
+      corruptionCount: parsed.corruptionCount,
+    },
+    entries: pageEntries,
+    raw,
+    pagination: {
+      hasMore,
+      oldestEntryId: pageEntries[0]?.id || null,
+      totalEstimate: allEntries.length,
+    },
+  };
 }
 
 // ── Traces (delegation trees) ──────────────────────
@@ -7606,6 +7761,32 @@ const server = createServer(async (req, res) => {
     } catch (e) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       console.error('[API] error:', e.message); res.end(JSON.stringify({ error: 'Internal server error' }));
+    }
+    return;
+  }
+
+  if (path.startsWith('/api/sessions/') && path.endsWith('/transcript') && req.method === 'GET') {
+    try {
+      const sessionId = decodeURIComponent(path.split('/')[3] || '');
+      const limit = parseInt(url.searchParams.get('limit') || '100', 10);
+      const before = url.searchParams.get('before') || null;
+      const result = getSessionTranscript(sessionId, { limit, before });
+      if (!result) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Session transcript not found' }));
+        return;
+      }
+      if (result.error) {
+        res.writeHead(result.code || 400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: result.error }));
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      console.error('[API] /api/sessions/:id/transcript error:', e.message);
+      res.end(JSON.stringify({ error: 'Internal server error' }));
     }
     return;
   }

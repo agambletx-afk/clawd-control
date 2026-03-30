@@ -1771,6 +1771,7 @@ function renderTopSessions() {
           ${s.messages ? `<span>${s.messages} msgs</span>` : ''}
           <span class="session-tokens">${formatNumber(s.tokens)} tok</span>
           ${s.cost == null ? `<span class="session-badge no-pricing-badge">no pricing</span>` : `<span class="session-cost">${formatCurrency(s.cost, 3, "No pricing data")}</span>`}
+          ${s.sessionId ? `<a href="sessions.html#transcript&session=${encodeURIComponent(s.sessionId)}&from=usage" style="color:#7dd3fc;text-decoration:none">View</a>` : ''}
         </div>
       </div>
     `;
@@ -2096,5 +2097,4 @@ function truncate(str, max) {
   if (str.length <= max) return str;
   return str.slice(0, max - 1) + '…';
 }
-
 

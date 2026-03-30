@@ -1,0 +1,8 @@
+{"type":"session","id":"wc0","parentId":null,"timestamp":"2026-03-30T12:00:00.000Z","version":"1","cwd":"/home/openclaw/.openclaw/workspace"}
+{"type":"message","id":"wc1","parentId":"wc0","timestamp":"2026-03-30T12:00:01.000Z","message":{"role":"user","content":[{"type":"text","text":"Start"}]}}
+{"type":"message","id":"wc2","parentId":"wc1","timestamp":"2026-03-30T12:00:02.000Z","message":{"role":"assistant","model":"gpt-5.3-codex","usage":{"input":10,"output":20,"cacheRead":0,"totalTokens":30,"cost":{"total":0.001}},"content":[{"type":"text","text":"Going"}]}}
+{"type":"compaction","id":"wc3","parentId":"wc2","timestamp":"2026-03-30T12:00:03.000Z"}
+{"type":"message","id":"wc4","parentId":"wc3","timestamp":"2026-03-30T12:00:04.000Z","message":{"role":"user","content":[{"type":"text","text":"Continue"}]}}
+{"type":"message","id":"wc5","parentId":"wc4","timestamp":"2026-03-30T12:00:05.000Z","message":{"role":"assistant","model":"gpt-5.3-codex","usage":{"input":20,"output":30,"cacheRead":0,"totalTokens":50,"cost":{"total":0.002}},"content":[{"type":"text","text":"Continued"}]}}
+{"type":"custom","id":"wc6","parentId":"wc5","timestamp":"2026-03-30T12:00:06.000Z","customType":"meta","data":{"x":1}}
+{"type":"message","id":"wc7","parentId":"wc6","timestamp":"2026-03-30T12:00:07.000Z","message":{"role":"assistant","model":"gpt-5.3-codex","usage":{"input":5,"output":5,"cacheRead":0,"totalTokens":10,"cost":{"total":0.0005}},"content":[{"type":"text","text":"End"}]}}

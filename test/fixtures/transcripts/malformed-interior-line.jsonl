@@ -1,0 +1,5 @@
+{"type":"session","id":"mi0","parentId":null,"timestamp":"2026-03-30T15:00:00.000Z","version":"1","cwd":"/home/openclaw/.openclaw/workspace"}
+{"type":"message","id":"mi1","parentId":"mi0","timestamp":"2026-03-30T15:00:01.000Z","message":{"role":"user","content":[{"type":"text","text":"Hi"}]}}
+{broken json
+{"type":"message","id":"mi3","parentId":"mi1","timestamp":"2026-03-30T15:00:03.000Z","message":{"role":"assistant","model":"gpt-5.3-codex","usage":{"input":4,"output":8,"cacheRead":0,"totalTokens":12,"cost":{"total":0.0004}},"content":[{"type":"toolCall","id":"mitc1","name":"read_file","arguments":{"path":"x"}}]}}
+{"type":"message","id":"mi4","parentId":"mi3","timestamp":"2026-03-30T15:00:04.000Z","message":{"role":"toolResult","toolCallId":"mitc1","toolName":"read_file","isError":false,"content":[{"type":"text","text":"x"}]}}
