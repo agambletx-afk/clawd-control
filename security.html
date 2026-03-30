@@ -1,1819 +1,801 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Security — Clawd Control</title>
-  <style>
-    .page-header { margin-bottom: 10px; }
-    .page-header h1 { font-size: 20px; font-weight: 700; color: var(--text-primary); text-shadow: 0 0 8px rgba(239, 68, 68, 0.5); }
-    .page-header .subtitle { font-size: 13px; font-weight: 400; color: var(--text-secondary); margin-top: 4px; }
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Security — Clawd Control</title>
+<style>
+* { box-sizing: border-box; }
+body { margin: 0; background: #0f1419; color: #f1f5f9; font-family: Inter, system-ui, sans-serif; }
+main.main { padding: 24px; max-width: 1600px; margin: 0 auto; }
+.page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.page-header h1 { margin: 0; font-size: 20px; font-weight: 700; color: #f1f5f9; text-shadow: 0 0 24px rgba(236, 72, 153, 0.18); }
+.subtitle { margin: 6px 0 0; font-size: 13px; font-weight: 400; color: #94a3b8; }
+.btn-primary, .btn-secondary, .btn-danger { border-radius: 8px; border: 1px solid #363b4d; padding: 6px 12px; font-size: 13px; cursor: pointer; color: #f1f5f9; }
+.btn-primary { background: #2dd4bf; color: #0f1419; border-color: #2dd4bf; font-weight: 600; }
+.btn-primary:disabled { opacity: 0.6; cursor: default; }
+.btn-secondary { background: #252a36; }
+.btn-danger { background: rgba(239,68,68,0.16); border-color: rgba(239,68,68,0.45); color: #ef4444; }
+button svg { width: 14px; height: 14px; vertical-align: text-bottom; margin-right: 6px; stroke-width: 2; }
 
-    /* ── Overall Status Banner ── */
-    .overall-banner {
-      border-radius: 0;
-      margin: 0 -16px 14px -16px;
-      width: calc(100% + 32px);
-      padding: 8px 16px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 10px;
-      color: #fff;
-      border-left: 4px solid transparent;
-      transition: background 0.3s, border-color 0.3s;
-    }
-    .overall-banner.green { background: rgba(39,174,96,0.25); border-left-color: #27AE60; }
-    .overall-banner.yellow { background: rgba(212,136,28,0.25); border-left-color: #D4881C; }
-    .overall-banner.red { background: rgba(192,57,43,0.25); border-left-color: #C0392B; }
-    .overall-banner.unknown { background: rgba(99,110,114,0.25); border-left-color: #636e72; }
-    .overall-title { font-size: 0.84rem; font-weight: 600; letter-spacing: 0.01em; }
-    .overall-meta { font-size: 0.68rem; opacity: 0.92; margin-top: 1px; }
-    .btn-recheck {
-      border: 1px solid rgba(255,255,255,0.3);
-      background: rgba(0,0,0,0.15);
-      color: #fff;
-      padding: 5px 10px;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 0.7rem;
-      min-height: 30px;
-      
-      transition: background 0.15s;
-    }
-    .btn-recheck:hover { background: rgba(0,0,0,0.3); }
-    .btn-recheck:disabled { opacity: 0.6; cursor: wait; }
+.sub-nav { display: inline-flex; gap: 8px; padding: 4px; border-radius: 10px; background: #161b26; border: 1px solid #363b4d; margin-bottom: 16px; }
+.sub-nav-btn { border: 0; border-radius: 8px; background: #252a36; color: #94a3b8; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+.sub-nav-btn.active { background: #2dd4bf; color: #0f1419; font-weight: 600; }
 
-    /* ── Security Test Panel ── */
-    .security-test-panel {
-      border: 1px solid var(--border-subtle);
-      border-left: 4px solid #636e72;
-      border-radius: 10px;
-      background: rgba(10,12,16,0.35);
-      overflow: hidden;
-      margin-bottom: 12px;
-    }
-    .security-test-panel.status-pass { border-left-color: #27AE60; }
-    .security-test-panel.status-fail { border-left-color: #C0392B; }
-    .security-test-panel.status-warn { border-left-color: #D4881C; }
-    .security-test-panel.status-skip,
-    .security-test-panel.status-never { border-left-color: #636e72; }
-    .security-test-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      padding: 10px 12px;
-      cursor: pointer;
-      user-select: none;
-      background: rgba(99,110,114,0.09);
-    }
-    .security-test-main { min-width: 0; flex: 1; }
-    .security-test-title { font-size: 0.82rem; font-weight: 700; color: var(--text-primary); }
-    .security-test-meta { font-size: 0.68rem; color: var(--text-tertiary); margin-top: 2px; }
-    .security-test-actions { display: flex; align-items: center; gap: 8px; }
-    .btn-test-run {
-      border: 1px solid rgba(255,255,255,0.22);
-      background: rgba(10,12,16,0.3);
-      color: #dfe6e9;
-      padding: 4px 10px;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 0.68rem;
-      min-height: 30px;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .btn-test-run:hover { background: rgba(10,12,16,0.52); color: #fff; }
-    .btn-test-run:disabled { opacity: 0.7; cursor: wait; }
-    .test-spinner {
-      width: 11px;
-      height: 11px;
-      border: 2px solid rgba(255,255,255,0.25);
-      border-top-color: #fff;
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-      display: inline-block;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
+.context-bar { margin-bottom: 16px; font-size: 13px; color: #94a3b8; }
+.context-bar .mono { font-family: "JetBrains Mono", "Fira Code", monospace; color: #f1f5f9; }
 
-    .security-test-body {
-      max-height: 0;
-      overflow: hidden;
-      transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-    .security-test-panel.open .tier-chevron { transform: rotate(180deg); }
-    .security-test-body-inner { padding: 8px 10px 10px; display: grid; gap: 8px; }
-    .test-summary { font-size: 0.72rem; color: var(--text-secondary); }
-    .test-summary .pass { color: #27AE60; font-weight: 700; }
-    .test-summary .fail { color: #C0392B; font-weight: 700; }
-    .test-summary .warn { color: #D4881C; font-weight: 700; }
-    .test-summary .skip { color: #636e72; font-weight: 700; }
+.card-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
+.stat-card { position: relative; background: #1e2535; border: 1px solid #363b4d; border-radius: 12px; padding: 16px; min-height: 108px; }
+.stat-card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: #ec4899; border-top-left-radius: 12px; border-bottom-left-radius: 12px; }
+.stat-card.interactive { cursor: pointer; }
+.stat-label { font-size: 11px; text-transform: uppercase; font-weight: 600; color: #94a3b8; letter-spacing: 0.04em; }
+.stat-value { margin-top: 8px; font-family: "JetBrains Mono", "Fira Code", monospace; font-size: 28px; font-weight: 700; color: #f1f5f9; line-height: 1.1; }
+.stat-subtitle { margin-top: 8px; font-size: 12px; color: #94a3b8; }
 
-    .probe-list { display: grid; gap: 6px; }
-    .probe-item {
-      border: 1px solid var(--border-subtle);
-      border-radius: 8px;
-      background: var(--bg-tertiary);
-      overflow: hidden;
-    }
-    .probe-row {
-      display: flex;
-      align-items: flex-start;
-      gap: 8px;
-      padding: 7px 9px;
-      cursor: pointer;
-    }
-    .probe-icon { font-size: 0.88rem; width: 16px; text-align: center; }
-    .probe-icon.pass { color: #27AE60; }
-    .probe-icon.fail { color: #C0392B; }
-    .probe-icon.warn { color: #D4881C; }
-    .probe-icon.skip { color: #636e72; }
-    .probe-info { flex: 1; min-width: 0; }
-    .probe-name { font-size: 0.77rem; font-weight: 600; color: var(--text-primary); }
-    .probe-msg { font-size: 0.7rem; color: var(--text-secondary); margin-top: 2px; }
-    .probe-expand {
-      max-height: 0;
-      overflow: hidden;
-      transition: max-height 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-    .probe-expand-inner { padding: 0 9px 9px; display: grid; gap: 6px; }
-    .probe-details {
-      font-family: var(--font-mono);
-      font-size: 0.69rem;
-      color: var(--text-secondary);
-      white-space: pre-wrap;
-      word-break: break-word;
-      background: rgba(10,12,16,0.35);
-      border-radius: 6px;
-      padding: 6px 8px;
-    }
-    .test-footer { font-size: 0.66rem; color: var(--text-tertiary); display: flex; flex-wrap: wrap; gap: 8px; }
+.panel { background: #161b26; border: 1px solid #363b4d; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+.panel.featured { border-color: rgba(236,72,153,0.20); }
+.panel-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+.panel-title-wrap { display: flex; gap: 8px; align-items: flex-start; min-width: 0; }
+.panel-icon { width: 16px; height: 16px; stroke: #94a3b8; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; margin-top: 1px; }
+.domain-capsule { width: 14px; height: 4px; margin-top: 7px; border-radius: 2px; background: #ec4899; flex-shrink: 0; }
+.panel-title { margin: 0; font-size: 14px; font-weight: 600; color: #f1f5f9; }
+.panel-subtitle { margin: 4px 0 0; font-size: 12px; color: #94a3b8; }
 
-    /* ── Tier Accordion ── */
-    .tier-accordions { display: grid; gap: 8px; margin-bottom: 16px; }
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; min-width: 920px; }
+th { text-align: left; font-size: 11px; text-transform: uppercase; font-weight: 600; color: #94a3b8; letter-spacing: 0.04em; padding: 10px 8px; background: #1a1e30; }
+td { padding: 10px 8px; border-top: 1px solid #363b4d; font-size: 13px; color: #f1f5f9; vertical-align: top; }
+.mono { font-family: "JetBrains Mono", "Fira Code", monospace; }
+.text-secondary { color: #94a3b8; }
+.text-tertiary { color: #475569; }
+.status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.dot-green { background: #22c55e; }
+.dot-yellow { background: #f59e0b; }
+.dot-red { background: #ef4444; }
+.layer-pill { display: inline-block; border-radius: 4px; padding: 4px 8px; font-size: 11px; color: #ec4899; background: rgba(236,72,153,0.12); }
+.action-link { color: #ec4899; text-decoration: none; font-size: 13px; }
+.action-link:hover { text-decoration: underline; }
 
-    .tier {
-      border-radius: 10px;
-      overflow: hidden;
-      border: 1px solid var(--border);
-      transition: border-color 0.3s;
-    }
-    .tier.tier-green { border-color: rgba(39,174,96,0.4); }
-    .tier.tier-yellow { border-color: rgba(212,136,28,0.5); }
-    .tier.tier-red { border-color: rgba(192,57,43,0.5); }
+#defenseGridTable.highlight-warning tbody tr[data-status="yellow"] { background: rgba(245,158,11,0.08); }
+#defenseGridTable.highlight-failure tbody tr[data-status="red"] { background: rgba(239,68,68,0.08); }
 
-    /* ── Tier Banner (clickable) ── */
-    .tier-banner {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 14px;
-      cursor: pointer;
-      user-select: none;
-      transition: background 0.2s;
-      position: relative;
-    }
-    .tier-banner:hover { filter: brightness(1.08); }
+tbody tr.expandable-row { cursor: pointer; }
+.expand-row td { background: rgba(30,37,53,0.65); }
+.expand-box { background: #0d1117; border: 1px solid #363b4d; border-radius: 8px; padding: 12px; display: grid; gap: 10px; }
+.expand-block { display: grid; gap: 6px; }
+.expand-title { font-size: 11px; text-transform: uppercase; font-weight: 600; color: #94a3b8; letter-spacing: 0.04em; }
+.expand-copy { display: flex; gap: 8px; align-items: center; }
 
-    /* Tier status backgrounds */
-    .tier.tier-green .tier-banner { background: rgba(39,174,96,0.12); }
-    .tier.tier-yellow .tier-banner { background: rgba(212,136,28,0.14); }
-    .tier.tier-red .tier-banner { background: rgba(192,57,43,0.14); }
-    .tier.tier-unknown .tier-banner { background: rgba(99,110,114,0.12); }
+.filter-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.filter-pill { border: 1px solid #363b4d; border-radius: 999px; padding: 4px 10px; background: #252a36; color: #94a3b8; font-size: 11px; cursor: pointer; }
+.filter-pill.active { background: rgba(45,212,191,0.16); border-color: #2dd4bf; color: #ccfbf1; }
 
-    .tier-icon { font-size: 1.05rem; flex-shrink: 0; }
-    .tier-info { flex: 1; min-width: 0; }
-    .tier-name { font-weight: 700; font-size: 0.84rem; color: var(--text-primary); }
-    .tier-desc { font-size: 0.68rem; color: var(--text-tertiary); margin-top: 1px; }
+.collapsible-toggle { width: 100%; background: transparent; border: 0; color: inherit; text-align: left; padding: 0; cursor: pointer; }
+.collapsible-content { display: none; margin-top: 10px; }
+.collapsible-content.open { display: block; }
+.event-list { display: grid; gap: 8px; }
+.event-row { border: 1px solid #363b4d; border-radius: 8px; padding: 8px; display: grid; grid-template-columns: 120px 64px minmax(120px, 1fr) 60px minmax(120px, 1fr); gap: 8px; align-items: center; font-size: 12px; }
 
-    .tier-summary {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      flex-shrink: 0;
-    }
-    .tier-badge {
-      font-size: 0.64rem;
-      font-weight: 600;
-      padding: 2px 8px;
-      border-radius: 10px;
-      
-    }
-    .tier-badge.badge-green { background: rgba(39,174,96,0.2); color: #2ecc71; }
-    .tier-badge.badge-yellow { background: rgba(212,136,28,0.2); color: #f0a836; }
-    .tier-badge.badge-red { background: rgba(192,57,43,0.2); color: #e74c3c; }
+.badge-action { display: inline-block; border-radius: 999px; padding: 3px 8px; font-size: 11px; text-transform: lowercase; }
+.badge-blocked { background: rgba(239,68,68,0.18); color: #ef4444; }
+.badge-rate-limited { background: rgba(239,68,68,0.18); color: #ef4444; }
+.badge-confirmed { background: rgba(245,158,11,0.18); color: #f59e0b; }
+.badge-allowed { background: rgba(34,197,94,0.08); color: rgba(34,197,94,0.72); }
 
-    .tier-chevron {
-      width: 18px; height: 18px;
-      flex-shrink: 0;
-      color: var(--text-tertiary);
-      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-    .tier.open .tier-chevron { transform: rotate(180deg); }
+.memory-matches { border: 1px solid #363b4d; border-radius: 8px; overflow: hidden; }
+.memory-header, .memory-row { display: grid; grid-template-columns: minmax(120px,1fr) minmax(140px,1fr) minmax(180px,1fr) 90px 90px; gap: 8px; padding: 8px; align-items: center; }
+.memory-header { background: #1a1e30; font-size: 11px; text-transform: uppercase; color: #94a3b8; }
+.memory-row { border-top: 1px solid #363b4d; font-size: 12px; }
+.inline-error { color: #ef4444; font-size: 12px; }
 
-    /* ── Tier Body (collapsible) ── */
-    .tier-body {
-      max-height: 0;
-      overflow: hidden;
-      transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-    .tier-body-inner {
-      padding: 6px 10px 10px;
-      display: grid;
-      gap: 6px;
-    }
+.change-list { display: grid; gap: 8px; margin-bottom: 12px; }
+.change-row { border-left: 3px solid #f59e0b; background: rgba(245,158,11,0.08); padding: 8px 10px; border-radius: 6px; font-size: 12px; }
+.change-row.critical { border-left-color: #ef4444; background: rgba(239,68,68,0.08); }
+.accept-guard { margin-top: 10px; display: none; gap: 8px; align-items: center; }
+.accept-guard input { background: #0d1117; color: #f1f5f9; border: 1px solid #363b4d; border-radius: 8px; padding: 6px 8px; font-family: "JetBrains Mono", "Fira Code", monospace; width: 120px; }
+.empty-state { text-align: center; color: #475569; padding: 14px; }
 
-    /* ── Security Check Cards ── */
-    .check-card {
-      border: 1px solid var(--border-subtle);
-      border-radius: 8px;
-      background: var(--bg-tertiary);
-      overflow: hidden;
-      transition: border-color 0.2s, background 0.2s;
-    }
-    .check-card.card-green { border-left: 3px solid #27AE60; }
-    .check-card.card-yellow { border-left: 3px solid #D4881C; background: rgba(212,136,28,0.05); }
-    .check-card.card-red { border-left: 3px solid #C0392B; background: rgba(192,57,43,0.06); }
-    .check-card.card-unknown { border-left: 3px solid #636e72; background: rgba(99,110,114,0.08); }
-
-    .check-row {
-      padding: 8px 10px;
-      display: flex;
-      align-items: flex-start;
-      gap: 8px;
-    }
-    .check-dot {
-      width: 9px; height: 9px;
-      border-radius: 50%;
-      margin-top: 4px;
-      flex-shrink: 0;
-    }
-    .check-dot.green { background: #27AE60; }
-    .check-dot.yellow { background: #D4881C; }
-    .check-dot.red { background: #C0392B; }
-    .check-dot.unknown { background: #636e72; }
-
-    .check-info { flex: 1; min-width: 0; }
-    .check-top {
-      display: flex;
-      align-items: baseline;
-      gap: 6px;
-    }
-    .check-name { font-weight: 600; font-size: 0.8rem; color: var(--text-primary); }
-    .check-layer-tag {
-      font-size: 0.58rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      color: var(--text-tertiary);
-      background: var(--surface);
-      padding: 1px 5px;
-      border-radius: 4px;
-    }
-    .check-msg { font-size: 0.74rem; color: var(--text-secondary); margin-top: 2px; line-height: 1.3; }
-    .check-meta {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-top: 3px;
-    }
-    .check-time { font-size: 0.64rem; color: var(--text-tertiary); }
-    .check-expand-btn {
-      background: none;
-      border: none;
-      color: var(--text-tertiary);
-      font-size: 0.64rem;
-      cursor: pointer;
-      padding: 0;
-      text-decoration: underline;
-      text-underline-offset: 2px;
-    }
-    .check-expand-btn:hover { color: var(--text-secondary); }
-
-    /* ── Card Expandable ── */
-    .check-expand {
-      max-height: 0;
-      overflow: hidden;
-      transition: max-height 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-    .check-expand-inner {
-      padding: 0 10px 8px;
-    }
-    .check-details-box {
-      font-family: var(--font-mono);
-      font-size: 0.7rem;
-      color: var(--text-secondary);
-      white-space: pre-wrap;
-      word-break: break-word;
-      background: rgba(10,12,16,0.35);
-      border-radius: 6px;
-      padding: 5px 8px;
-      margin-bottom: 6px;
-    }
-    .check-remediation {
-      border-radius: 6px;
-      padding: 6px 8px;
-      font-size: 0.7rem;
-      display: flex;
-      align-items: flex-start;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-    .check-remediation.yellow { background: rgba(212,136,28,0.15); }
-    .check-remediation.red { background: rgba(192,57,43,0.15); }
-    .remediation-text { font-family: var(--font-mono); flex: 1; min-width: 140px; word-break: break-word; color: var(--text-secondary); }
-    .remediation-actions { display: flex; gap: 6px; flex-shrink: 0; }
-    .mini-btn {
-      border: 1px solid rgba(255,255,255,0.2);
-      background: rgba(10,12,16,0.3);
-      color: #dfe6e9;
-      border-radius: 5px;
-      padding: 3px 8px;
-      font-size: 0.64rem;
-      min-height: 26px;
-      cursor: pointer;
-      transition: background 0.15s;
-    }
-    .mini-btn:hover { background: rgba(10,12,16,0.55); color: #fff; }
-    .mini-btn:disabled { opacity: 0.5; cursor: wait; }
-
-    .credential-list { display: grid; gap: 8px; margin-top: 8px; }
-    .credential-item { border: 1px solid var(--border-subtle); border-radius: 10px; padding: 8px; background: rgba(13,17,23,0.45); }
-    .credential-top { display: flex; justify-content: space-between; gap: 8px; font-size: 0.72rem; margin-bottom: 4px; }
-    .credential-key { font-weight: 700; color: var(--text-primary); }
-    .credential-entity { color: var(--text-tertiary); }
-    .credential-val { font-size: 0.72rem; color: var(--text-secondary); margin-bottom: 6px; }
-    .credential-actions { display: flex; gap: 6px; flex-wrap: wrap; }
-
-
-
-    .version-card {
-      border: 1px solid var(--border-subtle);
-      border-left: 3px solid #636e72;
-      border-radius: 8px;
-      background: var(--bg-tertiary);
-      margin-bottom: 12px;
-      padding: 10px 12px;
-    }
-    .version-card.status-green { border-left-color: #27AE60; }
-    .version-card.status-yellow { border-left-color: #D4881C; background: rgba(212,136,28,0.05); }
-    .version-card.status-red { border-left-color: #C0392B; background: rgba(192,57,43,0.06); }
-    .version-card.status-unknown { border-left-color: #636e72; }
-    .version-card-header { display:flex; align-items:center; gap:8px; justify-content:space-between; flex-wrap:wrap; cursor:pointer; user-select:none; }
-    .version-card-title { display:flex; align-items:center; gap:8px; font-size:0.86rem; font-weight:700; }
-    .version-card-summary { font-size:0.76rem; color:var(--text-secondary); }
-    .version-card-heading { display:flex; align-items:center; gap:10px; min-width:0; flex:1; }
-    .version-card-heading-text { min-width:0; }
-    .status-dot { width:9px; height:9px; border-radius:50%; display:inline-block; }
-    .status-dot.green { background:#27AE60; }
-    .status-dot.yellow { background:#D4881C; }
-    .status-dot.red { background:#C0392B; }
-    .status-dot.unknown { background:#636e72; }
-    .version-card-body { font-size:0.76rem; color:var(--text-secondary); margin-top:8px; line-height:1.4; }
-    .version-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:0.5rem; margin:0.5rem 0; }
-    .version-grid code { font-family:'JetBrains Mono','Fira Code',monospace; }
-    .version-missed { font-size:0.85rem; color:var(--text-secondary); margin:0.5rem 0; }
-    .version-card-footer { margin-top:8px; display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:0.68rem; }
-    .version-card-footer a { color: var(--text-secondary); }
-    .version-badge { border-radius:10px; padding:2px 8px; font-size:0.7rem; font-weight:700; }
-    .version-badge.green { background: rgba(39,174,96,0.2); color:#2ecc71; }
-    .version-badge.yellow { background: rgba(212,136,28,0.2); color:#f0a836; }
-    .version-badge.red { background: rgba(192,57,43,0.2); color:#e74c3c; }
-    .version-card .tier-chevron { transition: transform 0.25s; }
-    .version-card.open .tier-chevron { transform: rotate(180deg); }
-    .version-card-expand {
-      max-height: 0;
-      overflow: hidden;
-      transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-    .btn { border:1px solid rgba(255,255,255,0.2); background: rgba(10,12,16,0.3); color:#dfe6e9; border-radius:6px; cursor:pointer; }
-    .btn:hover { background: rgba(10,12,16,0.55); color:#fff; }
-    .btn:disabled { opacity:0.5; cursor:not-allowed; }
-    .btn-sm { padding:4px 10px; font-size:0.68rem; min-height:28px; }
-    .btn-primary { border-color:rgba(212,136,28,0.7); background:rgba(212,136,28,0.25); color:#ffd27a; }
-
-    .version-release-summary {
-      margin-top: 0.75rem;
-      border: 1px solid var(--border-subtle);
-      border-radius: 6px;
-      padding: 8px 10px;
-      background: rgba(0,0,0,0.15);
-    }
-    .version-release-header {
-      font-size: 0.78rem;
-      font-weight: 600;
-      margin-bottom: 6px;
-      color: var(--text-primary);
-    }
-    .version-release-stats {
-      display: flex;
-      gap: 16px;
-      margin-bottom: 8px;
-      font-size: 0.74rem;
-      flex-wrap: wrap;
-    }
-    .version-release-stats .stat { color: var(--text-secondary); }
-    .version-release-preview { font-size: 0.7rem; line-height: 1.5; max-height: 300px; overflow-y: auto; }
-    .release-line {
-      padding: 1px 0;
-      color: var(--text-secondary);
-      
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .release-line.security { color: #e74c3c; font-weight: 500; }
-    .release-line.muted { color: var(--text-tertiary); font-style: italic; }
-    .version-security-count { font-weight: 700; }
-    .version-security-count.red { color: #e74c3c; }
-    .version-security-count.green { color: #2ecc71; }
-    .text-red { color: #e74c3c; }
-
-    .toast-notification {
-      position: fixed; bottom: 2rem; right: 2rem; background: var(--bg-secondary, #2d3748); color: var(--text-primary, #fff);
-      padding: 0.75rem 1.25rem; border-radius: 0.5rem; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-      opacity: 0; transform: translateY(10px); transition: opacity 0.3s, transform 0.3s; z-index: 1000;
-    }
-    .toast-notification.show { opacity: 1; transform: translateY(0); }
-
-
-
-    .chart-card {
-      border: 1px solid var(--border-subtle);
-      border-radius: 10px;
-      background: var(--bg-secondary);
-      padding: 10px;
-    }
-    .chart-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      margin-bottom: 8px;
-    }
-    .chart-title { font-size: 0.82rem; font-weight: 700; color: var(--text-primary); }
-    .chart-wrap { position: relative; height: 160px; }
-    .chart-wrap canvas { width: 100%; height: 100%; display: block; }
-    .chart-tooltip {
-      position: absolute;
-      pointer-events: none;
-      z-index: 5;
-      min-width: 160px;
-      background: rgba(10,12,16,0.95);
-      border: 1px solid var(--border-subtle);
-      border-radius: 8px;
-      padding: 8px 9px;
-      box-shadow: 0 8px 20px rgba(0,0,0,0.35);
-      color: var(--text-primary);
-      font-size: 0.68rem;
-      transition: opacity 0.12s;
-    }
-    .chart-tooltip.hidden { opacity: 0; }
-    .tooltip-date { color: var(--text-secondary); margin-bottom: 5px; }
-    .tooltip-row { display: flex; justify-content: space-between; gap: 8px; }
-    .tooltip-label { color: var(--text-secondary); }
-    .tooltip-val { color: var(--text-primary); font-weight: 600; }
-
-    /* ── Timeline ── */
-    .timeline-section {
-      background: var(--bg-secondary);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 10px 12px;
-    }
-    .timeline-title { font-size: 0.86rem; font-weight: 700; }
-    .timeline-banner {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      cursor: pointer;
-      user-select: none;
-      padding: 0;
-    }
-    .timeline-banner .tier-chevron { transition: transform 0.25s; }
-    .timeline-section.open .timeline-banner .tier-chevron { transform: rotate(180deg); }
-    .timeline-body {
-      max-height: 0;
-      overflow: hidden;
-      transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-    .timeline-body-inner { padding-top: 8px; }
-    .timeline-list { display: grid; gap: 4px; }
-    .tl-item {
-      border: 1px solid var(--border-subtle);
-      border-radius: 6px;
-      padding: 5px 9px;
-      background: var(--bg-tertiary);
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 4px 10px;
-      font-size: 0.72rem;
-    }
-    .tl-time { color: var(--text-tertiary); font-size: 0.66rem; }
-    .tl-layer { color: var(--text-secondary); font-weight: 500; }
-    .tl-message { font-size: 0.7rem; color: var(--text-primary); width: 100%; }
-    .tl-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
-    .tl-dot.green { background: #27AE60; }
-    .tl-dot.yellow { background: #D4881C; }
-    .tl-dot.red { background: #C0392B; }
-    .tl-dot.unknown { background: #636e72; }
-    .tl-arrow { display: inline-flex; align-items: center; gap: 3px; font-size: 0.66rem; color: var(--text-tertiary); }
-    .muted { color: var(--text-tertiary); font-size: 0.76rem; padding: 4px 0; }
-
-    @media (max-width: 640px) {
-      .overall-banner { flex-direction: column; align-items: stretch; padding: 8px 12px; }
-      .overall-banner .btn-recheck { width: 100%; min-height: 44px; }
-      .tier-banner { padding: 10px 12px; }
-      .tier-desc { display: none; }
-      .mini-btn { min-height: 44px; padding: 8px 10px; font-size: 0.7rem; }
-      .version-grid { grid-template-columns: 1fr; }
-      .version-card-footer { flex-direction: column; align-items: flex-start; }
-    }
-  </style>
+@media (max-width: 1024px) {
+  .card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+</style>
 </head>
 <body>
-  <main class="main">
-    <div class="page-header">
+<main class="main" id="securityRoot">
+  <div class="page-header">
+    <div>
       <h1>Security</h1>
       <p class="subtitle">Security posture and enforcement status.</p>
     </div>
+    <button class="btn-primary" id="checkNowBtn">Check Now</button>
+  </div>
 
-    <section id="overallBanner" class="overall-banner unknown">
-      <div>
-        <div id="overallTitle" class="overall-title"><span id="overallIcon"></span> Security Status Unknown</div>
-        <div id="overallMeta" class="overall-meta">Waiting for data...</div>
-      </div>
-      <button id="recheckBtn" class="btn-recheck" type="button">Run Check Now</button>
-    </section>
+  <div class="sub-nav" id="securitySubNav" role="tablist" aria-label="Security sections">
+    <button class="sub-nav-btn active" data-section="posture" role="tab" aria-selected="true">Posture</button>
+    <button class="sub-nav-btn" data-section="enforcement" role="tab" aria-selected="false">Enforcement</button>
+    <button class="sub-nav-btn" data-section="integrity" role="tab" aria-selected="false">Integrity</button>
+  </div>
 
-    <!-- Version Currency Card (Check 10) - full width, above tier accordions -->
-    <div id="version-card" class="version-card" style="display:none;"></div>
+  <section id="section-posture">
+    <div class="card-grid">
+      <article class="stat-card" id="card-checks-passing"><div class="stat-label">Checks Passing</div><div class="stat-value mono" id="checksPassingValue">0/0</div><div class="stat-subtitle" id="checksPassingSub">of 0 automated checks</div></article>
+      <article class="stat-card interactive" id="card-warnings"><div class="stat-label">Warnings</div><div class="stat-value mono" id="warningsValue">0</div><div class="stat-subtitle">checks need attention</div></article>
+      <article class="stat-card interactive" id="card-failures"><div class="stat-label">Failures</div><div class="stat-value mono" id="failuresValue">0</div><div class="stat-subtitle">checks critically failed</div></article>
+      <article class="stat-card" id="card-last-scan"><div class="stat-label">Last Scan</div><div class="stat-value mono" id="lastScanValue">—</div><div class="stat-subtitle">15-min cron cycle</div></article>
+    </div>
 
-    <section id="securityTestPanel" class="security-test-panel status-never">
-      <div id="securityTestHeader" class="security-test-header" role="button" tabindex="0">
-        <div class="security-test-main">
-          <div id="securityTestTitle" class="security-test-title">Security Test: Never run</div>
-          <div id="securityTestMeta" class="security-test-meta">Run active probes to verify protections block risky actions.</div>
+    <section class="panel featured">
+      <div class="panel-header">
+        <div class="panel-title-wrap">
+          <svg class="panel-icon" viewBox="0 0 24 24"><path d="m12 3 7 4v5c0 5-3.5 8.5-7 9-3.5-.5-7-4-7-9V7z"/><path d="m9 12 2 2 4-4"/></svg>
+          <span class="domain-capsule"></span>
+          <div><p class="panel-title">Defense Posture</p><p class="panel-subtitle">All automated security checks. Sorted by severity.</p></div>
         </div>
-        <div class="security-test-actions">
-          <button id="securityTestRunBtn" class="btn-test-run" type="button">Run Security Test</button>
-          <svg class="tier-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-        </div>
+        <button class="btn-secondary" id="sortToggleBtn">Sort: Severity</button>
       </div>
-      <div id="securityTestBody" class="security-test-body">
-        <div id="securityTestBodyInner" class="security-test-body-inner">
-          <div class="muted">No test results yet.</div>
-        </div>
-      </div>
-    </section>
-
-
-    <div id="tierAccordions" class="tier-accordions"></div>
-
-    <section class="timeline-section" id="timelineSection">
-      <div class="timeline-banner" id="timelineBanner" role="button" tabindex="0">
-        <span class="timeline-title">Event Timeline</span>
-        <svg class="tier-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-      </div>
-      <div class="timeline-body" id="timelineBody">
-        <div class="timeline-body-inner">
-          <div id="timelineList" class="timeline-list">
-            <div class="muted">Loading...</div>
-          </div>
-        </div>
+      <div class="table-wrap">
+        <table id="defenseGridTable">
+          <thead><tr><th style="width:40px">Status</th><th style="width:60px">Layer</th><th>Check</th><th>Message</th><th style="width:80px">Age</th><th style="width:120px">Action</th></tr></thead>
+          <tbody id="defenseGridBody"></tbody>
+        </table>
       </div>
     </section>
-  </main>
 
-  <script src="/layout.js"></script>
-  <script>
-    /* ══════════════════════════════════════════════════
-       DATA
-    ══════════════════════════════════════════════════ */
-    const TIERS = [
-      {
-        id: 'infra', label: 'Infrastructure', icon: '🛡',
-        desc: 'Network perimeter, brute-force protection, and mesh access',
-        layers: ['network_firewall', 'network_brute_force', 'access'],
-        showWhenEmpty: true
-      },
-      {
-        id: 'app', label: 'Application Boundary', icon: '🔒',
-        desc: 'Public access, gateway bind, and channel policy',
-        layers: ['public', 'gateway', 'channel'],
-        showWhenEmpty: true
-      },
-      {
-        id: 'agent', label: 'Agent', icon: '🧠',
-        desc: 'Identity integrity, tool sandboxing, and memory security',
-        layers: ['reasoning', 'operational', 'memory'],
-        showWhenEmpty: true
-      },
-      {
-        id: 'injection', label: 'Injection Defense', icon: '🔍',
-        desc: 'Config drift baselining and deterministic prompt/plugin defenses',
-        layers: ['injection-defense'],
-        showWhenEmpty: false
-      },
-      {
-        id: 'health', label: 'Gateway Health', icon: '🫀',
-        desc: 'Gateway event loop, delivery queue, and runtime health',
-        layers: ['gateway-health'],
-        showWhenEmpty: false
-      }
-    ];
-
-    const LAYER_TAGS = {
-      network_firewall: 'L1',
-      network_brute_force: 'L1',
-      access: 'L2',
-      public: 'L3',
-      gateway: 'L4',
-      channel: 'L5',
-      reasoning: 'L6',
-      operational: 'L7',
-      memory: 'L8',
-      'injection-defense': 'L9',
-      'gateway-health': 'L10'
-    };
-
-    const state = { health: null, liveness: null, transitions: [], gatewayTrend: [], memoryCredentials: [], pollTimer: null, running: false, versionCheck: null, securityTest: null, securityTestRunning: false, securityTestElapsed: 0 };
-    const openTiers = new Set();    // track which tiers are expanded
-    const openCards = new Set();    // track which card details are expanded
-    let timelineOpen = false;
-    let versionCardOpen = false;
-    let securityTestOpen = false;
-    let securityTestProbeOpen = null;
-    let securityTestTimer = null;
-    const $ = id => document.getElementById(id);
-
-    /* ══════════════════════════════════════════════════
-       HELPERS
-    ══════════════════════════════════════════════════ */
-    function esc(v) {
-      return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-    }
-
-    function relTime(iso) {
-      if (!iso) return 'unknown';
-      const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-      if (m < 1) return 'just now';
-      if (m < 60) return `${m}m ago`;
-      const h = Math.floor(m / 60);
-      if (h < 24) return `${h}h ago`;
-      return `${Math.floor(h / 24)}d ago`;
-    }
-
-    function probeIcon(status) {
-      if (status === 'pass') return '✔';
-      if (status === 'fail') return '✖';
-      if (status === 'warn') return '⚠';
-      return '⏭';
-    }
-
-    function renderSecurityTestPanel() {
-      const panel = $('securityTestPanel');
-      const title = $('securityTestTitle');
-      const meta = $('securityTestMeta');
-      const body = $('securityTestBody');
-      const inner = $('securityTestBodyInner');
-      const runBtn = $('securityTestRunBtn');
-      if (!panel || !title || !meta || !body || !inner || !runBtn) return;
-
-      const data = state.securityTest;
-      const hasResults = data && !data.never_run;
-      const overall = hasResults ? String(data.overall || 'skip') : 'never';
-
-      panel.className = `security-test-panel status-${overall}`;
-
-      if (!hasResults) {
-        title.textContent = 'Security Test: Never run';
-        meta.textContent = 'Run active probes to verify protections block risky actions.';
-        inner.innerHTML = '<div class="muted">No test results yet.</div>';
-      } else {
-        const summary = data.summary || {};
-        const summaryText = `${Number(summary.passed || 0)} passed, ${Number(summary.failed || 0)} failed${Number(summary.warned || 0) ? `, ${Number(summary.warned || 0)} warning` : ''}${Number(summary.skipped || 0) ? `, ${Number(summary.skipped || 0)} skipped` : ''}`;
-        title.textContent = `Last Security Test: ${relTime(data.generated_at)} — ${summaryText}`;
-        meta.textContent = `Generated ${new Date(data.generated_at).toLocaleString()}`;
-
-        const probes = Array.isArray(data.probes) ? data.probes : [];
-        inner.innerHTML = `
-          <div class="test-summary"><span class="pass">${Number(summary.passed || 0)} passed</span>, <span class="fail">${Number(summary.failed || 0)} failed</span>, <span class="warn">${Number(summary.warned || 0)} warning</span>${Number(summary.skipped || 0) ? `, <span class="skip">${Number(summary.skipped || 0)} skipped</span>` : ''}</div>
-          <div class="probe-list">
-            ${probes.map((probe, idx) => {
-              const pid = esc(probe.id || `probe-${idx}`);
-              const pstatus = esc(probe.status || 'skip');
-              const isOpen = securityTestProbeOpen === pid;
-              return `
-                <div class="probe-item">
-                  <div class="probe-row" data-action="probe-toggle" data-probe-id="${pid}">
-                    <div class="probe-icon ${pstatus}">${probeIcon(probe.status)}</div>
-                    <div class="probe-info">
-                      <div class="probe-name">${esc(probe.name || pid)}</div>
-                      <div class="probe-msg">${esc(probe.message || '')}</div>
-                    </div>
-                    ${CHEVRON_SVG}
-                  </div>
-                  <div id="probe-expand-${pid}" class="probe-expand" ${isOpen ? 'data-open="1"' : ''}>
-                    <div class="probe-expand-inner">
-                      <div class="probe-details">${esc(probe.details || 'No details')}</div>
-                      ${((probe.status === 'fail' || probe.status === 'warn') && probe.remediation) ? `
-                        <div class="check-remediation ${probe.status === 'fail' ? 'red' : 'yellow'}">
-                          <div class="remediation-text">${esc(probe.remediation)}</div>
-                          <div class="remediation-actions">
-                            <button class="mini-btn" type="button" data-action="copy" data-text="${esc(probe.remediation)}">Copy</button>
-                          </div>
-                        </div>
-                      ` : ''}
-                    </div>
-                  </div>
-                </div>
-              `;
-            }).join('')}
+    <section class="panel">
+      <button class="collapsible-toggle" id="historyToggleBtn">
+        <div class="panel-header" style="margin-bottom:0">
+          <div class="panel-title-wrap">
+            <svg class="panel-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v6l4 2"/></svg>
+            <span class="domain-capsule"></span>
+            <div><p class="panel-title">Status History</p><p class="panel-subtitle">Check status transitions over time.</p></div>
           </div>
-          <div class="test-footer">
-            <span>Completed in ${(Number(data.duration_ms || 0) / 1000).toFixed(1)}s</span>
-            <span>Passive recheck: ${esc(data.passive_recheck || 'unknown')}</span>
-          </div>
-        `;
-
-        probes.forEach((probe, idx) => {
-          const pid = esc(probe.id || `probe-${idx}`);
-          const el = $(`probe-expand-${pid}`);
-          if (el && el.getAttribute('data-open') === '1') {
-            el.style.maxHeight = `${el.scrollHeight}px`;
-          }
-        });
-      }
-
-      if (state.securityTestRunning) {
-        runBtn.disabled = true;
-        runBtn.innerHTML = `<span class="test-spinner"></span> Testing... (${state.securityTestElapsed}s)`;
-      } else {
-        runBtn.disabled = false;
-        runBtn.textContent = 'Run Security Test';
-      }
-
-      if (securityTestOpen) {
-        panel.classList.add('open');
-        body.style.maxHeight = `${body.scrollHeight}px`;
-      } else {
-        panel.classList.remove('open');
-        body.style.maxHeight = '0';
-      }
-    }
-
-    function toggleSecurityTestPanel() {
-      securityTestOpen = !securityTestOpen;
-      renderSecurityTestPanel();
-    }
-
-    function toggleProbe(id) {
-      securityTestProbeOpen = securityTestProbeOpen === id ? null : id;
-      renderSecurityTestPanel();
-    }
-
-    async function api(path, init = {}) {
-      const res = await fetch(path, {
-        cache: 'no-store', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json', ...(init.headers || {}) },
-        ...init
-      });
-      if (!res.ok) throw new Error(`${res.status}`);
-      return res.json();
-    }
-
-    function tok(raw, stale) {
-      if (stale) return 'unknown';
-      const s = String(raw || '').toLowerCase();
-      if (['green','secure','ok','success'].includes(s)) return 'green';
-      if (['yellow','warning','warn','degraded'].includes(s)) return 'yellow';
-      if (['red','critical','error','failed'].includes(s)) return 'red';
-      return 'unknown';
-    }
-
-    function worstStatus(statuses) {
-      if (statuses.includes('red')) return 'red';
-      if (statuses.includes('yellow')) return 'yellow';
-      if (statuses.includes('unknown')) return 'unknown';
-      return 'green';
-    }
-
-    const CHEVRON_SVG = `<svg class="tier-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
-
-
-    function normalizeMeta(raw) {
-      if (!raw) return {};
-      if (typeof raw === 'string') {
-        try { return JSON.parse(raw); } catch { return {}; }
-      }
-      return typeof raw === 'object' ? raw : {};
-    }
-
-    function showToast(message, duration = 5000) {
-      if (window.showToast && window.showToast !== showToast) {
-        window.showToast(message);
-        return;
-      }
-      const toast = document.createElement('div');
-      toast.className = 'toast-notification';
-      toast.textContent = message;
-      document.body.appendChild(toast);
-      setTimeout(() => toast.classList.add('show'), 10);
-      setTimeout(() => {
-        toast.classList.remove('show');
-        setTimeout(() => toast.remove(), 300);
-      }, duration);
-    }
-
-    function renderReleasePreview(preview, maxLines = 0) {
-      if (!preview) return '<span class="muted">No release notes available.</span>';
-
-      const lines = preview.split('\n')
-        .map(l => l.trim())
-        .filter(l => l.startsWith('- '));
-
-      const shown = maxLines > 0 ? lines.slice(0, maxLines) : lines;
-      const remaining = maxLines > 0 ? lines.length - shown.length : 0;
-
-      let html = shown.map(line => {
-        const escaped = esc(line);
-        if (line.match(/^- Security\//i)) {
-          return `<div class="release-line security">${escaped}</div>`;
-        }
-        return `<div class="release-line">${escaped}</div>`;
-      }).join('');
-
-      if (remaining > 0) {
-        html += `<div class="release-line muted">+ ${remaining} more entries</div>`;
-      }
-
-      return html || '<span class="muted">No release notes available.</span>';
-    }
-
-    function renderVersionCard(check) {
-      const card = $('version-card');
-      if (!card || !check) {
-        if (card) card.style.display = 'none';
-        return;
-      }
-
-      const status = tok(check.status, false);
-      const meta = normalizeMeta(check.metadata);
-      const releaseUrl = meta.release_notes_url || 'https://github.com/openclaw/openclaw/releases';
-      const current = meta.current_version ? `v${meta.current_version}` : 'unknown';
-      const latest = meta.latest_version ? `v${meta.latest_version}` : 'unknown';
-      const behind = Number.isFinite(meta.versions_behind) ? meta.versions_behind : Number.parseInt(meta.versions_behind, 10);
-      const safeBehind = Number.isFinite(behind) ? behind : null;
-      const badge = safeBehind == null ? '-' : `<span class="version-badge ${safeBehind === 0 ? 'green' : safeBehind === 1 ? 'yellow' : 'red'}">${safeBehind}</span>`;
-      const totalSec = meta.total_security_fixes || 0;
-      const latestFeatures = meta.latest_features || 0;
-      const latestFixes = meta.latest_fixes || 0;
-      const latestSec = meta.latest_security_fixes || 0;
-      const preview = meta.latest_release_preview || '';
-      const releasePreviewHtml = renderReleasePreview(preview);
-      const summary = check.message || 'No version data.';
-      const showUpdate = status === 'yellow' || status === 'red';
-
-      let body = `<span class="version-current">${esc(check.message || 'No version data.')}</span>`;
-      if (status === 'yellow' || status === 'red') {
-        body = `
-          <div class="version-grid">
-            <div>Current: <code>${esc(current)}</code></div>
-            <div>Latest: <code>${esc(latest)}</code></div>
-            <div>Versions behind: ${badge}</div>
-            <div>Security fixes missed: <span class="${totalSec > 0 ? 'version-security-count red' : 'version-security-count green'}">${totalSec}</span></div>
-          </div>
-
-          <div class="version-release-summary">
-            <div class="version-release-header">Latest Release (${esc(latest)}):</div>
-            <div class="version-release-stats">
-              <span class="stat">Features: <strong>${latestFeatures}</strong></span>
-              <span class="stat">Bug Fixes: <strong>${latestFixes}</strong></span>
-              <span class="stat">Security Fixes: <strong class="${latestSec > 0 ? 'text-red' : ''}">${latestSec}</strong></span>
-            </div>
-            <div class="version-release-preview">${releasePreviewHtml}</div>
-          </div>
-        `;
-      } else if (status === 'green') {
-        body = `
-          <span class="version-current">${esc(check.message || 'No version data.')}</span>
-          <div class="version-missed">Latest Release: Features: <strong>${latestFeatures}</strong> &nbsp; Bug Fixes: <strong>${latestFixes}</strong> &nbsp; Security Fixes: <strong class="${latestSec > 0 ? 'text-red' : ''}">${latestSec}</strong></div>
-        `;
-      } else if (status === 'unknown' && check.details) {
-        body = `<span class="version-current">${esc(check.message || 'No version data.')}</span><div class="version-missed">${esc(check.details)}</div>`;
-      }
-
-      card.className = `version-card status-${status}`;
-      card.style.display = '';
-      card.innerHTML = `
-        <div class="version-card-header" id="version-card-header" role="button" tabindex="0">
-          <div class="version-card-heading">
-            <span class="status-dot ${status}"></span>
-            <div class="version-card-heading-text">
-              <div class="version-card-title">
-                <span class="check-name">OpenClaw Version</span>
-              </div>
-              <div class="version-card-summary">${esc(summary)}</div>
-            </div>
-          </div>
-          <div style="display:flex; gap:6px; align-items:center;">
-            <button class="btn btn-sm" id="version-check-btn">Check Now</button>
-            ${showUpdate ? '<button class="btn btn-sm btn-primary" id="update-now-btn">Update Now</button>' : ''}
-          </div>
-          ${CHEVRON_SVG}
+          <span class="text-secondary mono" id="historyToggleText">Collapsed</span>
         </div>
-        <div class="version-card-expand" id="version-card-expand" ${versionCardOpen ? 'data-open="1"' : ''}>
-          <div class="version-card-body">${body}</div>
-          <div class="version-card-footer">
-            <a href="${esc(releaseUrl)}" target="_blank" rel="noopener">Release Notes ↗</a>
-            <span class="check-time">Checked: ${relTime(check.checked_at)}</span>
-          </div>
+      </button>
+      <div class="collapsible-content" id="historyPanelContent">
+        <div class="filter-row" id="historyFilters">
+          <button class="filter-pill active" data-filter="all">All</button>
+          <button class="filter-pill" data-filter="degraded">Degraded</button>
+          <button class="filter-pill" data-filter="recovered">Recovered</button>
         </div>
-      `;
+        <div id="historyList" class="event-list"></div>
+      </div>
+    </section>
+  </section>
 
-      if (versionCardOpen) card.classList.add('open');
+  <section id="section-enforcement" style="display:none">
+    <div class="context-bar" id="enforcementContext">0/0 passing · 0 warning · 0 failures · scanned <span class="mono">—</span></div>
+    <div class="card-grid">
+      <article class="stat-card"><div class="stat-label">Decisions Today</div><div class="stat-value mono" id="decisionsTodayValue">0</div><div class="stat-subtitle" id="decisionsTodaySub">tool calls evaluated · latest —</div></article>
+      <article class="stat-card"><div class="stat-label">Blocked</div><div class="stat-value mono" id="blockedValue">0</div><div class="stat-subtitle">tool calls denied</div></article>
+      <article class="stat-card"><div class="stat-label">Gated</div><div class="stat-value mono" id="gatedValue">0</div><div class="stat-subtitle">sent to Telegram approval</div></article>
+      <article class="stat-card"><div class="stat-label">Hook Mode</div><div class="stat-value mono" id="hookModeValue">—</div><div class="stat-subtitle">rate limit profile active</div></article>
+    </div>
 
-      requestAnimationFrame(() => {
-        const expand = $('version-card-expand');
-        if (!expand) return;
-        expand.style.maxHeight = versionCardOpen ? `${expand.scrollHeight}px` : '0';
-      });
-
-      card.querySelector('#version-check-btn')?.addEventListener('click', (e) => {
-        e.stopPropagation();
-        runVersionCheck();
-      });
-
-      card.querySelector('#update-now-btn')?.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        try {
-          const data = await api('/api/security/update-openclaw', { method: 'POST' });
-          showToast(data.message || 'Update endpoint reached.');
-        } catch {
-          showToast('Failed to contact update endpoint.');
-        }
-      });
-    }
-
-    /* ══════════════════════════════════════════════════
-       OVERALL BANNER
-    ══════════════════════════════════════════════════ */
-    function renderBanner() {
-      const h = state.health || {};
-      const checks = Array.isArray(h.checks) ? h.checks : [];
-      const overall = tok(h.overall_status, h.stale);
-      const bad = checks.filter(c => { const t = tok(c.status); return t === 'yellow' || t === 'red'; }).length;
-
-      const banner = $('overallBanner');
-      banner.className = `overall-banner ${overall}`;
-
-      const titles = {
-        green: 'All Systems Secure',
-        yellow: 'Warnings Detected',
-        red: 'Security Issues Detected',
-        unknown: 'Security Status Unknown'
-      };
-      const metas = {
-        green: h.generated_at ? `Checked ${relTime(h.generated_at)}` : '',
-        yellow: `${bad} layer${bad !== 1 ? 's' : ''} need attention`,
-        red: `${bad} layer${bad !== 1 ? 's' : ''} in warning or critical state`,
-        unknown: 'Data stale or unavailable'
-      };
-
-      $('overallTitle').textContent = titles[overall];
-      $('overallMeta').textContent = metas[overall];
-    }
-
-    /* ══════════════════════════════════════════════════
-       TIER ACCORDIONS
-    ══════════════════════════════════════════════════ */
-    function checkKey(check) {
-      const layer = String(check?.layer || 'unknown').replace(/[^a-zA-Z0-9_-]/g, '-');
-      const name = String(check?.name || 'check').replace(/[^a-zA-Z0-9_-]/g, '-');
-      return `${layer}-${name}`;
-    }
-
-    function layerOrder(layer) {
-      const order = {
-        network_firewall: 1,
-        network_brute_force: 2,
-        access: 3,
-        public: 4,
-        gateway: 5,
-        channel: 6,
-        reasoning: 7,
-        operational: 8,
-        memory: 9,
-        'injection-defense': 10
-      };
-      return order[layer] || 99;
-    }
-
-    function renderCredentialReview() {
-      const rows = Array.isArray(state.memoryCredentials) ? state.memoryCredentials : [];
-      if (!rows.length) return '<div class="muted">No credential-like facts detected after filtering.</div>';
-      return `
-        <div class="credential-list">
-          ${rows.map((row) => `
-            <div class="credential-item ${row.is_likely_real ? 'real' : 'review'}">
-              <div class="credential-main">
-                <div class="credential-top">
-                  <span class="credential-key">${esc(row.key || 'note')}</span>
-                  <span class="credential-entity">${esc(row.entity || 'unknown')}</span>
-                </div>
-                <div class="credential-val"><code>${esc(row.masked_value || '')}</code> <span class="muted">(${Number(row.full_value_length || 0)} chars)</span></div>
-              </div>
-              <div class="credential-actions">
-                <button class="mini-btn" data-action="cred-delete" data-fact-id="${row.id}" type="button">Delete</button>
-                <button class="mini-btn" data-action="cred-allow" data-fact-id="${row.id}" type="button">Dismiss (false positive)</button>
-              </div>
-            </div>
-          `).join('')}
+    <section class="panel">
+      <div class="panel-header">
+        <div class="panel-title-wrap">
+          <svg class="panel-icon" viewBox="0 0 24 24"><polygon points="3 4 21 4 14 12 14 19 10 21 10 12 3 4"/></svg>
+          <span class="domain-capsule"></span>
+          <div><p class="panel-title">Hook Decisions</p><p class="panel-subtitle">Pre-execution validation log from Layer 5b.</p></div>
         </div>
-      `;
-    }
+      </div>
+      <div class="filter-row" id="decisionFilters"></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th style="width:120px">Time</th><th style="width:80px">Tool</th><th style="width:100px">Action</th><th>Target</th><th>Rule</th></tr></thead>
+          <tbody id="decisionsBody"></tbody>
+        </table>
+      </div>
+      <div id="decisionsEmpty" class="empty-state" style="display:none">No hook decisions in the selected period.</div>
+    </section>
+  </section>
 
+  <section id="section-integrity" style="display:none">
+    <div class="context-bar" id="integrityContext">0/0 passing · 0 warning · 0 failures · scanned <span class="mono">—</span></div>
+    <div class="card-grid">
+      <article class="stat-card"><div class="stat-label">Files Monitored</div><div class="stat-value mono" id="filesMonitoredValue">0</div><div class="stat-subtitle">in integrity baseline</div></article>
+      <article class="stat-card"><div class="stat-label">Verified</div><div class="stat-value mono" id="verifiedValue">0/0</div><div class="stat-subtitle">hashes match baseline</div></article>
+      <article class="stat-card"><div class="stat-label">Config Drift</div><div class="stat-value mono" id="configDriftValue">none</div><div class="stat-subtitle">changes since baseline</div></article>
+      <article class="stat-card"><div class="stat-label">Last Verified</div><div class="stat-value mono" id="lastVerifiedValue">—</div><div class="stat-subtitle">15-min cron cycle</div></article>
+    </div>
 
-    function buildSummaryBadges(checks, staleAll) {
-      const counts = { green: 0, yellow: 0, red: 0 };
-      checks.forEach(check => {
-        const t = tok(check?.status, staleAll);
-        if (t === 'green') counts.green++;
-        else if (t === 'yellow') counts.yellow++;
-        else if (t === 'red') counts.red++;
-      });
-      let html = '';
-      if (counts.green) html += `<span class="tier-badge badge-green">${counts.green} secure</span>`;
-      if (counts.yellow) html += `<span class="tier-badge badge-yellow">${counts.yellow} warning</span>`;
-      if (counts.red) html += `<span class="tier-badge badge-red">${counts.red} critical</span>`;
-      if (!html) html = `<span class="tier-badge" style="opacity:0.5">no data</span>`;
-      return html;
-    }
+    <section class="panel featured">
+      <div class="panel-header">
+        <div class="panel-title-wrap">
+          <svg class="panel-icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="m9 15 2 2 4-4"/></svg>
+          <span class="domain-capsule"></span>
+          <div><p class="panel-title">Critical File Integrity</p><p class="panel-subtitle">SHA-256 verification of security-critical files.</p></div>
+        </div>
+        <button class="btn-secondary" id="acknowledgeBtn" style="display:none">Acknowledge</button>
+      </div>
+      <div class="table-wrap"><table><thead><tr><th style="width:40px">Status</th><th>File</th><th style="width:120px">Last Verified</th><th style="width:100px">Hash</th></tr></thead><tbody id="integrityTableBody"></tbody></table></div>
+    </section>
 
-    function buildCardHTML(check, staleAll) {
-      const t = tok(check?.status, staleAll);
-      const rem = check?.remediation || '';
-      const details = check?.details || 'No details available.';
-      const key = checkKey(check);
-      const expandId = `cexp-${key}`;
-      const isOpen = openCards.has(key);
-      const tag = LAYER_TAGS[check?.layer] || String(check?.layer || 'layer').toUpperCase();
-
-      const remBlock = (t === 'yellow' || t === 'red') && rem
-        ? `<div class="check-remediation ${t}">
-            <div class="remediation-text">${esc(rem)}</div>
-            <div class="remediation-actions">
-              <button class="mini-btn" type="button" data-action="copy" data-text="${esc(rem)}">Copy</button>
-              ${check?.name === 'SOUL.md Integrity' && (t === 'yellow' || t === 'red') ? '<button class="mini-btn" data-action="ack-soul" type="button">Accept Current SOUL.md</button>' : ''}
-              ${check?.name === 'Config Drift' && (t === 'yellow' || t === 'red') ? '<button class="mini-btn" data-action="ack-config-drift" type="button">Accept Current Config</button>' : ''}
-            </div>
-          </div>`
-        : '';
-
-      return `
-        <div class="check-card card-${t}" data-layer="${esc(check?.layer || 'unknown')}">
-          <div class="check-row">
-            <span class="check-dot ${t}"></span>
-            <div class="check-info">
-              <div class="check-top">
-                <span class="check-name">${esc(check?.name || 'Unnamed Check')}</span>
-                <span class="check-layer-tag">${esc(tag)}</span>
-              </div>
-              <div class="check-msg">${esc(check?.message || 'No data.')}</div>
-              <div class="check-meta">
-                <span class="check-time">${relTime(check?.checked_at)}</span>
-                <button class="check-expand-btn" type="button" data-action="card-toggle" data-key="${key}" data-expand="${expandId}">${isOpen ? 'hide' : 'details'}</button>
-              </div>
-            </div>
+    <section class="panel">
+      <button class="collapsible-toggle" id="configDriftToggleBtn">
+        <div class="panel-header" style="margin-bottom:0">
+          <div class="panel-title-wrap">
+            <svg class="panel-icon" viewBox="0 0 24 24"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><path d="M11 18H8a2 2 0 0 1-2-2V9"/></svg>
+            <span class="domain-capsule"></span>
+            <div><p class="panel-title">Config Drift</p><p class="panel-subtitle">Changes to openclaw.json since last accepted baseline.</p></div>
           </div>
-          <div id="${expandId}" class="check-expand" ${isOpen ? 'data-open="1"' : ''}>
-            <div class="check-expand-inner">
-              <div class="check-details-box">${esc(details)}</div>
-              ${check?.name === 'Memory Security' && (t === 'yellow' || t === 'red') ? `<div class="check-remediation ${state.memoryCredentials.length ? 'red' : 'yellow'}"><div class="remediation-text"><strong>Credential Review</strong></div>${renderCredentialReview()}</div>` : ''}
-              ${remBlock}
-            </div>
+          <span class="text-secondary mono" id="configDriftToggleText">Collapsed</span>
+        </div>
+      </button>
+      <div class="collapsible-content" id="configDriftContent"></div>
+    </section>
+
+    <section class="panel">
+      <button class="collapsible-toggle" id="hardeningToggleBtn">
+        <div class="panel-header" style="margin-bottom:0">
+          <div class="panel-title-wrap">
+            <svg class="panel-icon" viewBox="0 0 24 24"><path d="m12 3 7 4v5c0 5-3.5 8.5-7 9-3.5-.5-7-4-7-9V7z"/></svg>
+            <span class="domain-capsule"></span>
+            <div><p class="panel-title">OS Hardening</p><p class="panel-subtitle">Kernel and filesystem hardening verification.</p></div>
           </div>
-        </div>`;
+          <span class="text-secondary mono" id="hardeningToggleText">Collapsed</span>
+        </div>
+      </button>
+      <div class="collapsible-content" id="hardeningContent"><p class="text-secondary" style="font-size:12px">No hardening verification data available. Deploy OS hardening checks to populate this panel.</p></div>
+    </section>
+  </section>
+</main>
+
+<script>
+(() => {
+  'use strict';
+
+  const SECTION_CHECK_TARGETS = {
+    'soul.md integrity': 'integrity',
+    'config drift': 'integrity',
+    'security hook': 'enforcement'
+  };
+  const CHECK_ACTION_OVERRIDES = {
+    'memory security': 'memoryMatches',
+    'version currency': 'releaseLink'
+  };
+  const state = {
+    checks: [],
+    generatedAt: null,
+    transitions: [],
+    decisions: [],
+    decisionStats: null,
+    expandedCheck: null,
+    memoryMatchesById: {},
+    memoryErrorById: {},
+    sortMode: 'severity',
+    historyFilter: 'all',
+    activeSection: 'posture',
+    decisionActions: new Set(['blocked', 'rate-limited', 'confirmed']),
+    healthTimer: null,
+    decisionsTimer: null,
+  };
+
+  const refs = {};
+
+  function esc(v) {
+    return String(v ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+  }
+  function parseMeta(check) {
+    if (!check || !check.metadata) return {};
+    try {
+      return typeof check.metadata === 'string' ? JSON.parse(check.metadata) : check.metadata;
+    } catch {
+      return {};
     }
+  }
+  function rel(ts) {
+    if (!ts) return '—';
+    const diffMs = Date.now() - new Date(ts).getTime();
+    if (!Number.isFinite(diffMs)) return '—';
+    const mins = Math.max(0, Math.floor(diffMs / 60000));
+    if (mins < 1) return '<1m';
+    if (mins < 60) return `${mins}m`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}h`;
+    return `${Math.floor(hours / 24)}d`;
+  }
+  function severity(status) { return status === 'red' ? 3 : status === 'yellow' ? 2 : 1; }
+  function layerRank(layer) { const n = Number(String(layer || '').replace(/[^0-9]/g, '')); return Number.isFinite(n) && n > 0 ? n : 999; }
+  function statusDot(status) { return `<span class="status-dot dot-${status === 'yellow' ? 'yellow' : status === 'red' ? 'red' : 'green'}"></span>`; }
+  function ageColor(ts) { const diffMin = Math.floor((Date.now() - new Date(ts || 0).getTime()) / 60000); return diffMin > 30 ? '#f59e0b' : '#f1f5f9'; }
 
-
-    function buildLivenessCheck() {
-      const data = state.liveness;
-      if (!data || data.never_run) return null;
-
-      const failureCount = Number(data.consecutive_failures || 0);
-      const stale = !!data.stale;
-      const diskAlert = data.disk_alert ? String(data.disk_alert) : '';
-      const locksCleaned = Number(data.locks_cleaned || 0);
-      const lastRestart = data.last_restart || null;
-
-      let status = 'green';
-      let message = `API Liveness: Healthy`;
-      let details = [
-        `Last check: ${data.checked_at ? new Date(data.checked_at).toLocaleString() : 'unknown'}`,
-        `${failureCount} consecutive failures.`
-      ];
-      let remediation = '';
-
-      if (stale) {
-        status = 'unknown';
-        message = 'API Liveness: Stale';
-        details = [
-          'No fresh liveness update in over 10 minutes.',
-          `Last check: ${data.checked_at ? `${relTime(data.checked_at)} (${new Date(data.checked_at).toLocaleString()})` : 'unknown'}`,
-          'The liveness cron may not be running.'
-        ];
-        remediation = 'Validate liveness cron schedule and execution logs.';
-      } else if (failureCount >= 2) {
-        status = 'red';
-        message = 'API Liveness: Unresponsive';
-        details = [
-          `${failureCount} consecutive failures detected.`,
-          `Last check: ${relTime(data.checked_at)}`
-        ];
-        remediation = 'Investigate gateway health and restart path immediately.';
-      } else if (failureCount === 1) {
-        status = 'yellow';
-        message = 'API Liveness: Degraded';
-        details = [
-          '1 consecutive failure detected.',
-          `Last check: ${relTime(data.checked_at)}`
-        ];
-        remediation = 'Monitor for another failure or trigger manual service restart if degradation continues.';
-      }
-
-      const summaryBits = [];
-      if (!stale) summaryBits.push(`${failureCount} consecutive failure${failureCount === 1 ? '' : 's'}`);
-      if (data.checked_at) summaryBits.push(`Checked ${relTime(data.checked_at)}`);
-      if (diskAlert) {
-        details.push(`Disk alert: ${diskAlert}`);
-        summaryBits.push(diskAlert);
-      }
-      if (lastRestart) {
-        const restartText = `Last auto-restart: ${relTime(lastRestart)} (${new Date(lastRestart).toLocaleString()})`;
-        details.push(restartText);
-        summaryBits.push(`Auto-restart ${relTime(lastRestart)}`);
-      }
-      if (locksCleaned > 0) {
-        const lockText = `Cleaned ${locksCleaned} stale session lock${locksCleaned === 1 ? '' : 's'}.`;
-        details.push(lockText);
-        summaryBits.push(`Cleaned ${locksCleaned} stale lock${locksCleaned === 1 ? '' : 's'}`);
-      }
-
-      return {
-        layer: 'gateway-health',
-        name: 'API-Liveness',
-        status,
-        message: summaryBits.length ? `${message} — ${summaryBits.join(' · ')}` : message,
-        checked_at: data.checked_at,
-        details: details.join('\n'),
-        remediation
-      };
+  async function api(url, opts = {}) {
+    const res = await fetch(url, opts);
+    if (!res.ok) {
+      const err = new Error(`HTTP ${res.status}`);
+      err.status = res.status;
+      throw err;
     }
+    return res.json();
+  }
 
-    function renderTiers() {
-      const checks = Array.isArray(state.health?.checks) ? state.health.checks : [];
-      const versionCheck = checks.find(c => c.layer === 'version') || null;
-      state.versionCheck = versionCheck;
-      renderVersionCard(versionCheck);
-      const tierChecks = checks.filter(c => c.layer !== 'version');
-      const staleAll = !!state.health?.stale;
+  function getCheckName(check) { return String(check?.name || '').trim(); }
 
-      const tierHtml = TIERS.map(tier => {
-        const checksForTier = tierChecks
-          .filter(check => tier.layers.includes(check.layer))
-          .sort((a, b) => layerOrder(a.layer) - layerOrder(b.layer) || String(a.name || '').localeCompare(String(b.name || '')));
+  function getActionType(check) {
+    const name = getCheckName(check).toLowerCase();
+    if (SECTION_CHECK_TARGETS[name]) return 'sectionLink';
+    if (CHECK_ACTION_OVERRIDES[name]) return CHECK_ACTION_OVERRIDES[name];
+    return 'expand';
+  }
 
-        if (tier.id === 'health') {
-          const livenessCheck = buildLivenessCheck();
-          if (livenessCheck) checksForTier.push(livenessCheck);
-        }
+  function switchSection(section) {
+    state.activeSection = section;
+    ['posture', 'enforcement', 'integrity'].forEach((name) => {
+      const show = name === section;
+      refs[`section${name[0].toUpperCase()}${name.slice(1)}`].style.display = show ? '' : 'none';
+    });
+    refs.subNav.querySelectorAll('.sub-nav-btn').forEach((btn) => {
+      const active = btn.dataset.section === section;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+  }
 
-        if (!tier.showWhenEmpty && checksForTier.length === 0) {
-          return '';
-        }
+  function renderPostureCards() {
+    const checks = state.checks;
+    const total = checks.length;
+    const green = checks.filter((c) => c.status === 'green').length;
+    const yellow = checks.filter((c) => c.status === 'yellow').length;
+    const red = checks.filter((c) => c.status === 'red').length;
+    refs.checksPassingValue.textContent = `${green}/${total}`;
+    refs.checksPassingSub.textContent = `of ${total} automated checks`;
+    refs.warningsValue.textContent = String(yellow);
+    refs.failuresValue.textContent = String(red);
+    refs.lastScanValue.textContent = rel(state.generatedAt);
+    refs.warningsValue.style.color = yellow > 0 ? '#f59e0b' : '#f1f5f9';
+    refs.failuresValue.style.color = red > 0 ? '#ef4444' : '#f1f5f9';
+  }
 
-        const tierStatuses = checksForTier.map(check => tok(check.status, staleAll));
-        const tierStatus = checksForTier.length ? worstStatus(tierStatuses) : 'unknown';
-        const isOpen = openTiers.has(tier.id);
+  function renderContextBars() {
+    const total = state.checks.length;
+    const green = state.checks.filter((c) => c.status === 'green').length;
+    const yellow = state.checks.filter((c) => c.status === 'yellow').length;
+    const red = state.checks.filter((c) => c.status === 'red').length;
+    const txt = `${green}/${total} passing · ${yellow} warning · ${red} failures · scanned ${rel(state.generatedAt)} ago`;
+    refs.enforcementContext.textContent = txt;
+    refs.integrityContext.textContent = txt;
+  }
 
-        return `
-          <div class="tier tier-${tierStatus} ${isOpen ? 'open' : ''}" data-tier="${tier.id}">
-            <div class="tier-banner" data-action="tier-toggle" data-tier="${tier.id}">
-              <span class="tier-icon">${tier.icon}</span>
-              <div class="tier-info">
-                <div class="tier-name">${esc(tier.label)}</div>
-                <div class="tier-desc">${esc(tier.desc)}</div>
-              </div>
-              <div class="tier-summary">
-                ${buildSummaryBadges(checksForTier, staleAll)}
-              </div>
-              ${CHEVRON_SVG}
-            </div>
-            <div class="tier-body" id="tbody-${tier.id}" ${isOpen ? 'data-open="1"' : ''}>
-              <div class="tier-body-inner">
-                ${tier.id === 'health' ? `
-                  <div class="chart-card">
-                    <div class="chart-header">
-                      <div class="chart-title">Gateway RSS & Latency (48h)</div>
-                    </div>
-                    <div class="chart-wrap" id="gatewayTrendWrap">
-                      <canvas id="gatewayTrendChart"></canvas>
-                      <div class="chart-tooltip hidden" id="gatewayTrendTooltip"></div>
-                    </div>
-                  </div>
-                ` : ''}
-                ${checksForTier.map(check => buildCardHTML(check, staleAll)).join('')}
-              </div>
-            </div>
-          </div>`;
-      }).join('');
-
-      $('tierAccordions').innerHTML = tierHtml;
-
-      // Restore open states after render
-      requestAnimationFrame(() => {
-        openTiers.forEach(id => {
-          const body = $(`tbody-${id}`);
-          if (body) body.style.maxHeight = body.scrollHeight + 'px';
-        });
-        openCards.forEach(key => {
-          const el = $(`cexp-${key}`);
-          if (el) el.style.maxHeight = el.scrollHeight + 'px';
-        });
-      });
-
-      if (timelineOpen) {
-        const body = $('timelineBody');
-        const section = $('timelineSection');
-        if (body && section) {
-          body.style.maxHeight = `${body.scrollHeight}px`;
-          section.classList.add('open');
-        }
-      }
+  function buildActionCell(check) {
+    const type = getActionType(check);
+    if (type === 'sectionLink') {
+      const target = SECTION_CHECK_TARGETS[getCheckName(check).toLowerCase()];
+      const label = target === 'integrity' ? 'View in Integrity' : 'View in Enforcement';
+      return `<a href="#" class="action-link" data-action="switch" data-target="${target}">${label}</a>`;
     }
-
-    /* ══════════════════════════════════════════════════
-       TIMELINE
-    ══════════════════════════════════════════════════ */
-    function renderTimeline() {
-      const entries = state.transitions || [];
-      if (!entries.length) {
-        $('timelineList').innerHTML = '<div class="muted">No status changes recorded yet.</div>';
-        return;
-      }
-      $('timelineList').innerHTML = entries.map(e => {
-        const from = tok(e.old_status);
-        const to = tok(e.new_status);
-        return `<div class="tl-item">
-          <span class="tl-time">${relTime(e.checked_at || e.timestamp)}</span>
-          <span class="tl-layer">${esc(e.name || e.layer)}</span>
-          <span class="tl-arrow">
-            <span class="tl-dot ${from}"></span> ${from}
-            <span style="opacity:0.4">→</span>
-            <span class="tl-dot ${to}"></span> ${to}
-          </span>
-          <span class="tl-message">${esc(e.message || '')}</span>
-        </div>`;
-      }).join('');
-
-      if (timelineOpen) {
-        const body = $('timelineBody');
-        if (body) {
-          requestAnimationFrame(() => {
-            body.style.maxHeight = `${body.scrollHeight}px`;
-          });
-        }
-      }
+    if (type === 'releaseLink') {
+      const meta = parseMeta(check);
+      const href = meta.release_url || meta.github_release || 'https://github.com';
+      return `<a class="action-link" href="${esc(href)}" target="_blank" rel="noopener">View Release <svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:#ec4899;fill:none;vertical-align:-2px"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M21 14v7H3V3h7"/></svg></a>`;
     }
-
-
-    function formatTrendTime(iso) {
-      const d = new Date(iso);
-      if (Number.isNaN(d.getTime())) return '--:--';
-      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    if (type === 'memoryMatches') {
+      return '<button class="btn-secondary" data-action="memory-matches">View Matches</button>';
     }
+    return '<span class="text-secondary">Expand</span>';
+  }
 
-    function renderGatewayTrendChart() {
-      const canvas = $('gatewayTrendChart');
-      const wrap = $('gatewayTrendWrap');
-      const tooltip = $('gatewayTrendTooltip');
-      if (!canvas || !wrap || !tooltip) return;
-
-      const ctx = canvas.getContext('2d');
-      const w = wrap.clientWidth;
-      const h = wrap.clientHeight;
-      if (!w || !h) return;
-
-      canvas.width = w * 2;
-      canvas.height = h * 2;
-      canvas.style.width = w + 'px';
-      canvas.style.height = h + 'px';
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.scale(2, 2);
-      ctx.clearRect(0, 0, w, h);
-
-      const trend = Array.isArray(state.gatewayTrend) ? state.gatewayTrend : [];
-      const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim();
-      const mutedColor = getComputedStyle(document.documentElement).getPropertyValue('--text-tertiary').trim() || textColor;
-      const borderColor = getComputedStyle(document.documentElement).getPropertyValue('--border-subtle').trim();
-      const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#f0a836';
-      const responseColor = getComputedStyle(document.documentElement).getPropertyValue('--accent-secondary').trim() || '#4ecdc4';
-      const dangerColor = '#e74c3c';
-
-      if (!trend.length) {
-        tooltip.classList.add('hidden');
-        ctx.fillStyle = mutedColor;
-        ctx.font = '12px Inter, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('No data available', w / 2, h / 2);
-        return;
-      }
-
-      const padding = { top: 16, right: 48, bottom: 30, left: 48 };
-      const chartW = w - padding.left - padding.right;
-      const chartH = h - padding.top - padding.bottom;
-      const baseY = padding.top + chartH;
-
-      const minRss = Math.min(...trend.map(d => d.rss_mb), 1200);
-      const maxRss = Math.max(...trend.map(d => d.rss_mb), 1200);
-      const rssRange = Math.max(50, maxRss - minRss);
-      const rssFloor = Math.max(0, minRss - rssRange * 0.1);
-      const rssCeil = maxRss + rssRange * 0.1;
-
-      const minResp = Math.min(...trend.map(d => d.response_ms));
-      const maxResp = Math.max(...trend.map(d => d.response_ms));
-      const respRange = Math.max(20, maxResp - minResp);
-      const respFloor = Math.max(0, minResp - respRange * 0.1);
-      const respCeil = maxResp + respRange * 0.1;
-
-      const toX = (i) => padding.left + (chartW / (trend.length - 1 || 1)) * i;
-      const toYRss = (v) => padding.top + chartH - ((v - rssFloor) / (rssCeil - rssFloor || 1)) * chartH;
-      const toYResp = (v) => padding.top + chartH - ((v - respFloor) / (respCeil - respFloor || 1)) * chartH;
-
-      // Grid + Y labels
-      ctx.strokeStyle = borderColor;
-      ctx.lineWidth = 1;
-      ctx.font = '10px Inter, sans-serif';
-      for (let i = 0; i <= 4; i++) {
-        const y = padding.top + (chartH / 4) * i;
-        ctx.beginPath();
-        ctx.moveTo(padding.left, y);
-        ctx.lineTo(padding.left + chartW, y);
-        ctx.stroke();
-
-        const rssVal = rssCeil - ((rssCeil - rssFloor) * i / 4);
-        const respVal = respCeil - ((respCeil - respFloor) * i / 4);
-
-        ctx.fillStyle = textColor;
-        ctx.textAlign = 'right';
-        ctx.fillText(`${Math.round(rssVal)} MB`, padding.left - 6, y + 3);
-        ctx.textAlign = 'left';
-        ctx.fillText(`${Math.round(respVal)} ms`, padding.left + chartW + 6, y + 3);
-      }
-
-      // Threshold line
-      const thresholdY = toYRss(1200);
-      if (thresholdY >= padding.top && thresholdY <= baseY) {
-        ctx.setLineDash([5, 4]);
-        ctx.strokeStyle = dangerColor;
-        ctx.beginPath();
-        ctx.moveTo(padding.left, thresholdY);
-        ctx.lineTo(padding.left + chartW, thresholdY);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.fillStyle = dangerColor;
-        ctx.textAlign = 'left';
-        ctx.fillText('1200MB watchdog', padding.left + 6, thresholdY - 5);
-      }
-
-      const points = trend.map((d, i) => ({
-        x: toX(i),
-        yRss: toYRss(d.rss_mb),
-        yResp: toYResp(d.response_ms),
-        ...d
-      }));
-
-      // RSS area
-      ctx.fillStyle = accentColor + '20';
-      ctx.beginPath();
-      ctx.moveTo(points[0].x, baseY);
-      points.forEach(p => ctx.lineTo(p.x, p.yRss));
-      ctx.lineTo(points[points.length - 1].x, baseY);
-      ctx.closePath();
-      ctx.fill();
-
-      // RSS line
-      ctx.strokeStyle = accentColor;
-      ctx.lineWidth = 2;
-      ctx.lineJoin = 'round';
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      points.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.yRss) : ctx.lineTo(p.x, p.yRss));
-      ctx.stroke();
-
-      // Response line
-      ctx.strokeStyle = responseColor;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      points.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.yResp) : ctx.lineTo(p.x, p.yResp));
-      ctx.stroke();
-
-      // X-axis labels
-      ctx.fillStyle = textColor;
-      ctx.textAlign = 'center';
-      const step = Math.max(1, Math.floor(trend.length / 7));
-      trend.forEach((d, i) => {
-        if (i % step === 0 || i === trend.length - 1) {
-          ctx.fillText(formatTrendTime(d.time), points[i].x, baseY + 18);
-        }
-      });
-
-      canvas.onmousemove = (e) => {
-        const rect = canvas.getBoundingClientRect();
-        const mx = e.clientX - rect.left;
-        let closest = null;
-        let minDist = Infinity;
-        for (const p of points) {
-          const dist = Math.abs(p.x - mx);
-          if (dist < minDist) {
-            minDist = dist;
-            closest = p;
-          }
-        }
-
-        if (closest && minDist < 28) {
-          tooltip.classList.remove('hidden');
-          tooltip.innerHTML = `
-            <div class="tooltip-date">${new Date(closest.time).toLocaleString()}</div>
-            <div class="tooltip-row"><span class="tooltip-label">RSS</span><span class="tooltip-val" style="color:${accentColor}">${Math.round(closest.rss_mb)} MB</span></div>
-            <div class="tooltip-row"><span class="tooltip-label">Response</span><span class="tooltip-val" style="color:${responseColor}">${Math.round(closest.response_ms)} ms</span></div>
-          `;
-          const tx = Math.min(mx + 12, rect.width - 185);
-          const ty = Math.max((e.clientY - rect.top) - 74, 0);
-          tooltip.style.left = tx + 'px';
-          tooltip.style.top = ty + 'px';
-        } else {
-          tooltip.classList.add('hidden');
-        }
-      };
-      canvas.onmouseleave = () => tooltip.classList.add('hidden');
-    }
-
-    async function loadGatewayTrend() {
-      try {
-        const data = await api('/api/security/gateway-trend');
-        state.gatewayTrend = Array.isArray(data) ? data : [];
-      } catch {
-        state.gatewayTrend = [];
-      }
-      requestAnimationFrame(() => renderGatewayTrendChart());
-    }
-
-    /* ══════════════════════════════════════════════════
-       DATA LOADING
-    ══════════════════════════════════════════════════ */
-    async function loadHealth() {
-      try { state.health = await api('/api/security/health'); }
-      catch { state.health = { overall_status: 'unknown', checks: [], stale: true }; }
-      renderBanner();
-      renderTiers();
-      if (window.refreshSecurityBadge) window.refreshSecurityBadge();
-    }
-
-    async function loadLiveness() {
-      try { state.liveness = await api('/api/security/liveness'); }
-      catch { state.liveness = { never_run: true }; }
-      renderTiers();
-    }
-
-    async function loadTransitions() {
-      try {
-        const data = await api('/api/security/transitions?limit=20');
-        state.transitions = Array.isArray(data) ? data : [];
-      } catch { state.transitions = []; }
-      renderTimeline();
-    }
-
-    async function loadMemoryCredentials() {
-      try {
-        const data = await api('/api/security/memory-credentials');
-        state.memoryCredentials = Array.isArray(data?.credentials) ? data.credentials : [];
-      } catch {
-        state.memoryCredentials = [];
-      }
-      renderTiers();
-    }
-
-    async function refresh() { await Promise.all([loadHealth(), loadLiveness(), loadTransitions(), loadGatewayTrend(), loadMemoryCredentials()]); }
-
-    async function loadSecurityTestResults() {
-      try {
-        const data = await api('/api/security/test-results');
-        state.securityTest = data;
-        securityTestOpen = !data?.never_run;
-      } catch {
-        state.securityTest = { never_run: true };
-      }
-      renderSecurityTestPanel();
-    }
-
-    async function runCheckNow() {
-      if (state.running) return;
-      state.running = true;
-      const btn = $('recheckBtn');
-      btn.disabled = true; btn.textContent = 'Checking...';
-      try { state.health = await api('/api/security/recheck', { method: 'POST', body: '{}' }); } catch {}
-      btn.disabled = false; btn.textContent = 'Run Check Now'; state.running = false;
-      await refresh();
-    }
-
-    async function runSecurityTest() {
-      if (state.securityTestRunning) return;
-      state.securityTestRunning = true;
-      state.securityTestElapsed = 0;
-      clearInterval(securityTestTimer);
-      securityTestTimer = setInterval(() => {
-        state.securityTestElapsed += 1;
-        renderSecurityTestPanel();
-      }, 1000);
-      renderSecurityTestPanel();
-
-      try {
-        const data = await api('/api/security/test', { method: 'POST', body: '{}' });
-        state.securityTest = data;
-        securityTestOpen = true;
-        securityTestProbeOpen = null;
-        renderSecurityTestPanel();
-      } catch (e) {
-        showToast(`Security test failed: ${e.message}`);
-      } finally {
-        state.securityTestRunning = false;
-        clearInterval(securityTestTimer);
-        securityTestTimer = null;
-        renderSecurityTestPanel();
-      }
-    }
-
-
-    async function acknowledgeSoulHash() {
-      try {
-        await api('/api/security/soul-hash/ack', { method: 'POST', body: '{}' });
-        showToast('SOUL.md baseline updated');
-        await runCheckNow();
-      } catch (e) {
-        showToast(`SOUL.md acknowledge failed: ${e.message}`);
-      }
-    }
-
-    async function acknowledgeConfigDrift() {
-      try {
-        await api('/api/security/config-drift/ack', { method: 'POST', body: '{}' });
-        showToast('Baseline updated');
-        await runCheckNow();
-      } catch (e) {
-        showToast(`Config baseline update failed: ${e.message}`);
-      }
-    }
-
-    async function dismissCredentialFact(factId, action) {
-      try {
-        await api('/api/security/memory-credentials/dismiss', {
-          method: 'POST',
-          body: JSON.stringify({ factId, action })
-        });
-        await loadMemoryCredentials();
-        await loadHealth();
-      } catch (e) {
-        showToast(`Credential action failed: ${e.message}`);
-      }
-    }
-
-
-    async function copyText(text) {
-      if (!text?.trim()) return;
-      try { await navigator.clipboard.writeText(text.trim()); }
-      catch {
-        const t = document.createElement('textarea');
-        t.value = text.trim(); t.style.cssText = 'position:fixed;opacity:0';
-        document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove();
-      }
-      showToast('Copied');
-    }
-
-    /* ══════════════════════════════════════════════════
-       INTERACTIONS
-    ══════════════════════════════════════════════════ */
-    function toggleTier(tierId) {
-      const body = $(`tbody-${tierId}`);
-      const tier = body?.closest('.tier');
-      if (!body || !tier) return;
-
-      if (openTiers.has(tierId)) {
-        openTiers.delete(tierId);
-        body.style.maxHeight = '0';
-        tier.classList.remove('open');
-      } else {
-        openTiers.add(tierId);
-        body.style.maxHeight = body.scrollHeight + 'px';
-        tier.classList.add('open');
-      }
-    }
-
-    function toggleCard(key, expandId) {
-      const el = $(expandId);
-      if (!el) return;
-
-      if (openCards.has(key)) {
-        openCards.delete(key);
-        el.style.maxHeight = '0';
-        el.removeAttribute('data-open');
-      } else {
-        openCards.add(key);
-        el.style.maxHeight = el.scrollHeight + 'px';
-        el.setAttribute('data-open', '1');
-      }
-
-      const tierBody = el.closest('.tier-body');
-      if (tierBody) {
-        // Temporarily remove max-height constraint so content can expand freely
-        tierBody.style.maxHeight = 'none';
-      }
-    }
-
-    function toggleTimeline() {
-      const body = $('timelineBody');
-      const section = $('timelineSection');
-      if (!body || !section) return;
-
-      if (timelineOpen) {
-        timelineOpen = false;
-        body.style.maxHeight = '0';
-        section.classList.remove('open');
-      } else {
-        timelineOpen = true;
-        body.style.maxHeight = `${body.scrollHeight}px`;
-        section.classList.add('open');
-      }
-    }
-
-    function toggleVersionCard() {
-      const card = $('version-card');
-      const expand = $('version-card-expand');
-      if (!card || !expand) return;
-
-      if (versionCardOpen) {
-        versionCardOpen = false;
-        expand.style.maxHeight = '0';
-        card.classList.remove('open');
-      } else {
-        versionCardOpen = true;
-        expand.style.maxHeight = `${expand.scrollHeight}px`;
-        card.classList.add('open');
-      }
-    }
-
-    async function runVersionCheck() {
-      const btn = document.getElementById('version-check-btn');
-      if (!btn || btn.disabled) return;
-
-      btn.disabled = true;
-      btn.textContent = 'Checking...';
-
-      try {
-        const data = await api('/api/security/version-check', { method: 'POST' });
-        if (data && Array.isArray(data.checks)) {
-          state.health = data;
-          renderBanner();
-          renderTiers();
-        }
-        showToast('Version check complete.');
-      } catch (e) {
-        showToast('Version check failed: ' + (e.message || 'Unknown error'));
-      } finally {
-        btn.disabled = false;
-        btn.textContent = 'Check Now';
-      }
-    }
-
-    function bindEvents() {
-      $('recheckBtn').onclick = runCheckNow;
-      $('securityTestRunBtn').onclick = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        runSecurityTest();
-      };
-      $('securityTestHeader').onclick = (e) => {
-        if (e.target.closest('#securityTestRunBtn')) return;
-        toggleSecurityTestPanel();
-      };
-      $('securityTestHeader').onkeydown = (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          toggleSecurityTestPanel();
-        }
-      };
-      $('securityTestBody').onclick = async (e) => {
-        const btn = e.target.closest('button[data-action]');
-        if (btn && btn.dataset.action === 'copy') {
-          await copyText(btn.dataset.text || '');
-          return;
-        }
-        const probeToggle = e.target.closest('[data-action="probe-toggle"]');
-        if (probeToggle) {
-          toggleProbe(probeToggle.dataset.probeId);
-        }
-      };
-      $('timelineBanner').onclick = toggleTimeline;
-      $('timelineBanner').onkeydown = (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          toggleTimeline();
-        }
-      };
-
-      $('tierAccordions').onclick = async (e) => {
-        // Tier toggle
-        const tierBanner = e.target.closest('[data-action="tier-toggle"]');
-        if (tierBanner) {
-          toggleTier(tierBanner.dataset.tier);
-          return;
-        }
-
-        // Button actions inside cards
-        const btn = e.target.closest('button[data-action]');
-        if (!btn) return;
-        const action = btn.dataset.action;
-
-        if (action === 'card-toggle') {
-          toggleCard(btn.dataset.key, btn.dataset.expand);
-          btn.textContent = openCards.has(btn.dataset.key) ? 'hide' : 'details';
-          return;
-        }
-        if (action === 'copy') { await copyText(btn.dataset.text); return; }
-        if (action === 'ack-soul') { btn.disabled = true; await acknowledgeSoulHash(); btn.disabled = false; return; }
-        if (action === 'ack-config-drift') { btn.disabled = true; await acknowledgeConfigDrift(); btn.disabled = false; return; }
-        if (action === 'cred-delete') { btn.disabled = true; await dismissCredentialFact(Number(btn.dataset.factId), 'delete'); btn.disabled = false; return; }
-        if (action === 'cred-allow') { btn.disabled = true; await dismissCredentialFact(Number(btn.dataset.factId), 'allowlist'); btn.disabled = false; return; }
-      };
-
-      $('version-card').onclick = (e) => {
-        if (e.target.closest('#update-now-btn') || e.target.closest('#version-check-btn')) return;
-        if (e.target.closest('#version-card-header')) {
-          toggleVersionCard();
-        }
-      };
-      $('version-card').onkeydown = (e) => {
-        if (!e.target.closest('#version-card-header')) return;
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          toggleVersionCard();
-        }
-      };
-    }
-
-    /* ══════════════════════════════════════════════════
-       LIFECYCLE
-    ══════════════════════════════════════════════════ */
-    function startPolling() {
-      if (state.pollTimer) clearInterval(state.pollTimer);
-      state.pollTimer = setInterval(() => refresh(), 60000);
-    }
-
-    function cleanupSecurityTab() {
-      if (state.pollTimer) { clearInterval(state.pollTimer); state.pollTimer = null; }
-      window.removeEventListener('resize', renderGatewayTrendChart);
-      window.__securityInitRoot = null;
-    }
-
-    async function initSecurityTab() {
-      const root = $('tierAccordions');
-      if (!root) return;
-      if (window.__securityInitRoot === root && state.pollTimer) return;
-      window.__securityInitRoot = root;
-
-      openTiers.clear();
-      openCards.clear();
-      securityTestProbeOpen = null;
-
-      await refresh();
-      await loadSecurityTestResults();
-      bindEvents();
-      window.addEventListener('resize', renderGatewayTrendChart);
-      startPolling();
-    }
-
-    window.cleanupSecurityTab = cleanupSecurityTab;
-    window.initSecurityTab = initSecurityTab;
-
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', () => initSecurityTab());
+  function sortedChecks() {
+    const list = [...state.checks];
+    if (state.sortMode === 'layer') {
+      list.sort((a, b) => layerRank(a.layer) - layerRank(b.layer));
     } else {
-      initSecurityTab();
+      list.sort((a, b) => severity(b.status) - severity(a.status) || layerRank(a.layer) - layerRank(b.layer));
     }
-  </script>
+    return list;
+  }
+
+  function renderDefenseGrid() {
+    const rows = [];
+    for (const check of sortedChecks()) {
+      const actionType = getActionType(check);
+      const expandable = actionType === 'expand' || (actionType === 'memoryMatches' && state.expandedCheck === getCheckName(check));
+      const name = getCheckName(check);
+      const meta = parseMeta(check);
+      const rowId = `${check.layer}|${name}`;
+      const clickedClass = actionType === 'expand' ? 'expandable-row' : '';
+      rows.push(`<tr class="${clickedClass}" data-row-id="${esc(rowId)}" data-status="${esc(check.status)}" data-layer="${esc(check.layer || '')}">
+        <td>${statusDot(check.status)}</td>
+        <td><span class="layer-pill mono">${esc(check.layer || '—')}</span></td>
+        <td>${esc(name)}</td>
+        <td class="text-secondary" title="${esc(check.message || '')}">${esc(check.message || '')}</td>
+        <td class="mono" style="color:${ageColor(check.checked_at || state.generatedAt)}">${esc(rel(check.checked_at || state.generatedAt))}</td>
+        <td>${buildActionCell(check)}</td>
+      </tr>`);
+      if (state.expandedCheck === rowId && (actionType === 'expand' || actionType === 'memoryMatches')) {
+        const lastTransition = state.transitions.find((t) => (t.name || '') === name);
+        rows.push(`<tr class="expand-row"><td colspan="6"><div class="expand-box">
+          <div class="expand-block"><div class="expand-title">Full Status Message</div><div class="mono text-secondary">${esc(check.message || check.details || 'No details provided.')}</div></div>
+          <div class="expand-block"><div class="expand-title">Remediation Command</div><div class="expand-copy"><div class="mono text-secondary" style="flex:1">${esc(check.remediation || 'No remediation command provided.')}</div><button class="btn-secondary" data-action="copy-remediation" data-remediation="${esc(check.remediation || '')}"><svg viewBox="0 0 24 24" style="stroke:#94a3b8;fill:none"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy</button></div></div>
+          <div class="expand-block"><div class="expand-title">Check History</div><div class="mono text-secondary">Last status change: ${esc(lastTransition ? new Date(lastTransition.checked_at).toISOString() : 'No transition history')}</div></div>
+          ${actionType === 'memoryMatches' ? renderMemoryMatchesPanel(rowId, meta) : ''}
+        </div></td></tr>`);
+      }
+    }
+    refs.defenseGridBody.innerHTML = rows.join('');
+  }
+
+  function renderMemoryMatchesPanel(rowId) {
+    const matches = state.memoryMatchesById[rowId];
+    const err = state.memoryErrorById[rowId];
+    if (err) return `<div class="inline-error">${esc(err)}</div>`;
+    if (!matches) return '<div class="text-secondary">Use View Matches to load credential matches.</div>';
+    const body = matches.map((m, idx) => `<div class="memory-row" data-fact-id="${esc(m.fact_id)}"><div>${esc(m.entity)}</div><div class="mono">${esc(m.key)}</div><div class="mono" data-visible="0">${esc(m.value_masked)}</div><button class="btn-secondary" data-action="toggle-reveal" data-index="${idx}"><svg viewBox="0 0 24 24" style="stroke:#94a3b8;fill:none"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"/><circle cx="12" cy="12" r="3"/></svg>Reveal</button><button class="btn-danger" data-action="delete-match" data-fact-id="${esc(m.fact_id)}"><svg viewBox="0 0 24 24" style="stroke:#ef4444;fill:none"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>Delete</button></div>`).join('');
+    return `<div class="memory-matches"><div class="memory-header"><div>Entity</div><div>Key</div><div>Value</div><div>Reveal</div><div>Delete</div></div>${body || '<div class="memory-row"><div class="text-secondary" style="grid-column:1/-1">No credential matches found.</div></div>'}</div>`;
+  }
+
+  function renderHistory() {
+    const list = (state.transitions || []).filter((t) => {
+      if (state.historyFilter === 'all') return true;
+      const from = severity(t.old_status || 'green');
+      const to = severity(t.new_status || 'green');
+      if (state.historyFilter === 'degraded') return to > from;
+      if (state.historyFilter === 'recovered') return to < from;
+      return true;
+    });
+    refs.historyList.innerHTML = list.slice(0, 50).map((t) => `<div class="event-row"><div class="mono">${esc(new Date(t.checked_at).toISOString())}</div><div><span class="layer-pill mono">${esc(t.layer || '—')}</span></div><div>${esc(t.name || '')}</div><div>${statusDot(t.old_status)} → ${statusDot(t.new_status)}</div><div class="text-secondary" title="${esc(t.message || '')}">${esc(t.message || '')}</div></div>`).join('') || '<div class="empty-state">No transitions recorded.</div>';
+  }
+
+  function renderDecisionsStats() {
+    const s = state.decisionStats || {};
+    refs.decisionsTodayValue.textContent = String(s.total || 0);
+    refs.decisionsTodaySub.textContent = `tool calls evaluated · latest ${rel(s.latest_timestamp)}`;
+    refs.blockedValue.textContent = String(s.blocked || 0);
+    refs.gatedValue.textContent = String(s.confirmed || 0);
+    refs.hookModeValue.textContent = String(s.hook_mode || 'unknown');
+    refs.blockedValue.style.color = Number(s.blocked || 0) > 0 ? '#ef4444' : '#f1f5f9';
+    refs.gatedValue.style.color = Number(s.confirmed || 0) > 0 ? '#f59e0b' : '#f1f5f9';
+  }
+
+  function renderDecisionFilters() {
+    const options = ['all', 'blocked', 'rate-limited', 'confirmed', 'allowed'];
+    refs.decisionFilters.innerHTML = options.map((opt) => {
+      const active = opt === 'all'
+        ? state.decisionActions.size === 5
+        : (opt === 'allowed' ? ['allowed_sensitive_write', 'allowed_exec', 'allowed_read', 'allowed_default'].some((x) => state.decisionActions.has(x)) : state.decisionActions.has(opt));
+      return `<button class="filter-pill ${active ? 'active' : ''}" data-filter="${opt}">${opt === 'rate-limited' ? 'Rate-Limited' : opt[0].toUpperCase() + opt.slice(1)}</button>`;
+    }).join('');
+  }
+
+  function actionBadge(action) {
+    const cls = action.startsWith('allowed') ? 'badge-allowed' : action === 'confirmed' ? 'badge-confirmed' : action === 'rate-limited' ? 'badge-rate-limited' : 'badge-blocked';
+    return `<span class="badge-action ${cls}">${esc(action)}</span>`;
+  }
+
+  function renderDecisionsTable() {
+    refs.decisionsBody.innerHTML = state.decisions.map((d) => `<tr><td class="mono">${esc(rel(d.timestamp))}</td><td>${esc(d.tool || '—')}</td><td>${actionBadge(d.action || 'unknown')}</td><td class="mono" title="${esc(d.target || '')}">${esc(d.target || '')}</td><td class="text-secondary">${esc(d.rule || '—')}</td></tr>`).join('');
+    refs.decisionsEmpty.style.display = state.decisions.length ? 'none' : 'block';
+  }
+
+  function renderIntegrity() {
+    const integrityChecks = state.checks.filter((c) => String(c.name || '').toLowerCase().includes('integrity') || String(c.name || '').toLowerCase().includes('config drift'));
+    const filesMonitored = state.checks.filter((c) => String(c.layer || '').toLowerCase().includes('reasoning')).length;
+    const verified = integrityChecks.filter((c) => c.status === 'green').length;
+    const configDrift = integrityChecks.find((c) => String(c.name || '').toLowerCase().includes('config drift'));
+    const driftDetected = configDrift && configDrift.status !== 'green';
+
+    refs.filesMonitoredValue.textContent = String(filesMonitored);
+    refs.verifiedValue.textContent = `${verified}/${integrityChecks.length || 0}`;
+    refs.configDriftValue.textContent = driftDetected ? 'detected' : 'none';
+    refs.configDriftValue.style.color = driftDetected ? '#f59e0b' : '#22c55e';
+    refs.lastVerifiedValue.textContent = rel(integrityChecks[0]?.checked_at || state.generatedAt);
+
+    const soul = state.checks.find((c) => String(c.name || '').toLowerCase().includes('soul.md integrity')) || integrityChecks[0];
+    const soulMeta = parseMeta(soul);
+    refs.integrityTableBody.innerHTML = soul ? `<tr><td>${statusDot(soul.status === 'yellow' ? 'red' : soul.status)}</td><td class="mono">SOUL.md</td><td class="mono">${esc(rel(soul.checked_at || state.generatedAt))}</td><td class="mono">${esc(String(soulMeta.hash || soulMeta.sha256 || '—').slice(0, 8))}</td></tr>` : '<tr><td colspan="4" class="empty-state">No integrity checks available.</td></tr>';
+
+    const anyRed = integrityChecks.some((c) => c.status === 'red');
+    refs.acknowledgeBtn.style.display = anyRed ? '' : 'none';
+    renderConfigDriftPanel(configDrift);
+  }
+
+  function detectCritical(changeKey) {
+    return /^sandbox\./.test(changeKey) || /^tools\.deny/.test(changeKey) || /configWrites/.test(changeKey);
+  }
+
+  function renderConfigDriftPanel(configDriftCheck) {
+    const root = refs.configDriftContent;
+    if (!configDriftCheck || configDriftCheck.status === 'green') {
+      root.innerHTML = '<p class="text-secondary" style="font-size:12px">No config drift detected.</p>';
+      return;
+    }
+    const meta = parseMeta(configDriftCheck);
+    const critical = Array.isArray(meta.critical_changes) ? meta.critical_changes : [];
+    const nonCritical = Array.isArray(meta.non_critical_changes) ? meta.non_critical_changes : [];
+    const inferredCritical = [...critical, ...nonCritical].filter((k) => detectCritical(String(k)));
+    const hasCritical = critical.length > 0 || inferredCritical.length > 0;
+
+    const changesHtml = [
+      ...critical.map((k) => `<div class="change-row critical"><strong>Critical</strong> · <span class="mono">${esc(k)}</span></div>`),
+      ...nonCritical.map((k) => `<div class="change-row"><strong>Non-critical</strong> · <span class="mono">${esc(k)}</span></div>`),
+      ...inferredCritical.map((k) => critical.includes(k) ? '' : `<div class="change-row critical"><strong>Critical (pattern)</strong> · <span class="mono">${esc(k)}</span></div>`),
+    ].filter(Boolean).join('') || '<p class="text-secondary" style="font-size:12px">No detailed change metadata available.</p>';
+
+    root.innerHTML = `<div class="change-list">${changesHtml}</div>
+      <button class="btn-secondary" id="acceptBaselineBtn">Accept Baseline</button>
+      <div class="accept-guard" id="acceptGuard" style="display:${hasCritical ? 'flex' : 'none'}">
+        <input id="acceptInput" value="" placeholder="Type ACCEPT" />
+        <button class="btn-secondary" id="confirmAcceptBtn">Confirm</button>
+      </div>`;
+
+    const acceptBtn = document.getElementById('acceptBaselineBtn');
+    const guard = document.getElementById('acceptGuard');
+    const input = document.getElementById('acceptInput');
+    const confirm = document.getElementById('confirmAcceptBtn');
+
+    acceptBtn.addEventListener('click', async () => {
+      if (hasCritical) {
+        guard.style.display = 'flex';
+        input?.focus();
+        return;
+      }
+      await acceptBaseline();
+    });
+    confirm?.addEventListener('click', async () => {
+      if ((input?.value || '').trim() !== 'ACCEPT') return;
+      await acceptBaseline();
+    });
+  }
+
+  async function acceptBaseline() {
+    await api('/api/security/config-drift/ack', { method: 'POST' });
+    await loadHealth();
+  }
+
+  async function loadHealth() {
+    const data = await api('/api/security/health');
+    state.checks = Array.isArray(data.checks) ? data.checks : [];
+    state.generatedAt = data.generated_at;
+    renderPostureCards();
+    renderContextBars();
+    renderDefenseGrid();
+    renderIntegrity();
+  }
+
+  async function loadTransitions() {
+    state.transitions = await api('/api/security/transitions?limit=50');
+    renderHistory();
+  }
+
+  async function loadDecisionStats() {
+    state.decisionStats = await api('/api/security/decisions/stats?period=24h');
+    renderDecisionsStats();
+  }
+
+  function selectedDecisionActions() {
+    const all = ['blocked', 'rate-limited', 'confirmed', 'allowed_sensitive_write', 'allowed_exec', 'allowed_read', 'allowed_default'];
+    if (state.decisionActions.size === 0) return [];
+    return all.filter((x) => state.decisionActions.has(x));
+  }
+
+  async function loadDecisions() {
+    const actions = selectedDecisionActions();
+    const params = new URLSearchParams({ since: '24h', limit: '50' });
+    if (actions.length) params.set('action', actions.join(','));
+    const data = await api(`/api/security/decisions?${params.toString()}`);
+    state.decisions = Array.isArray(data.decisions) ? data.decisions : [];
+    renderDecisionsTable();
+  }
+
+  async function triggerRecheck() {
+    refs.checkNowBtn.disabled = true;
+    try {
+      const data = await api('/api/security/recheck', { method: 'POST' });
+      state.checks = Array.isArray(data.checks) ? data.checks : state.checks;
+      state.generatedAt = data.generated_at || state.generatedAt;
+      renderPostureCards();
+      renderContextBars();
+      renderDefenseGrid();
+      renderIntegrity();
+      await Promise.all([loadTransitions(), loadDecisionStats(), loadDecisions()]);
+    } finally {
+      refs.checkNowBtn.disabled = false;
+    }
+  }
+
+  async function loadMemoryMatches(rowId) {
+    try {
+      const data = await api('/api/security/memory-credentials');
+      state.memoryMatchesById[rowId] = Array.isArray(data.matches) ? data.matches : [];
+      state.memoryErrorById[rowId] = '';
+    } catch (err) {
+      state.memoryErrorById[rowId] = err.status === 503
+        ? 'Patterns config missing. Memory credential scanning is unavailable.'
+        : `Unable to load matches (${err.message})`;
+    }
+    renderDefenseGrid();
+  }
+
+  function bindEvents() {
+    refs.subNav.addEventListener('click', (event) => {
+      const btn = event.target.closest('.sub-nav-btn');
+      if (!btn) return;
+      switchSection(btn.dataset.section);
+    });
+
+    refs.checkNowBtn.addEventListener('click', () => { triggerRecheck(); });
+
+    refs.sortToggleBtn.addEventListener('click', () => {
+      state.sortMode = state.sortMode === 'severity' ? 'layer' : 'severity';
+      refs.sortToggleBtn.textContent = state.sortMode === 'severity' ? 'Sort: Severity' : 'Sort: Layer';
+      renderDefenseGrid();
+    });
+
+    refs.cardWarnings.addEventListener('mouseenter', () => refs.defenseGridTable.classList.add('highlight-warning'));
+    refs.cardWarnings.addEventListener('mouseleave', () => refs.defenseGridTable.classList.remove('highlight-warning'));
+    refs.cardFailures.addEventListener('mouseenter', () => refs.defenseGridTable.classList.add('highlight-failure'));
+    refs.cardFailures.addEventListener('mouseleave', () => refs.defenseGridTable.classList.remove('highlight-failure'));
+
+    refs.defenseGridBody.addEventListener('click', async (event) => {
+      const target = event.target;
+      const row = target.closest('tr[data-row-id]');
+      if (!row) return;
+      const rowId = row.dataset.rowId;
+      const check = state.checks.find((c) => `${c.layer}|${getCheckName(c)}` === rowId);
+      const actionLink = target.closest('[data-action="switch"]');
+      if (actionLink) {
+        event.preventDefault();
+        switchSection(actionLink.dataset.target);
+        return;
+      }
+      const actionBtn = target.closest('button[data-action]');
+      if (actionBtn?.dataset.action === 'copy-remediation') {
+        await navigator.clipboard.writeText(actionBtn.dataset.remediation || '');
+        return;
+      }
+      if (actionBtn?.dataset.action === 'memory-matches') {
+        state.expandedCheck = state.expandedCheck === rowId ? null : rowId;
+        renderDefenseGrid();
+        if (state.expandedCheck) await loadMemoryMatches(rowId);
+        return;
+      }
+      if (actionBtn?.dataset.action === 'toggle-reveal') {
+        const idx = Number(actionBtn.dataset.index);
+        const match = state.memoryMatchesById[rowId]?.[idx];
+        const valueCell = actionBtn.closest('.memory-row')?.querySelector('[data-visible]');
+        if (!match || !valueCell) return;
+        const shown = valueCell.dataset.visible === '1';
+        valueCell.dataset.visible = shown ? '0' : '1';
+        valueCell.textContent = shown ? match.value_masked : match.value_full;
+        actionBtn.innerHTML = shown
+          ? '<svg viewBox="0 0 24 24" style="stroke:#94a3b8;fill:none"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"/><circle cx="12" cy="12" r="3"/></svg>Reveal'
+          : '<svg viewBox="0 0 24 24" style="stroke:#94a3b8;fill:none"><path d="m3 3 18 18"/><path d="M10.6 10.6a3 3 0 0 0 4.2 4.2"/><path d="M9.9 4.2A10.4 10.4 0 0 1 12 4c6.5 0 10 8 10 8a18.8 18.8 0 0 1-4.3 5.1"/><path d="M6.6 6.6C3.8 8.4 2 12 2 12s3.5 8 10 8a10.9 10.9 0 0 0 5.1-1.2"/></svg>Hide';
+        return;
+      }
+      if (actionBtn?.dataset.action === 'delete-match') {
+        await api(`/api/security/memory-credentials/${encodeURIComponent(actionBtn.dataset.factId)}`, { method: 'DELETE' });
+        await loadMemoryMatches(rowId);
+        return;
+      }
+      if (getActionType(check) === 'expand') {
+        state.expandedCheck = state.expandedCheck === rowId ? null : rowId;
+        renderDefenseGrid();
+      }
+    });
+
+    refs.historyFilters.addEventListener('click', (event) => {
+      const btn = event.target.closest('.filter-pill');
+      if (!btn) return;
+      state.historyFilter = btn.dataset.filter;
+      refs.historyFilters.querySelectorAll('.filter-pill').forEach((pill) => pill.classList.toggle('active', pill === btn));
+      renderHistory();
+    });
+
+    refs.historyToggleBtn.addEventListener('click', () => {
+      const open = refs.historyPanelContent.classList.toggle('open');
+      refs.historyToggleText.textContent = open ? 'Expanded' : 'Collapsed';
+    });
+
+    refs.configDriftToggleBtn.addEventListener('click', () => {
+      const open = refs.configDriftContent.classList.toggle('open');
+      refs.configDriftToggleText.textContent = open ? 'Expanded' : 'Collapsed';
+    });
+
+    refs.hardeningToggleBtn.addEventListener('click', () => {
+      const open = refs.hardeningContent.classList.toggle('open');
+      refs.hardeningToggleText.textContent = open ? 'Expanded' : 'Collapsed';
+    });
+
+    refs.acknowledgeBtn.addEventListener('click', async () => {
+      await api('/api/security/acknowledge', { method: 'POST' });
+      await triggerRecheck();
+    });
+
+    refs.decisionFilters.addEventListener('click', async (event) => {
+      const btn = event.target.closest('.filter-pill');
+      if (!btn) return;
+      const f = btn.dataset.filter;
+      if (f === 'all') {
+        state.decisionActions = new Set(['blocked', 'rate-limited', 'confirmed', 'allowed_sensitive_write', 'allowed_exec', 'allowed_read', 'allowed_default']);
+      } else if (f === 'allowed') {
+        const group = ['allowed_sensitive_write', 'allowed_exec', 'allowed_read', 'allowed_default'];
+        const active = group.some((g) => state.decisionActions.has(g));
+        group.forEach((g) => active ? state.decisionActions.delete(g) : state.decisionActions.add(g));
+      } else {
+        if (state.decisionActions.has(f)) state.decisionActions.delete(f); else state.decisionActions.add(f);
+      }
+      renderDecisionFilters();
+      await loadDecisions();
+    });
+  }
+
+  function grabRefs() {
+    refs.subNav = document.getElementById('securitySubNav');
+    refs.sectionPosture = document.getElementById('section-posture');
+    refs.sectionEnforcement = document.getElementById('section-enforcement');
+    refs.sectionIntegrity = document.getElementById('section-integrity');
+    refs.checkNowBtn = document.getElementById('checkNowBtn');
+    refs.sortToggleBtn = document.getElementById('sortToggleBtn');
+    refs.cardWarnings = document.getElementById('card-warnings');
+    refs.cardFailures = document.getElementById('card-failures');
+    refs.checksPassingValue = document.getElementById('checksPassingValue');
+    refs.checksPassingSub = document.getElementById('checksPassingSub');
+    refs.warningsValue = document.getElementById('warningsValue');
+    refs.failuresValue = document.getElementById('failuresValue');
+    refs.lastScanValue = document.getElementById('lastScanValue');
+    refs.defenseGridTable = document.getElementById('defenseGridTable');
+    refs.defenseGridBody = document.getElementById('defenseGridBody');
+    refs.historyToggleBtn = document.getElementById('historyToggleBtn');
+    refs.historyToggleText = document.getElementById('historyToggleText');
+    refs.historyPanelContent = document.getElementById('historyPanelContent');
+    refs.historyFilters = document.getElementById('historyFilters');
+    refs.historyList = document.getElementById('historyList');
+    refs.enforcementContext = document.getElementById('enforcementContext');
+    refs.integrityContext = document.getElementById('integrityContext');
+    refs.decisionsTodayValue = document.getElementById('decisionsTodayValue');
+    refs.decisionsTodaySub = document.getElementById('decisionsTodaySub');
+    refs.blockedValue = document.getElementById('blockedValue');
+    refs.gatedValue = document.getElementById('gatedValue');
+    refs.hookModeValue = document.getElementById('hookModeValue');
+    refs.decisionFilters = document.getElementById('decisionFilters');
+    refs.decisionsBody = document.getElementById('decisionsBody');
+    refs.decisionsEmpty = document.getElementById('decisionsEmpty');
+    refs.filesMonitoredValue = document.getElementById('filesMonitoredValue');
+    refs.verifiedValue = document.getElementById('verifiedValue');
+    refs.configDriftValue = document.getElementById('configDriftValue');
+    refs.lastVerifiedValue = document.getElementById('lastVerifiedValue');
+    refs.integrityTableBody = document.getElementById('integrityTableBody');
+    refs.acknowledgeBtn = document.getElementById('acknowledgeBtn');
+    refs.configDriftToggleBtn = document.getElementById('configDriftToggleBtn');
+    refs.configDriftToggleText = document.getElementById('configDriftToggleText');
+    refs.configDriftContent = document.getElementById('configDriftContent');
+    refs.hardeningToggleBtn = document.getElementById('hardeningToggleBtn');
+    refs.hardeningToggleText = document.getElementById('hardeningToggleText');
+    refs.hardeningContent = document.getElementById('hardeningContent');
+  }
+
+  async function initialLoad() {
+    renderDecisionFilters();
+    await Promise.all([loadHealth(), loadDecisionStats(), loadDecisions(), loadTransitions()]);
+  }
+
+  window.initSecurityTab = function() {
+    if (window.__securityInitRoot) return;
+    window.__securityInitRoot = true;
+    grabRefs();
+    bindEvents();
+    switchSection('posture');
+    initialLoad();
+    state.healthTimer = setInterval(() => { loadHealth().catch(() => {}); }, 60000);
+    state.decisionsTimer = setInterval(() => { loadDecisionStats().catch(() => {}); }, 60000);
+  };
+
+  window.cleanupSecurityTab = function() {
+    window.__securityInitRoot = false;
+    if (state.healthTimer) clearInterval(state.healthTimer);
+    if (state.decisionsTimer) clearInterval(state.decisionsTimer);
+    state.healthTimer = null;
+    state.decisionsTimer = null;
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => window.initSecurityTab());
+  } else {
+    window.initSecurityTab();
+  }
+})();
+</script>
 </body>
 </html>
