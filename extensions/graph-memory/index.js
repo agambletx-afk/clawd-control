@@ -419,7 +419,8 @@ module.exports = {
                 const cacheHit = !!results;
                 
                 if (!results) {
-                    results = await _runGraphSearch(scriptPath, cleanText, config);
+                    const scope = _resolveScopeContext(api, event, ctx);
+                    results = await _runGraphSearch(scriptPath, cleanText, config, scope);
                     if (results && results.length > 0) {
                         queryCache.set(cacheKey, results);
                     }
@@ -633,6 +634,8 @@ module.exports = {
                     key: `compaction-checkpoint:${Date.now()}`,
                     value: checkpointValue,
                     decayClass: 'checkpoint',
+                    agentId,
+                    sessionId,
                 });
                 console.log(`[graph-memory] compaction checkpoint saved for agent ${agentId} (${checkpointValue.length} chars)`);
             } catch (err) {
@@ -689,6 +692,7 @@ module.exports = {
                     const category = params.category || detectCategory(text);
                     const importance = typeof params.importance === 'number' ? Math.max(0, Math.min(1, params.importance)) : 0.7;
                     const decayClass = params.decayClass || detectDecayClass(entity, key, value);
+                    const scope = _resolveScopeContext(api, {}, ctx);
 
                     if (hasDuplicate(db, entity, key, value)) {
                         return {
@@ -698,7 +702,16 @@ module.exports = {
                         };
                     }
 
-                    insertFact(db, { text, category, entity, key, value, decayClass });
+                    insertFact(db, {
+                        text,
+                        category,
+                        entity,
+                        key,
+                        value,
+                        decayClass,
+                        agentId: scope.agentName,
+                        sessionId: scope.sessionId,
+                    });
                     db.prepare('UPDATE facts SET source = ?, importance = ? WHERE rowid = last_insert_rowid()').run('conversation', importance);
 
                     api.logger?.info?.(`[graph-memory] memory_store saved: ${entity}.${key} (${decayClass})`);
@@ -810,6 +823,7 @@ module.exports = {
                     const parsed = extractStructuredFields(summary);
                     const entity = String(params.entity || parsed.entity || 'Jarvis').trim() || 'Jarvis';
                     const source = `checkpoint:${label}`;
+                    const scope = _resolveScopeContext(api, {}, ctx);
 
                     const factInputs = [
                         { key: 'checkpoint-summary', value: summary },
@@ -838,6 +852,8 @@ module.exports = {
                             decayClass: 'checkpoint',
                             source,
                             importance: 0.8,
+                            agentId: scope.agentName,
+                            sessionId: scope.sessionId,
                         });
                         storedCount += 1;
                     }
@@ -1019,13 +1035,20 @@ function _fingerprintText(text) {
     return `len=${normalized.length} sha256=${digest}`;
 }
 
-function _runGraphSearch(scriptPath, query, config) {
+function _runGraphSearch(scriptPath, query, config, scope = {}) {
     return new Promise((resolve, reject) => {
         const timeout = config.timeoutMs || 2000;
+        const cmdArgs = [scriptPath, query, '--json', '--top-k', String(config.maxResults || 8)];
+        if (scope?.agentName && scope.agentName !== 'jarvis') {
+            cmdArgs.push('--agent', scope.agentName);
+        }
+        if (scope?.sessionId) {
+            cmdArgs.push('--session', scope.sessionId);
+        }
 
         const child = execFile(
             'python3',
-            [scriptPath, query, '--json', '--top-k', String(config.maxResults || 8)],
+            cmdArgs,
             {
                 timeout,
                 maxBuffer: 1024 * 64,
@@ -1053,4 +1076,30 @@ function _runGraphSearch(scriptPath, query, config) {
             }
         );
     });
+}
+
+function _normalizeAgentName(raw) {
+    if (raw == null) return null;
+    const value = String(raw).trim().toLowerCase();
+    return value || null;
+}
+
+function _resolveScopeContext(api, event = {}, toolCtx = {}) {
+    const agentName = _normalizeAgentName(
+        event?.agentId
+        || event?.agentName
+        || toolCtx?.agentId
+        || toolCtx?.agentName
+        || api?.agentName
+        || api?.agent?.name
+        || null
+    );
+    const sessionId = String(
+        event?.sessionId
+        || event?.sessionKey
+        || toolCtx?.sessionId
+        || toolCtx?.sessionKey
+        || ''
+    ).trim() || null;
+    return { agentName, sessionId };
 }

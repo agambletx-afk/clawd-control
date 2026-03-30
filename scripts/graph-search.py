@@ -208,7 +208,54 @@ def apply_freshness(db, results):
     results.sort(key=lambda r: r["score"], reverse=True)
     return results
 
-def graph_search(query: str, db: sqlite3.Connection, top_k: int = 6) -> list[dict]:
+
+def build_scope_filters(agent_id: str | None = None, session_id: str | None = None) -> tuple[list[str], list]:
+    """Build optional scope filter SQL for facts metadata.
+
+    Fail-open: on any construction error, return no filters.
+    """
+    try:
+        clauses = []
+        params = []
+        if agent_id:
+            clauses.append("(agent_id = ? OR agent_id IS NULL)")
+            params.append(agent_id)
+        if session_id:
+            clauses.append("(session_id = ? OR session_id IS NULL)")
+            params.append(session_id)
+        return clauses, params
+    except Exception as exc:
+        if DEBUG:
+            print(f"[graph-search] scope filter fallback (fail-open): {exc}", file=sys.stderr)
+        return [], []
+
+
+def scoped_relations_exists_sql(base_alias: str, scope_clauses: list[str]) -> str:
+    if not scope_clauses:
+        return ""
+    scoped = " AND ".join(scope_clauses)
+    return (
+        " AND EXISTS (SELECT 1 FROM facts f_scope "
+        f"WHERE f_scope.entity = {base_alias}.subject AND {scoped})"
+    )
+
+
+def db_has_scope_columns(db: sqlite3.Connection) -> bool:
+    try:
+        cols = {r[1] for r in db.execute("PRAGMA table_info(facts)").fetchall()}
+        return "agent_id" in cols and "session_id" in cols
+    except sqlite3.Error as exc:
+        if DEBUG:
+            print(f"[graph-search] scope column check failed (fail-open): {exc}", file=sys.stderr)
+        return False
+
+def graph_search(
+    query: str,
+    db: sqlite3.Connection,
+    top_k: int = 6,
+    agent_id: str | None = None,
+    session_id: str | None = None,
+) -> list[dict]:
     """
     Search the knowledge graph for answers.
     Returns list of {path, score, answer, entity, method} dicts.
@@ -218,6 +265,11 @@ def graph_search(query: str, db: sqlite3.Connection, top_k: int = 6) -> list[dic
     
     candidates = extract_entity_candidates(query)
     intents = extract_intent(query)
+    scope_clauses, scope_params = build_scope_filters(agent_id=agent_id, session_id=session_id)
+    if scope_clauses and not db_has_scope_columns(db):
+        scope_clauses, scope_params = [], []
+    facts_scope_where = f" AND {' AND '.join(scope_clauses)}" if scope_clauses else ""
+    relations_scope_exists = scoped_relations_exists_sql("relations", scope_clauses)
     
     # Phase 1: Entity + Intent matching (highest confidence)
     for candidate in candidates:
@@ -229,8 +281,8 @@ def graph_search(query: str, db: sqlite3.Connection, top_k: int = 6) -> list[dic
             for intent in intents:
                 # Search facts
                 rows = db.execute(
-                    "SELECT key, value, source FROM facts WHERE entity = ? AND key LIKE ?",
-                    (entity, f"%{intent}%")
+                    f"SELECT key, value, source FROM facts WHERE entity = ? AND key LIKE ?{facts_scope_where}",
+                    (entity, f"%{intent}%", *scope_params)
                 ).fetchall()
                 for key, value, source in rows:
                     result_key = f"{entity}:{key}"
@@ -246,8 +298,8 @@ def graph_search(query: str, db: sqlite3.Connection, top_k: int = 6) -> list[dic
                 
                 # Search relations
                 rows = db.execute(
-                    "SELECT predicate, object, source FROM relations WHERE subject = ? AND predicate LIKE ?",
-                    (entity, f"%{intent}%")
+                    f"SELECT predicate, object, source FROM relations WHERE subject = ? AND predicate LIKE ?{relations_scope_exists}",
+                    (entity, f"%{intent}%", *scope_params)
                 ).fetchall()
                 for pred, obj, source in rows:
                     result_key = f"{entity}:{pred}:{obj}"
@@ -263,8 +315,8 @@ def graph_search(query: str, db: sqlite3.Connection, top_k: int = 6) -> list[dic
         
         # Phase 2: All facts for resolved entity (medium confidence)
         rows = db.execute(
-            "SELECT key, value, source FROM facts WHERE entity = ?",
-            (entity,)
+            f"SELECT key, value, source FROM facts WHERE entity = ?{facts_scope_where}",
+            (entity, *scope_params)
         ).fetchall()
         for key, value, source in rows:
             result_key = f"{entity}:{key}"
@@ -280,8 +332,8 @@ def graph_search(query: str, db: sqlite3.Connection, top_k: int = 6) -> list[dic
         
         # Phase 2b: All relations for entity
         rows = db.execute(
-            "SELECT predicate, object, source FROM relations WHERE subject = ?",
-            (entity,)
+            f"SELECT predicate, object, source FROM relations WHERE subject = ?{relations_scope_exists}",
+            (entity, *scope_params)
         ).fetchall()
         for pred, obj, source in rows:
             result_key = f"{entity}:{pred}:{obj}"
@@ -305,16 +357,20 @@ def graph_search(query: str, db: sqlite3.Connection, top_k: int = 6) -> list[dic
         if fts_query:
             try:
                 rows = db.execute(
-                    "SELECT entity, key, value FROM facts_fts WHERE facts_fts MATCH ?",
-                    (fts_query,)
+                    (
+                        "SELECT fts.entity, fts.key, fts.value "
+                        "FROM facts_fts fts JOIN facts f ON f.id = fts.rowid "
+                        f"WHERE fts MATCH ?{facts_scope_where}"
+                    ),
+                    (fts_query, *scope_params)
                 ).fetchall()
                 for entity, key, value in rows[:top_k]:
                     result_key = f"{entity}:{key}"
                     if result_key not in seen:
                         seen.add(result_key)
                         source = db.execute(
-                            "SELECT source FROM facts WHERE entity = ? AND key = ?",
-                            (entity, key)
+                            f"SELECT source FROM facts WHERE entity = ? AND key = ?{facts_scope_where}",
+                            (entity, key, *scope_params)
                         ).fetchone()
                         results.append({
                             "path": (source[0] if source else "facts.db"),
@@ -338,16 +394,20 @@ def graph_search(query: str, db: sqlite3.Connection, top_k: int = 6) -> list[dic
         if fts_query:
             try:
                 rows = db.execute(
-                    "SELECT subject, predicate, object FROM relations_fts WHERE relations_fts MATCH ?",
-                    (fts_query,)
+                    (
+                        "SELECT r.subject, r.predicate, r.object "
+                        "FROM relations_fts r JOIN relations rel ON rel.rowid = r.rowid "
+                        f"WHERE r MATCH ?{scoped_relations_exists_sql('rel', scope_clauses)}"
+                    ),
+                    (fts_query, *scope_params)
                 ).fetchall()
                 for subj, pred, obj in rows[:top_k]:
                     result_key = f"rel:{subj}:{pred}:{obj}"
                     if result_key not in seen:
                         seen.add(result_key)
                         source = db.execute(
-                            "SELECT source FROM relations WHERE subject = ? AND predicate = ? AND object = ?",
-                            (subj, pred, obj)
+                            f"SELECT source FROM relations WHERE subject = ? AND predicate = ? AND object = ?{relations_scope_exists}",
+                            (subj, pred, obj, *scope_params)
                         ).fetchone()
                         results.append({
                             "path": (source[0] if source else "facts.db"),
@@ -374,6 +434,8 @@ def main():
     parser.add_argument("--top-k", "-k", type=int, default=6)
     parser.add_argument("--debug", action="store_true", help="Show backend/database errors")
     parser.add_argument("--db-path", help="Path to facts.db (overrides OPENCLAW_WORKSPACE)")
+    parser.add_argument("--agent", help="Agent ID scope filter (includes shared facts)")
+    parser.add_argument("--session", help="Session ID scope filter (includes shared facts)")
     args = parser.parse_args()
 
     global DEBUG
@@ -386,7 +448,7 @@ def main():
         sys.exit(2)
 
     db = sqlite3.connect(str(db_path))
-    results = graph_search(args.query, db, args.top_k)
+    results = graph_search(args.query, db, args.top_k, agent_id=args.agent, session_id=args.session)
     db.close()
     
     if args.json:

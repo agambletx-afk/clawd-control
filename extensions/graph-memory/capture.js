@@ -50,6 +50,8 @@ function initCapture(api, db, config = {}) {
             if (!event?.success) return;
 
             const messages = Array.isArray(event.messages) ? event.messages : [];
+            const agentId = event?.agentId || event?.agentName || null;
+            const sessionId = event?.sessionId || event?.sessionKey || null;
             if (messages.length === 0) return;
 
             const lastUser = [...messages].reverse().find((m) => m?.role === 'user');
@@ -127,6 +129,8 @@ function initCapture(api, db, config = {}) {
                     key,
                     value,
                     decayClass,
+                    agentId,
+                    sessionId,
                 });
 
                 inserted += 1;
@@ -417,8 +421,9 @@ function insertFact(db, fact) {
     db.prepare(`
         INSERT INTO facts (
             category, importance, entity, key, value,
-            source, created_at, decay_class, expires_at, last_confirmed_at, confidence
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            source, created_at, decay_class, expires_at, last_confirmed_at, confidence,
+            agent_id, session_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
         fact.category,
         fact.importance != null ? fact.importance : 0.7,
@@ -430,7 +435,9 @@ function insertFact(db, fact) {
         fact.decayClass,
         getExpiresAt(nowSec, fact.decayClass),
         nowSec,
-        1.0
+        1.0,
+        fact.agentId || null,
+        fact.sessionId || null
     );
 }
 

@@ -75,6 +75,24 @@ TTL_SECONDS = {
 }
 
 
+def parse_duration_to_seconds(raw_value):
+    value = (raw_value or "24h").strip().lower()
+    if len(value) < 2:
+        raise ValueError("duration must be in Nh or Nd format")
+    unit = value[-1]
+    amount_raw = value[:-1]
+    if not amount_raw.isdigit():
+        raise ValueError("duration amount must be a positive integer")
+    amount = int(amount_raw)
+    if amount <= 0:
+        raise ValueError("duration amount must be > 0")
+    if unit == "h":
+        return amount * 3600
+    if unit == "d":
+        return amount * 24 * 3600
+    raise ValueError("duration unit must be h (hours) or d (days)")
+
+
 def resolve_db_path(cli_db_path=None):
     if cli_db_path:
         return cli_db_path
@@ -376,6 +394,41 @@ def cmd_export(args):
     return 0
 
 
+def cmd_prune_sessions(args):
+    db_path = resolve_db_path(args.db_path)
+    older_than_sec = parse_duration_to_seconds(args.older_than)
+    cutoff = int(time.time()) - older_than_sec
+    created_at_epoch = (
+        "CASE "
+        "WHEN typeof(created_at)='integer' OR typeof(created_at)='real' THEN "
+        "  CASE WHEN CAST(created_at AS INTEGER) > 10000000000 THEN CAST(created_at AS INTEGER) / 1000 "
+        "       ELSE CAST(created_at AS INTEGER) END "
+        "WHEN created_at GLOB '____-__-__T*' THEN CAST(strftime('%s', created_at) AS INTEGER) "
+        "ELSE CAST(created_at AS INTEGER) END"
+    )
+
+    with connect_db(db_path) as conn:
+        sessions_cleaned = conn.execute(
+            "SELECT COUNT(DISTINCT session_id) FROM facts "
+            f"WHERE session_id IS NOT NULL AND decay_class = 'session' AND {created_at_epoch} < ?",
+            (cutoff,),
+        ).fetchone()[0]
+
+        with conn:
+            cursor = conn.execute(
+                "DELETE FROM facts "
+                "WHERE session_id IS NOT NULL "
+                "AND decay_class = 'session' "
+                f"AND {created_at_epoch} < ?",
+                (cutoff,),
+            )
+        deleted = cursor.rowcount if cursor.rowcount is not None else 0
+
+    print(f"Deleted facts: {deleted}")
+    print(f"Sessions cleaned: {sessions_cleaned}")
+    return 0
+
+
 def build_parser():
     parser = argparse.ArgumentParser(description="Memory graph CLI toolkit")
     parser.add_argument("--db-path", help="Path to facts.db")
@@ -410,6 +463,10 @@ def build_parser():
     p_export = subparsers.add_parser("export", help="Export all facts")
     p_export.add_argument("--format", choices=["json", "csv"], default="json")
     p_export.set_defaults(func=cmd_export)
+
+    p_prune_sessions = subparsers.add_parser("prune-sessions", help="Delete expired session-scoped facts")
+    p_prune_sessions.add_argument("--older-than", default="24h", help="Age threshold (Nh or Nd). Default: 24h")
+    p_prune_sessions.set_defaults(func=cmd_prune_sessions)
 
     return parser
 
