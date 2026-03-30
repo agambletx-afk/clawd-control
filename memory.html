@@ -30,7 +30,7 @@ main { padding: 24px; max-width: 1500px; margin: 0 auto; }
 .panel-title-wrap { display: flex; flex-direction: column; gap: 4px; }
 .panel-title { margin: 0; font-size: 14px; font-weight: 600; color: #f1f5f9; }
 .panel-subtitle { margin: 0; font-size: 12px; color: #94a3b8; }
-.pipeline-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.pipeline-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; }
 .stat-card {
   position: relative;
   background: #1e2535;
@@ -280,11 +280,13 @@ function renderPipeline(health) {
   const ingest = parseCheck(health, 'nightlyIngest');
   const prune = parseCheck(health, 'hourlyPrune');
   const recall = parseCheck(health, 'recallHookActive');
+  const rootMd = parseCheck(health, 'rootMdGeneration');
 
   const captureHours = hoursSince(capture.lastCaptureTimestamp);
   const ingestHours = hoursSince(ingest.lastRunTimestamp);
   const pruneHours = hoursSince(prune.lastPruneStats && prune.lastPruneStats.timestamp);
   const recallHours = hoursSince(recall.lastRecallTimestamp);
+  const rootMdHours = hoursSince(rootMd.modifiedAt);
 
   const cards = [
     {
@@ -310,6 +312,12 @@ function renderPipeline(health) {
       value: formatRelative(recall.lastRecallTimestamp),
       sub: `${fmtNum(recall.recallsWithHits24h || 0)} hits (24h)`,
       status: getCardStatus(recallHours, 2, 6),
+    },
+    {
+      label: 'ROOT.MD',
+      value: formatRelative(rootMd.modifiedAt),
+      sub: rootMd.sizeBytes !== null && rootMd.sizeBytes !== undefined ? fmtNum(rootMd.sizeBytes) + ' bytes' : 'missing',
+      status: getCardStatus(rootMdHours, 26, 48),
     },
   ];
 
@@ -348,16 +356,11 @@ function renderFactStore(stats, health) {
     return `<div class="tier-item"><div class="tier-item-left"><span class="tier-swatch" style="background:${TIER_COLORS[tier]};"></span><span>${tier}</span></div><span class="mono">${fmtNum(count)} · ${pct.toFixed(1)}%</span></div>`;
   }).join('');
 
-  const root = parseCheck(health, 'rootMdGeneration');
   const pendingExpired = Number(stats.pendingExpired || 0);
-  const rootStatus = root.status || 'red';
-  const rootAge = root.ageHours === null || root.ageHours === undefined ? 'missing' : `${Math.round(root.ageHours)}h old`;
-  const rootSize = root.sizeBytes === null || root.sizeBytes === undefined ? '—' : `${fmtNum(root.sizeBytes)} B`;
 
   const rightRows = [
     `<div class="kv-row"><span class="k-label">DB SIZE</span><span class="kv-value">${fmtDbSize(stats.dbSizeBytes || 0)}</span></div>`,
     pendingExpired > 0 ? `<div class="kv-row"><span class="k-label">PENDING EXPIRED</span><span class="kv-inline"><span class="status-dot status-red" style="display:${pendingExpired > 10 ? 'inline-block' : 'none'}"></span><span class="kv-value">${fmtNum(pendingExpired)}</span></span></div>` : '',
-    `<div class="kv-row"><span class="k-label">ROOT.MD</span><span class="kv-inline"><span class="status-dot ${statusClass(rootStatus)}"></span><span class="kv-value">${rootAge} · ${rootSize}</span></span></div>`
   ].filter(Boolean).join('');
 
   document.getElementById('storeRight').innerHTML = rightRows;
