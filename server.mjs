@@ -2850,29 +2850,47 @@ function getSessionTranscript(sessionId, { limit = 100, before = null } = {}) {
   } catch {}
 
   if (!matched) {
-    const tombstone = getSummaryTombstone(sessionId);
-    if (tombstone) {
-      return {
-        session: {
-          id: sessionId,
-          agent: 'unknown',
-          agentEmoji: '🤖',
-          model: tombstone.model || 'unknown',
-          source: tombstone.source || 'Direct',
-          startedAt: tombstone.timestamp || null,
-          active: false,
-          taskId: tombstone.taskId || null,
-          transcriptStatus: 'summary_only',
-          branchDetected: false,
-          corruptionCount: 0,
-        },
-        entries: [],
-        raw: '',
-        summary: tombstone,
-        pagination: { hasMore: false, oldestEntryId: null, totalEstimate: 0 },
-      };
+    // Session not in sessions.json — scan archive directories directly
+    try {
+      const agentIds = readdirSync(join(homedir(), '.openclaw', 'agents'), { withFileTypes: true })
+        .filter((d) => d.isDirectory()).map((d) => d.name);
+      for (const agentId of agentIds) {
+        const archiveDir = join(homedir(), '.openclaw', 'agents', agentId, 'sessions', 'archive');
+        if (!existsSync(archiveDir)) continue;
+        const files = readdirSync(archiveDir).filter((name) => name.startsWith(sessionId) && name.endsWith('.jsonl')).sort();
+        if (files.length > 0) {
+          matched = { agentId, key: `agent:${agentId}:archived`, session: { sessionFile: null, active: false } };
+          // transcriptPath will be resolved below via the archive fallback
+          break;
+        }
+      }
+    } catch {}
+
+    if (!matched) {
+      const tombstone = getSummaryTombstone(sessionId);
+      if (tombstone) {
+        return {
+          session: {
+            id: sessionId,
+            agent: 'unknown',
+            agentEmoji: '🤖',
+            model: tombstone.model || 'unknown',
+            source: tombstone.source || 'Direct',
+            startedAt: tombstone.timestamp || null,
+            active: false,
+            taskId: tombstone.taskId || null,
+            transcriptStatus: 'summary_only',
+            branchDetected: false,
+            corruptionCount: 0,
+          },
+          entries: [],
+          raw: '',
+          summary: tombstone,
+          pagination: { hasMore: false, oldestEntryId: null, totalEstimate: 0 },
+        };
+      }
+      return null;
     }
-    return null;
   }
 
   const safePath = getSafeSessionFilePath(matched.session.sessionFile, matched.agentId);
