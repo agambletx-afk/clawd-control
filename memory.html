@@ -30,38 +30,29 @@ main { padding: 24px; max-width: 1500px; margin: 0 auto; }
 .panel-title-wrap { display: flex; flex-direction: column; gap: 4px; }
 .panel-title { margin: 0; font-size: 14px; font-weight: 600; color: #f1f5f9; }
 .panel-subtitle { margin: 0; font-size: 12px; color: #94a3b8; }
-.pipeline-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; }
-.stat-card {
-  position: relative;
-  background: #1e2535;
-  border: 1px solid #363b4d;
-  border-radius: 12px;
-  padding: 16px;
-  overflow: hidden;
-}
-.stat-card::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background: #c084fc;
-}
+.pipeline-lane { position: relative; padding: 0; }
+.lane-labels { display: flex; margin-bottom: 8px; }
+.lane-labels > div { flex: 1; text-align: center; font-size: 11px; text-transform: uppercase; font-weight: 600; color: #94a3b8; letter-spacing: 0.04em; }
+.lane-row { display: flex; align-items: center; height: 12px; }
+.lane-node { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; z-index: 1; }
+.lane-connector { flex: 1; height: 2px; }
+.lane-values { display: flex; margin-top: 8px; }
+.lane-values > div { flex: 1; text-align: center; }
+.station-value { font-size: 16px; font-weight: 700; color: #f1f5f9; font-family: 'JetBrains Mono', 'Fira Code', monospace; line-height: 1.3; }
+.station-sub { font-size: 11px; color: #94a3b8; margin-top: 4px; }
+.lane-legend { display: flex; gap: 16px; margin-top: 16px; padding-top: 16px; border-top: 1px solid #363b4d; font-size: 11px; color: #94a3b8; }
+.legend-item { display: flex; align-items: center; gap: 8px; }
+.legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .status-dot { width: 8px; height: 8px; border-radius: 50%; }
 .status-green { background: #22c55e; }
-.status-yellow { background: #f59e0b; }
 .status-red { background: #ef4444; }
-.status-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-.stat-label { font-size: 11px; text-transform: uppercase; font-weight: 600; color: #94a3b8; letter-spacing: 0.04em; }
-.stat-value { font-size: 28px; font-weight: 700; color: #f1f5f9; font-family: 'JetBrains Mono', 'Fira Code', monospace; line-height: 1.2; margin: 0; }
-.stat-sub { margin-top: 8px; font-size: 12px; color: #94a3b8; }
-.store-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-.k-label { font-size: 11px; text-transform: uppercase; font-weight: 600; color: #94a3b8; letter-spacing: 0.04em; }
-.k-value-lg { margin-top: 8px; font-size: 28px; font-weight: 700; color: #f1f5f9; font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+.store-stats { display: flex; gap: 32px; align-items: baseline; flex-wrap: wrap; margin-bottom: 16px; }
+.store-stat { display: flex; flex-direction: column; gap: 4px; }
+.store-stat-label { font-size: 11px; text-transform: uppercase; font-weight: 600; color: #94a3b8; letter-spacing: 0.04em; }
+.store-stat-value { font-size: 28px; font-weight: 700; color: #f1f5f9; font-family: 'JetBrains Mono', 'Fira Code', monospace; }
 .tier-track { margin-top: 16px; width: 100%; height: 8px; border-radius: 4px; background: #0d1117; overflow: hidden; display: flex; }
 .tier-seg { height: 100%; }
-.tier-legend { margin-top: 16px; display: grid; grid-template-columns: 1fr; gap: 8px; }
+.tier-legend { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 8px 16px; }
 .tier-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11px; color: #94a3b8; }
 .tier-item-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .tier-swatch { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
@@ -72,7 +63,10 @@ main { padding: 24px; max-width: 1500px; margin: 0 auto; }
 .kv-value { color: #f1f5f9; }
 .kv-inline { display: inline-flex; align-items: center; gap: 8px; }
 .summary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
-.facts-list { display: grid; }
+.facts-list-wrap { position: relative; }
+.facts-list { display: grid; max-height: 400px; overflow-y: auto; }
+.facts-list-fade { position: absolute; bottom: 0; left: 0; right: 0; height: 48px; background: linear-gradient(transparent, #161b26); pointer-events: none; }
+.facts-list-count { text-align: center; padding: 8px 0 0; font-size: 11px; color: #94a3b8; }
 .fact-row {
   padding: 8px 0;
   border-bottom: 1px solid #363b4d;
@@ -121,8 +115,8 @@ main { padding: 24px; max-width: 1500px; margin: 0 auto; }
 }
 @keyframes shimmer { 100% { transform: translateX(100%); } }
 @media (max-width: 1024px) {
-  .pipeline-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .store-grid { grid-template-columns: 1fr; }
+
+
   .summary-grid { grid-template-columns: 1fr; }
 }
 </style>
@@ -134,8 +128,8 @@ main { padding: 24px; max-width: 1500px; margin: 0 auto; }
     <p class="subtitle">Pipeline health and knowledge.</p>
   </header>
 
-  <section>
-    <div class="panel-header" style="margin-bottom:16px;">
+  <section class="panel">
+    <div class="panel-header">
       <svg class="panel-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
       <span class="domain-capsule"></span>
       <div class="panel-title-wrap">
@@ -143,7 +137,18 @@ main { padding: 24px; max-width: 1500px; margin: 0 auto; }
         <p class="panel-subtitle">Core memory pipeline signals</p>
       </div>
     </div>
-    <div class="pipeline-grid" id="pipelineGrid"></div>
+    <div class="pipeline-lane">
+      <div class="lane-labels" id="laneLabels"></div>
+      <div class="lane-row" id="laneRow"></div>
+      <div class="lane-values" id="laneValues"></div>
+      <div class="lane-legend">
+        <div class="legend-item"><span class="legend-dot" style="background:#c084fc"></span>Active</div>
+        <div class="legend-item"><span class="legend-dot" style="background:rgba(192,132,252,0.6)"></span>Recent</div>
+        <div class="legend-item"><span class="legend-dot" style="background:#94a3b8"></span>Cooling</div>
+        <div class="legend-item"><span class="legend-dot" style="background:#475569"></span>Cold</div>
+        <div class="legend-item"><span class="legend-dot" style="background:#ef4444"></span>Broken</div>
+      </div>
+    </div>
   </section>
 
   <section class="section-gap panel">
@@ -155,15 +160,9 @@ main { padding: 24px; max-width: 1500px; margin: 0 auto; }
         <p class="panel-subtitle">Knowledge graph overview</p>
       </div>
     </div>
-    <div class="store-grid">
-      <div>
-        <div class="k-label">Total Facts</div>
-        <div class="k-value-lg" id="totalFacts">—</div>
-        <div class="tier-track" id="tierTrack"></div>
-        <div class="tier-legend" id="tierLegend"></div>
-      </div>
-      <div class="kv-list" id="storeRight"></div>
-    </div>
+        <div class="store-stats" id="storeStats"></div>
+    <div class="tier-track" id="tierTrack"></div>
+    <div class="tier-legend" id="tierLegend"></div>
   </section>
 
   <section class="section-gap summary-grid">
@@ -176,7 +175,11 @@ main { padding: 24px; max-width: 1500px; margin: 0 auto; }
           <p class="panel-subtitle">Frequently surfaced facts, ranked by activation score</p>
         </div>
       </div>
-      <div id="mostActiveList" class="facts-list"></div>
+      <div class="facts-list-wrap">
+        <div id="mostActiveList" class="facts-list"></div>
+        <div class="facts-list-fade" id="activeFade"></div>
+        <div class="facts-list-count" id="activeCount"></div>
+      </div>
     </div>
     <div class="panel table-panel">
       <div class="panel-header">
@@ -187,7 +190,11 @@ main { padding: 24px; max-width: 1500px; margin: 0 auto; }
           <p class="panel-subtitle">Facts captured in the last 24 hours</p>
         </div>
       </div>
-      <div id="recentFactsList" class="facts-list"></div>
+      <div class="facts-list-wrap">
+        <div id="recentFactsList" class="facts-list"></div>
+        <div class="facts-list-fade" id="recentFade"></div>
+        <div class="facts-list-count" id="recentCount"></div>
+      </div>
     </div>
   </section>
 </main>
@@ -201,9 +208,23 @@ const TIER_COLORS = {
   checkpoint: '#475569',
 };
 
+function getNodeColor(hours, broken) {
+  if (broken) return '#ef4444';
+  if (hours === null) return '#475569';
+  if (hours <= 2) return '#c084fc';
+  if (hours <= 24) return 'rgba(192, 132, 252, 0.6)';
+  if (hours <= 168) return '#94a3b8';
+  return '#475569';
+}
+function getSegColor(c) {
+  if (c === '#ef4444') return 'rgba(239, 68, 68, 0.4)';
+  if (c === '#c084fc') return 'rgba(192, 132, 252, 0.5)';
+  if (c.includes('0.6')) return 'rgba(192, 132, 252, 0.25)';
+  if (c === '#94a3b8') return '#475569';
+  return '#363b4d';
+}
 function statusClass(status) {
   if (status === 'green') return 'status-green';
-  if (status === 'yellow') return 'status-yellow';
   return 'status-red';
 }
 
@@ -225,13 +246,6 @@ function hoursSince(timestamp) {
   const t = new Date(timestamp).getTime();
   if (!Number.isFinite(t)) return null;
   return (Date.now() - t) / 3600000;
-}
-
-function getCardStatus(hours, greenThreshold, amberThreshold) {
-  if (hours === null) return 'red';
-  if (hours <= greenThreshold) return 'green';
-  if (hours <= amberThreshold) return 'yellow';
-  return 'red';
 }
 
 function fmtNum(n, digits = 0) {
@@ -268,102 +282,60 @@ function decayBadge(decay) {
   return map[decay] || map.checkpoint;
 }
 
-function skeletonCards() {
-  const grid = document.getElementById('pipelineGrid');
-  grid.innerHTML = Array.from({ length: 4 }).map(() => (
-    `<div class="stat-card"><div class="skeleton" style="height:11px;width:88px;"></div><div class="skeleton" style="height:28px;width:120px;margin-top:16px;"></div><div class="skeleton" style="height:12px;width:140px;margin-top:16px;"></div></div>`
-  )).join('');
+function skeletonLane() {
+  document.getElementById('laneLabels').innerHTML = Array.from({ length: 5 }).map(function() { return '<div><span class="skeleton" style="display:inline-block;height:11px;width:64px;"></span></div>'; }).join('');
+  document.getElementById('laneRow').innerHTML = Array.from({ length: 5 }).map(function(_, i) {
+    var n = '<span class="lane-node skeleton" style="background:#1e2535;"></span>';
+    return i < 4 ? n + '<span class="lane-connector" style="background:#363b4d;"></span>' : n;
+  }).join('');
+  document.getElementById('laneValues').innerHTML = Array.from({ length: 5 }).map(function() { return '<div><span class="skeleton" style="display:inline-block;height:16px;width:56px;"></span></div>'; }).join('');
 }
 
 function renderPipeline(health) {
-  const capture = parseCheck(health, 'captureHookActive');
-  const ingest = parseCheck(health, 'nightlyIngest');
-  const prune = parseCheck(health, 'hourlyPrune');
-  const recall = parseCheck(health, 'recallHookActive');
-  const rootMd = parseCheck(health, 'rootMdGeneration');
-
-  const captureHours = hoursSince(capture.lastCaptureTimestamp);
-  const ingestHours = hoursSince(ingest.lastRunTimestamp);
-  const pruneHours = hoursSince(prune.lastPruneStats && prune.lastPruneStats.timestamp);
-  const recallHours = hoursSince(recall.lastRecallTimestamp);
-  const rootMdHours = hoursSince(rootMd.modifiedAt);
-
-  const cards = [
-    {
-      label: 'CAPTURE HOOK',
-      value: formatRelative(capture.lastCaptureTimestamp),
-      sub: `${fmtNum(capture.captureRatePerHour || 0, 2)} facts/hr over 24h`,
-      status: getCardStatus(captureHours, 2, 6),
-    },
-    {
-      label: 'DAILY EXTRACTION',
-      value: formatRelative(ingest.lastRunTimestamp),
-      sub: `${fmtNum(ingest.factsInserted || 0)} facts extracted`,
-      status: getCardStatus(ingestHours, 26, 48),
-    },
-    {
-      label: 'PRUNING',
-      value: formatRelative(prune.lastPruneStats && prune.lastPruneStats.timestamp),
-      sub: `${fmtNum((prune.lastPruneStats && prune.lastPruneStats.totalRemoved) || 0)} pruned · ${fmtNum(prune.pendingExpired || 0)} pending`,
-      status: getCardStatus(pruneHours, 2, 6),
-    },
-    {
-      label: 'TTL / RECALL',
-      value: formatRelative(recall.lastRecallTimestamp),
-      sub: `${fmtNum(recall.recallsWithHits24h || 0)} hits (24h)`,
-      status: getCardStatus(recallHours, 2, 6),
-    },
-    {
-      label: 'ROOT.MD',
-      value: formatRelative(rootMd.modifiedAt),
-      sub: rootMd.sizeBytes !== null && rootMd.sizeBytes !== undefined ? fmtNum(rootMd.sizeBytes) + ' bytes' : 'missing',
-      status: getCardStatus(rootMdHours, 26, 48),
-    },
+  var capture = parseCheck(health, 'captureHookActive');
+  var ingest = parseCheck(health, 'nightlyIngest');
+  var prune = parseCheck(health, 'hourlyPrune');
+  var recall = parseCheck(health, 'recallHookActive');
+  var rootMd = parseCheck(health, 'rootMdGeneration');
+  var stations = [
+    { label: 'CAPTURE', hours: hoursSince(capture.lastCaptureTimestamp), value: formatRelative(capture.lastCaptureTimestamp), sub: fmtNum(capture.captureRatePerHour || 0, 2) + ' facts/hr', broken: false },
+    { label: 'EXTRACTION', hours: hoursSince(ingest.lastRunTimestamp), value: formatRelative(ingest.lastRunTimestamp), sub: fmtNum(ingest.factsInserted || 0) + ' extracted', broken: false },
+    { label: 'PRUNING', hours: hoursSince(prune.lastPruneStats && prune.lastPruneStats.timestamp), value: formatRelative(prune.lastPruneStats && prune.lastPruneStats.timestamp), sub: fmtNum(prune.pendingExpired || 0) + ' pending', broken: false },
+    { label: 'RECALL', hours: hoursSince(recall.lastRecallTimestamp), value: formatRelative(recall.lastRecallTimestamp), sub: fmtNum(recall.recallsWithHits24h || 0) + ' hits', broken: false },
+    { label: 'ROOT.MD', hours: hoursSince(rootMd.modifiedAt), value: formatRelative(rootMd.modifiedAt), sub: rootMd.sizeBytes != null ? fmtNum(rootMd.sizeBytes) + ' B' : 'missing', broken: rootMd.sizeBytes == null },
   ];
-
-  const grid = document.getElementById('pipelineGrid');
-  grid.innerHTML = cards.map((card) => `
-    <article class="stat-card">
-      <div class="status-top">
-        <div class="stat-label">${card.label}</div>
-        <span class="status-dot ${statusClass(card.status)}"></span>
-      </div>
-      <p class="stat-value">${card.value}</p>
-      <div class="stat-sub">${card.sub}</div>
-    </article>
-  `).join('');
+  var colors = stations.map(function(s) { return getNodeColor(s.hours, s.broken); });
+  document.getElementById('laneLabels').innerHTML = stations.map(function(s) { return '<div>' + s.label + '</div>'; }).join('');
+  var rowParts = [];
+  for (var i = 0; i < stations.length; i++) {
+    rowParts.push('<span class="lane-node" style="background:' + colors[i] + '"></span>');
+    if (i < stations.length - 1) rowParts.push('<span class="lane-connector" style="background:' + getSegColor(colors[i]) + '"></span>');
+  }
+  document.getElementById('laneRow').innerHTML = rowParts.join('');
+  document.getElementById('laneValues').innerHTML = stations.map(function(s) {
+    return '<div><div class="station-value">' + s.value + '</div><div class="station-sub">' + s.sub + '</div></div>';
+  }).join('');
 }
 
 function renderFactStore(stats, health) {
-  const totalFacts = Number(stats.totalFacts || 0);
-  document.getElementById('totalFacts').textContent = fmtNum(totalFacts);
-
-  const decayMap = {};
-  for (const row of (stats.decay || [])) decayMap[row.decayClass] = Number(row.count || 0);
-  const tiers = ['permanent', 'stable', 'active', 'session', 'checkpoint'];
-
-  const track = document.getElementById('tierTrack');
-  track.innerHTML = tiers.map((tier) => {
-    const count = decayMap[tier] || 0;
-    const width = totalFacts > 0 ? (count / totalFacts) * 100 : 0;
-    return `<span class="tier-seg" style="width:${width.toFixed(2)}%;background:${TIER_COLORS[tier]};"></span>`;
+  var totalFacts = Number(stats.totalFacts || 0);
+  var pendingExpired = Number(stats.pendingExpired || 0);
+  var dbSize = fmtDbSize(stats.dbSizeBytes || 0);
+  var h = '<div class="store-stat"><div class="store-stat-label">TOTAL FACTS</div><div class="store-stat-value">' + fmtNum(totalFacts) + '</div></div>';
+  h += '<div class="store-stat"><div class="store-stat-label">DB SIZE</div><div class="store-stat-value" style="font-size:16px;">' + dbSize + '</div></div>';
+  if (pendingExpired > 0) h += '<div class="store-stat"><div class="store-stat-label">PENDING EXPIRED</div><div class="store-stat-value" style="font-size:16px;">' + fmtNum(pendingExpired) + '</div></div>';
+  document.getElementById('storeStats').innerHTML = h;
+  var decayMap = {};
+  for (var row of (stats.decay || [])) decayMap[row.decayClass] = Number(row.count || 0);
+  var tiers = ['permanent', 'stable', 'active', 'session', 'checkpoint'];
+  document.getElementById('tierTrack').innerHTML = tiers.map(function(t) {
+    var c = decayMap[t] || 0, w = totalFacts > 0 ? (c / totalFacts) * 100 : 0;
+    return '<span class="tier-seg" style="width:' + w.toFixed(2) + '%;background:' + TIER_COLORS[t] + ';"></span>';
   }).join('');
-
-  const legend = document.getElementById('tierLegend');
-  legend.innerHTML = tiers.map((tier) => {
-    const count = decayMap[tier] || 0;
-    const pct = totalFacts > 0 ? (count / totalFacts) * 100 : 0;
-    return `<div class="tier-item"><div class="tier-item-left"><span class="tier-swatch" style="background:${TIER_COLORS[tier]};"></span><span>${tier}</span></div><span class="mono">${fmtNum(count)} · ${pct.toFixed(1)}%</span></div>`;
+  document.getElementById('tierLegend').innerHTML = tiers.map(function(t) {
+    var c = decayMap[t] || 0, p = totalFacts > 0 ? (c / totalFacts) * 100 : 0;
+    return '<div class="tier-item"><div class="tier-item-left"><span class="tier-swatch" style="background:' + TIER_COLORS[t] + ';"></span><span>' + t + '</span></div><span class="mono">' + fmtNum(c) + ' \u00b7 ' + p.toFixed(1) + '%</span></div>';
   }).join('');
-
-  const pendingExpired = Number(stats.pendingExpired || 0);
-
-  const rightRows = [
-    `<div class="kv-row"><span class="k-label">DB SIZE</span><span class="kv-value">${fmtDbSize(stats.dbSizeBytes || 0)}</span></div>`,
-    pendingExpired > 0 ? `<div class="kv-row"><span class="k-label">PENDING EXPIRED</span><span class="kv-inline"><span class="status-dot status-red" style="display:${pendingExpired > 10 ? 'inline-block' : 'none'}"></span><span class="kv-value">${fmtNum(pendingExpired)}</span></span></div>` : '',
-  ].filter(Boolean).join('');
-
-  document.getElementById('storeRight').innerHTML = rightRows;
 }
 
 function buildFactRow(item, mode) {
@@ -402,16 +374,25 @@ function buildFactRow(item, mode) {
 }
 
 function renderFactList(id, data, mode, emptyText) {
-  const root = document.getElementById(id);
+  var root = document.getElementById(id);
   root.innerHTML = '';
-  const items = (data && data.items) || [];
+  var items = (data && data.items) || [];
+  var fadeId = id === 'mostActiveList' ? 'activeFade' : 'recentFade';
+  var countId = id === 'mostActiveList' ? 'activeCount' : 'recentCount';
+  var fadeEl = document.getElementById(fadeId);
+  var countEl = document.getElementById(countId);
   if (!items.length) {
-    root.innerHTML = `<div class="empty">${emptyText}</div>`;
+    root.innerHTML = '<div class="empty">' + emptyText + '</div>';
+    if (fadeEl) fadeEl.style.display = 'none';
+    if (countEl) countEl.textContent = '';
     return;
   }
-  const frag = document.createDocumentFragment();
-  for (const item of items) frag.appendChild(buildFactRow(item, mode));
+  var frag = document.createDocumentFragment();
+  for (var item of items) frag.appendChild(buildFactRow(item, mode));
   root.appendChild(frag);
+  var total = (data && data.total) || items.length;
+  if (fadeEl) fadeEl.style.display = items.length > 4 ? 'block' : 'none';
+  if (countEl) countEl.textContent = items.length < total ? 'Showing ' + items.length + ' of ' + total : items.length + ' facts';
 }
 
 function renderSkeletonLists() {
@@ -440,7 +421,7 @@ async function fetchData() {
   renderFactList('recentFactsList', recentFacts, 'recent', 'No facts captured today.');
 }
 
-skeletonCards();
+skeletonLane();
 renderSkeletonLists();
 fetchData();
 setInterval(fetchData, 120000);
