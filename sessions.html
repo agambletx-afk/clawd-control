@@ -6,7 +6,7 @@
     <title>Sessions — Clawd Control</title>
     <style>
         .page-header { margin-bottom: 24px; }
-        .page-header h1 { font-size: 20px; font-weight: 700; margin-bottom: 8px; color: var(--text-primary); text-shadow: 0 0 8px rgba(99, 102, 241, 0.5); }
+        .page-header h1 { font-size: 20px; font-weight: 700; margin-bottom: 8px; color: var(--text-primary); text-shadow: 0 0 24px rgba(56, 189, 248, 0.18); }
         .page-header .subtitle { font-size: 13px; font-weight: 400; color: var(--text-secondary); margin-top: 4px; }
 
         .sub-nav {
@@ -24,7 +24,7 @@
           border: none;
           background: transparent;
           color: var(--text-secondary);
-          font-size: 12px;
+          font-size: 13px;
           font-weight: 500;
           cursor: pointer;
           transition: all 150ms;
@@ -32,10 +32,9 @@
         }
         .sub-nav-btn:hover { color: var(--text-primary); }
         .sub-nav-btn.active {
-          background: #1e2535;
-          color: #e2e8f0;
+          background: var(--surface);
+          color: var(--text-primary);
           font-weight: 600;
-          box-shadow: inset 0 -2px 0 #38bdf8;
         }
 
         .view-section { display: none; }
@@ -76,13 +75,13 @@
             border-bottom: 1px solid var(--border-subtle);
         }
         .event-log-table th {
-            background: var(--surface); color: var(--text-primary);
+            background: #1a1e30; color: var(--text-primary);
             font-weight: 600; text-transform: uppercase; font-size: 0.75rem;
             letter-spacing: 0.05em; cursor: pointer;
         }
         .event-log-table th:hover { background: var(--surface-hover); }
         .event-log-table tbody tr:last-child td { border-bottom: none; }
-        .event-log-table tbody tr:nth-child(even) { background: var(--bg-tertiary); }
+        
         .event-log-table tbody tr:hover { background: var(--surface-hover); }
         .session-row-clickable { cursor: pointer; }
 
@@ -105,34 +104,74 @@
         .meta-k { font-size: 11px; color: #94a3b8; text-transform: uppercase; margin-bottom: 4px; }
         .meta-v { font-size: 13px; color: #e2e8f0; font-weight: 600; }
         .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-        .status-pill { display: inline-flex; border-radius: 999px; padding: 2px 8px; font-size: 11px; font-weight: 700; }
-        .status-available { background: #0f2a3b; color: #7dd3fc; }
-        .status-live { background: #123826; color: #86efac; }
-        .status-summary_only { background: #3a2b13; color: #fde68a; }
+        .status-pill { display: inline-flex; border-radius: 999px; padding: 6px 10px; font-size: 11px; font-weight: 700; }
+        .status-available { background: rgba(56, 189, 248, 0.12); color: #38bdf8; }
+        .status-live { background: rgba(56, 189, 248, 0.12); color: #38bdf8; }
+        .status-summary_only { background: rgba(148, 163, 184, 0.12); color: #94a3b8; }
 
         .transcript-toolbar { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 10px; align-items: center; }
         .toggle-row { display: flex; gap: 12px; color: #94a3b8; font-size: 12px; }
-        .transcript-btn { border: 1px solid #363b4d; border-radius: 8px; background: #1e2535; color: #e2e8f0; padding: 6px 10px; cursor: pointer; }
-        .transcript-btn:hover { border-color: #38bdf8; }
+        .transcript-btn {
+            background: #252a36;
+            color: #f1f5f9;
+            border: 1px solid #363b4d;
+            border-radius: 6px;
+            padding: 6px 12px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 150ms;
+        }
+        .transcript-btn:hover { background: rgba(56, 189, 248, 0.08); border-color: #4a5068; }
 
         .transcript-picker { background: #161b26; border: 1px solid #363b4d; border-radius: 10px; padding: 12px; margin-bottom: 10px; }
         .picker-item { padding: 8px; border-radius: 8px; background: #1e2535; border: 1px solid #363b4d; margin-bottom: 8px; cursor: pointer; }
 
         .timeline-wrap { background: #161b26; border: 1px solid #363b4d; border-radius: 10px; padding: 12px; }
+        .picker-item:hover {
+            border-color: #4a5068;
+            background: rgba(56, 189, 248, 0.04);
+            transition: all 150ms;
+        }
+
+        .panel-subtitle { font-size: 12px; color: #94a3b8; font-weight: 400; margin-bottom: 12px; }
+        .toggle-row input[type="checkbox"] {
+            accent-color: #38bdf8;
+            cursor: pointer;
+        }
+        .toggle-row label {
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .timeline-header { margin-bottom: 10px; }
+        .timeline-title { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; color: #e2e8f0; margin-bottom: 6px; }
+
         .timeline-item { background: #1e2535; border: 1px solid #363b4d; border-radius: 8px; margin-bottom: 8px; padding: 10px; }
-        .timeline-item.slim { background: transparent; border-style: dashed; color: #94a3b8; }
+        .timeline-item.slim {
+            background: transparent;
+            border: none;
+            border-top: 1px solid #363b4d;
+            border-radius: 0;
+            padding: 6px 10px;
+            color: #94a3b8;
+            font-size: 12px;
+        }
         .timeline-head { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
         .chip { font-size: 11px; border-radius: 999px; padding: 2px 8px; font-weight: 700; }
-        .chip-user, .chip-assistant { background: #0f2a3b; color: #7dd3fc; }
-        .chip-muted { background: #2a3245; color: #cbd5e1; }
+        .chip-user, .chip-assistant { background: rgba(56, 189, 248, 0.12); color: #38bdf8; }
+        .chip-tool { background: rgba(148, 163, 184, 0.12); color: #94a3b8; }
+        .chip-system { background: rgba(148, 163, 184, 0.08); color: #64748b; }
         .timeline-preview { color: #e2e8f0; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .timeline-full { display: none; margin-top: 8px; max-height: 180px; overflow: auto; white-space: pre-wrap; border: 1px solid #363b4d; border-radius: 6px; padding: 8px; }
         .timeline-item.expanded .timeline-full { display: block; }
-        .timeline-item .show-more { color: #7dd3fc; cursor: pointer; font-size: 12px; }
+        .timeline-item .show-more { color: #38bdf8; cursor: pointer; font-size: 12px; }
         .indent-1 { margin-left: 24px; }
         .indent-2 { margin-left: 48px; }
         .banner { margin: 8px 0; padding: 8px; border-radius: 6px; border: 1px solid #363b4d; background: #1e2535; color: #cbd5e1; font-size: 12px; }
-        .raw-panel { display: none; background: #0b1020; color: #cbd5e1; border: 1px solid #363b4d; border-radius: 8px; padding: 10px; white-space: pre; overflow: auto; max-height: 450px; }
+        .raw-panel { display: none; background: #0d1117; color: #cbd5e1; border: 1px solid #363b4d; border-radius: 8px; padding: 10px; white-space: pre; overflow: auto; max-height: 450px; }
         .waterfall-placeholder { background: #161b26; border: 1px solid #363b4d; border-radius: 10px; padding: 20px; color: #94a3b8; }
     </style>
 </head>
@@ -258,9 +297,9 @@
                 const taskId = params.get('taskId');
                 const wrap = document.getElementById('backLinkWrap');
                 if (from === 'usage') {
-                    wrap.innerHTML = '<a href="analytics.html" style="color:#7dd3fc;display:inline-block;margin-bottom:8px">← Back to Usage</a>';
+                    wrap.innerHTML = '<a href="analytics.html" style="color:#38bdf8;display:inline-block;margin-bottom:8px">← Back to Usage</a>';
                 } else if (from === 'tasks') {
-                    wrap.innerHTML = `<a href="tasks.html#task=${taskId || ''}" style="color:#7dd3fc;display:inline-block;margin-bottom:8px">← Back to Task #${taskId || ''} audit</a>`;
+                    wrap.innerHTML = `<a href="tasks.html#task=${taskId || ''}" style="color:#38bdf8;display:inline-block;margin-bottom:8px">← Back to Task #${taskId || ''} audit</a>`;
                 } else {
                     wrap.innerHTML = '';
                 }
@@ -292,18 +331,19 @@
             function renderTranscriptHeader(session) {
                 const wrap = document.getElementById('transcriptHeader');
                 if (!session) {
-                    wrap.innerHTML = '<div class="transcript-title"><span class="transcript-title-capsule"></span>Transcript</div><div class="meta-v">Transcript not available.</div>';
+                    wrap.innerHTML = '<div class="transcript-title"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg><span class="transcript-title-capsule"></span>Transcript</div><div class="panel-subtitle">Session metadata and status.</div><div class="meta-v">Transcript not available.</div>';
                     return;
                 }
                 const started = session.startedAt ? new Date(session.startedAt).toLocaleString() : '--';
                 wrap.innerHTML = `
-                    <div class="transcript-title"><span class="transcript-title-capsule"></span>Transcript</div>
+                    <div class="transcript-title"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg><span class="transcript-title-capsule"></span>Transcript</div>
+                    <div class="panel-subtitle">Session metadata and status.</div>
                     <div class="transcript-meta-grid">
                         <div class="meta-item"><div class="meta-k">Agent</div><div class="meta-v">${session.agentEmoji || '🤖'} ${session.agent || '--'}</div></div>
                         <div class="meta-item"><div class="meta-k">Source</div><div class="meta-v">${session.source || 'Direct'}</div></div>
                         <div class="meta-item"><div class="meta-k">Model</div><div class="meta-v mono">${session.model || '--'}</div></div>
                         <div class="meta-item"><div class="meta-k">Timing</div><div class="meta-v">${started}${session.active ? ' · Active' : ''}</div></div>
-                        <div class="meta-item" style="display:${session.taskId ? 'block' : 'none'}"><div class="meta-k">Task</div><div class="meta-v"><a href="tasks.html#task=${session.taskId || ''}" style="color:#7dd3fc">Task #${session.taskId || ''}</a></div></div>
+                        <div class="meta-item" style="display:${session.taskId ? 'block' : 'none'}"><div class="meta-k">Task</div><div class="meta-v"><a href="tasks.html#task=${session.taskId || ''}" style="color:#38bdf8">Task #${session.taskId || ''}</a></div></div>
                         <div class="meta-item"><div class="meta-k">Status</div><div class="meta-v"><span class="status-pill status-${session.transcriptStatus}">${(session.transcriptStatus || '').replace('_', ' ')}</span></div></div>
                     </div>`;
             }
@@ -337,10 +377,10 @@
             function chipFor(entry) {
                 if (entry.type === 'user_message') return '<span class="chip chip-user">User</span>';
                 if (entry.type === 'assistant_message') return '<span class="chip chip-assistant">Assistant</span>';
-                if (entry.type === 'tool_call') return '<span class="chip chip-muted">Tool Call</span>';
-                if (entry.type === 'tool_result') return '<span class="chip chip-muted">Tool Result</span>';
-                if (entry.type === 'system_internal') return '<span class="chip chip-muted">System</span>';
-                if (entry.type === 'unknown') return '<span class="chip chip-muted">Unknown event</span>';
+                if (entry.type === 'tool_call') return '<span class="chip chip-tool">Tool Call</span>';
+                if (entry.type === 'tool_result') return '<span class="chip chip-tool">Tool Result</span>';
+                if (entry.type === 'system_internal') return '<span class="chip chip-system">System</span>';
+                if (entry.type === 'unknown') return '<span class="chip chip-system">Unknown event</span>';
                 return '';
             }
 
@@ -357,22 +397,22 @@
                 });
 
                 if (!transcriptState.current) {
-                    target.innerHTML = '<div class="timeline-item slim">Select a session to view transcript.</div>';
+                    target.innerHTML = '<div class="timeline-header"><div class="timeline-title"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg><span class="transcript-title-capsule"></span>Timeline</div><div class="panel-subtitle">Chronological conversation flow.</div></div><div class="timeline-item slim">Select a session to view transcript.</div>';
                     return;
                 }
 
                 if (transcriptState.current.transcriptStatus === 'summary_only') {
                     const summary = transcriptState.summary || {};
-                    target.innerHTML = `<div class="timeline-item slim">Transcript no longer available. Session ran ${summary.timestamp || '--'}, ${summary.tokens || 0} tokens, model ${summary.model || '--'}.</div>`;
+                    target.innerHTML = `<div class="timeline-header"><div class="timeline-title"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg><span class="transcript-title-capsule"></span>Timeline</div><div class="panel-subtitle">Chronological conversation flow.</div></div><div class="timeline-item slim">Transcript no longer available. Session ran ${summary.timestamp || '--'}, ${summary.tokens || 0} tokens, model ${summary.model || '--'}.</div>`;
                     return;
                 }
 
                 if (filtered.length === 0) {
-                    target.innerHTML = '<div class="timeline-item slim">Transcript not available.</div>';
+                    target.innerHTML = '<div class="timeline-header"><div class="timeline-title"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg><span class="transcript-title-capsule"></span>Timeline</div><div class="panel-subtitle">Chronological conversation flow.</div></div><div class="timeline-item slim">Transcript not available.</div>';
                     return;
                 }
 
-                target.innerHTML = filtered.map((entry) => {
+                target.innerHTML = `<div class="timeline-header"><div class="timeline-title"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg><span class="transcript-title-capsule"></span>Timeline</div><div class="panel-subtitle">Chronological conversation flow.</div></div>` + filtered.map((entry) => {
                     const slim = entry.type === 'compaction' || entry.type === 'branch_summary' || entry.type === 'corruption';
                     const full = entry.content || entry.summary || JSON.stringify(entry, null, 2);
                     const preview = summarizeEntry(entry);
@@ -402,7 +442,7 @@
                 const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/transcript?limit=${limit}${beforeParam}`, FETCH_OPTS);
                 if (!res.ok) {
                     renderTranscriptHeader(null);
-                    document.getElementById('timeline').innerHTML = '<div class="timeline-item slim">Transcript not available.</div>';
+                    document.getElementById('timeline').innerHTML = '<div class="timeline-header"><div class="timeline-title"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg><span class="transcript-title-capsule"></span>Timeline</div><div class="panel-subtitle">Chronological conversation flow.</div></div><div class="timeline-item slim">Transcript not available.</div>';
                     return;
                 }
                 const data = await res.json();
