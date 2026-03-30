@@ -9148,13 +9148,17 @@ const server = createServer(async (req, res) => {
         return;
       }
 
-      let rawItems = [];
-      try {
-        rawItems = JSON.parse(run.stdout || '[]');
-      } catch {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Search failed', items: [] }));
-        return;
+      const runSearch = (q) => {
+        const r = spawnSync('python3', ['/home/openclaw/.openclaw/scripts/graph-search.py', q, '--json', '--top-k', String(limit)], {
+          encoding: 'utf8', timeout: 3000, shell: false,
+        });
+        if (r.error || r.status !== 0) return [];
+        try { return JSON.parse(r.stdout || '[]'); } catch { return []; }
+      };
+
+      let rawItems = runSearch(query);
+      if ((!rawItems || rawItems.length === 0) && query !== query.charAt(0).toUpperCase() + query.slice(1)) {
+        rawItems = runSearch(query.charAt(0).toUpperCase() + query.slice(1));
       }
 
       const toMatchQuality = (method, score) => {
