@@ -11,7 +11,7 @@ const { createServer } = http;
 import { readFileSync, existsSync, writeFileSync, copyFileSync, readdirSync, statSync, unlinkSync, renameSync, createReadStream } from 'fs';
 import { join, extname, resolve, sep } from 'path';
 import { createInterface } from 'readline';
-import { gzipSync } from 'zlib';
+import { gzipSync, gunzipSync } from 'zlib';
 import { exec, execFileSync, execSync, spawn, spawnSync } from 'child_process';
 import { AgentCollector } from './collector.mjs';
 import { createAgent } from './create-agent.mjs';
@@ -81,7 +81,6 @@ import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 
 import { logAction, getLog, getLogStats, pruneLog } from './ops-log-db.mjs';
 import { queryLogs, getIngestHealth, pruneOldLogs, runIngestionCycle } from './logs-db.mjs';
-import { queryDecisions, getDecisionStats } from './security-decisions-db.mjs';
 import { storeChecks, getHistory as getSecurityHistory, getTransitions } from './security-db.mjs';
 import { recordRun, getHistory as getWatcherHistory, getTrends as getWatcherTrends, getJobStats, pruneOldRuns } from './watcher-db.mjs';
 import { createSnapshot, listSnapshots, getSnapshotManifest, restoreSnapshot, deleteSnapshot, enforceRetention } from './ops-backup.mjs';
@@ -141,6 +140,11 @@ const VERIFY_SCRIPT_PATH = '/usr/local/bin/verify-deployment.sh';
 const SOUL_MD_PATH = '/home/openclaw/.openclaw/workspace/SOUL.md';
 const SOUL_HASH_PATH = '/home/openclaw/.openclaw/.soul-hash';
 const CONFIG_DRIFT_BASELINE_PATH = '/var/tmp/config-drift-baseline.json';
+const CONFIG_BASELINE_RESET_SCRIPT_PATH = '/usr/local/bin/reset-config-baseline.sh';
+const CREDENTIAL_PATTERNS_CONFIG_PATH = '/etc/jarvis/credential-patterns.json';
+const SECURITY_HOOK_LOG_PATH = '/home/openclaw/.openclaw/logs/security-hook.log';
+const SECURITY_HOOK_LOG_ARCHIVE_PATH = '/home/openclaw/.openclaw/logs/security-hook.log.1.gz';
+const SECURITY_HOOK_CONFIG_PATH = '/home/openclaw/.openclaw/security-hook.json';
 const CREDENTIAL_ALLOWLIST_PATH = '/home/openclaw/.openclaw/workspace/credential-allowlist.json';
 const WATCHER_STATUS_PATH = '/home/openclaw/.openclaw/workspace/watcher-status.json';
 const WATCHER_CONFIG_PATH = '/etc/jarvis/watcher.json';
@@ -266,8 +270,118 @@ function writeCredentialAllowlist(ids) {
 
 function maskCredentialValue(value) {
   const text = String(value || '');
-  if (text.length < 12) return text;
+  if (text.length <= 8) return text;
   return `${text.slice(0, 4)}...${text.slice(-4)}`;
+}
+
+function parseRelativeDurationMs(raw) {
+  const match = String(raw || '').trim().match(/^(\d+)([mhd])$/i);
+  if (!match) return null;
+  const amount = Number.parseInt(match[1], 10);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  const unit = match[2].toLowerCase();
+  if (unit === 'm') return amount * 60 * 1000;
+  if (unit === 'h') return amount * 60 * 60 * 1000;
+  if (unit === 'd') return amount * 24 * 60 * 60 * 1000;
+  return null;
+}
+
+function parseSinceCutoffMs(rawSince, defaultDuration = '24h') {
+  const raw = String(rawSince || defaultDuration).trim();
+  const relative = parseRelativeDurationMs(raw);
+  if (relative != null) return Date.now() - relative;
+  const iso = Date.parse(raw);
+  if (Number.isFinite(iso)) return iso;
+  return null;
+}
+
+function readCredentialPatternsConfig() {
+  if (!existsSync(CREDENTIAL_PATTERNS_CONFIG_PATH)) {
+    return null;
+  }
+  const payload = JSON.parse(readFileSync(CREDENTIAL_PATTERNS_CONFIG_PATH, 'utf8'));
+  const version = Number.parseInt(payload?.version, 10) || 1;
+  const patterns = Array.isArray(payload?.patterns) ? payload.patterns : [];
+  return {
+    version,
+    patterns: patterns
+      .filter((entry) => entry && entry.name && entry.regex)
+      .map((entry) => ({ name: String(entry.name), regex: new RegExp(String(entry.regex), 'i') })),
+  };
+}
+
+function findCredentialPatternName(patternConfig, factKey, factValue) {
+  if (!patternConfig) return 'unknown';
+  const keyText = String(factKey || '');
+  const valueText = String(factValue || '');
+  for (const pattern of patternConfig.patterns) {
+    if (pattern.regex.test(valueText) || pattern.regex.test(keyText)) {
+      return pattern.name;
+    }
+  }
+  return 'unknown';
+}
+
+function parseHookLogEntries(text, cutoffMs, actionFilter = null) {
+  const entries = [];
+  if (!text) return entries;
+  const lines = text.split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const parsed = JSON.parse(trimmed);
+      const timestamp = String(parsed.timestamp || '');
+      const tsMs = Date.parse(timestamp);
+      if (!Number.isFinite(tsMs) || tsMs < cutoffMs) continue;
+      const action = String(parsed.action || '');
+      if (actionFilter && !actionFilter.has(action)) continue;
+      const target = parsed.path || parsed.command || null;
+      const rule = action === 'blocked'
+        ? (parsed.matchedRule || null)
+        : (action === 'rate-limited'
+          ? `rate limit: ${parsed.currentCount ?? '?'}/${parsed.threshold ?? '?'} per ${parsed.window || 'window'}`
+          : null);
+      entries.push({
+        timestamp,
+        agentId: parsed.agentId || 'unknown',
+        tool: parsed.tool || null,
+        action,
+        target,
+        rule,
+        command: parsed.command || null,
+      });
+    } catch {
+      // ignore malformed JSONL lines
+    }
+  }
+  return entries;
+}
+
+function readHookDecisions({ since = '24h', actions = null, limit = 50 }) {
+  const cutoffMs = parseSinceCutoffMs(since, '24h');
+  if (!Number.isFinite(cutoffMs)) throw new Error('Invalid since parameter');
+
+  const actionFilter = (actions && actions.size) ? actions : null;
+  if (!existsSync(SECURITY_HOOK_LOG_PATH)) {
+    return { decisions: [], total: 0, latestTimestamp: null };
+  }
+
+  const currentText = readFileSync(SECURITY_HOOK_LOG_PATH, 'utf8');
+  let entries = parseHookLogEntries(currentText, cutoffMs, actionFilter);
+  if (entries.length < limit && existsSync(SECURITY_HOOK_LOG_ARCHIVE_PATH)) {
+    try {
+      const archiveRaw = readFileSync(SECURITY_HOOK_LOG_ARCHIVE_PATH);
+      const archiveText = gunzipSync(archiveRaw).toString('utf8');
+      entries = entries.concat(parseHookLogEntries(archiveText, cutoffMs, actionFilter));
+    } catch {
+      // Ignore archive read/parse issues.
+    }
+  }
+
+  entries.sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
+  const latestTimestamp = entries[0]?.timestamp || null;
+  return { decisions: entries.slice(0, limit), total: entries.length, latestTimestamp };
 }
 
 function detectLikelyCredential(value = '') {
@@ -5479,30 +5593,29 @@ const server = createServer(async (req, res) => {
 
   if (path === '/api/security/decisions' && req.method === 'GET') {
     try {
-      const session_id = url.searchParams.get('session_id') || null;
-      const task_id = url.searchParams.get('task_id') || null;
-      const agent = url.searchParams.get('agent') || null;
-      const decision = url.searchParams.get('decision') || null;
-      const after = url.searchParams.get('after') || null;
-      const before = url.searchParams.get('before') || null;
-      const limit = Number.parseInt(url.searchParams.get('limit') || '50', 10);
-      const offset = Number.parseInt(url.searchParams.get('offset') || '0', 10);
-      const safeLimit = Math.max(1, Math.min(200, Number.isFinite(limit) ? limit : 50));
-      const safeOffset = Math.max(0, Number.isFinite(offset) ? offset : 0);
-      const { rows, total } = queryDecisions({
-        session_id,
-        task_id,
-        agent,
-        decision,
-        after,
-        before,
-        limit: safeLimit,
-        offset: safeOffset,
-      });
+      const since = url.searchParams.get('since') || '24h';
+      const limitRaw = Number.parseInt(url.searchParams.get('limit') || '50', 10);
+      const safeLimit = Math.max(1, Math.min(200, Number.isFinite(limitRaw) ? limitRaw : 50));
+      const rawActions = (url.searchParams.get('action') || '').trim();
+      const allowedActions = new Set(['blocked', 'rate-limited', 'confirmed', 'allowed_sensitive_write', 'allowed_exec', 'allowed_read', 'allowed_default']);
+      const filterActions = rawActions
+        ? new Set(rawActions.split(',').map((entry) => entry.trim()).filter((entry) => allowedActions.has(entry)))
+        : null;
+
+      const result = readHookDecisions({ since, actions: filterActions, limit: safeLimit });
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ rows, total, limit: safeLimit, offset: safeOffset }));
+      res.end(JSON.stringify({
+        decisions: result.decisions,
+        total: result.total,
+        filters: {
+          action: filterActions ? Array.from(filterActions) : Array.from(allowedActions),
+          since,
+          limit: safeLimit,
+        },
+      }));
     } catch (e) {
-      res.writeHead(500, { 'Content-Type': 'application/json' });
+      const status = e.message === 'Invalid since parameter' ? 400 : 500;
+      res.writeHead(status, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: e.message }));
     }
     return;
@@ -5510,11 +5623,43 @@ const server = createServer(async (req, res) => {
 
   if (path === '/api/security/decisions/stats' && req.method === 'GET') {
     try {
-      const after = url.searchParams.get('after') || null;
-      const before = url.searchParams.get('before') || null;
-      const stats = getDecisionStats({ after, before });
+      const period = url.searchParams.get('period') || '24h';
+      const allowedPeriods = new Set(['1h', '6h', '12h', '24h', '7d']);
+      if (!allowedPeriods.has(period)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'period must be one of 1h, 6h, 12h, 24h, 7d' }));
+        return;
+      }
+      const result = readHookDecisions({ since: period, actions: null, limit: 200000 });
+      const counts = {
+        blocked: 0,
+        rate_limited: 0,
+        confirmed: 0,
+        allowed_sensitive_write: 0,
+        allowed_exec: 0,
+        allowed_read: 0,
+        allowed_default: 0,
+      };
+      for (const decision of result.decisions) {
+        if (decision.action === 'rate-limited') counts.rate_limited += 1;
+        else if (Object.prototype.hasOwnProperty.call(counts, decision.action)) counts[decision.action] += 1;
+      }
+      const hookConfig = readJsonSafe(SECURITY_HOOK_CONFIG_PATH, {});
+      const hookMode = typeof hookConfig.mode === 'string' && hookConfig.mode.trim() ? hookConfig.mode : 'normal';
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(stats));
+      res.end(JSON.stringify({
+        period,
+        total: result.total,
+        blocked: counts.blocked,
+        rate_limited: counts.rate_limited,
+        confirmed: counts.confirmed,
+        allowed_sensitive_write: counts.allowed_sensitive_write,
+        allowed_exec: counts.allowed_exec,
+        allowed_read: counts.allowed_read,
+        allowed_default: counts.allowed_default,
+        latest_timestamp: result.latestTimestamp,
+        hook_mode: hookMode,
+      }));
     } catch (e) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: e.message }));
@@ -5633,6 +5778,7 @@ const server = createServer(async (req, res) => {
   }
 
   if (path === '/api/security/config-drift/ack' && req.method === 'POST') {
+    const started = Date.now();
     try {
       if (!existsSync(OPENCLAW_CONFIG_PATH)) {
         res.writeHead(404, { 'Content-Type': 'application/json' });
@@ -5640,22 +5786,56 @@ const server = createServer(async (req, res) => {
         return;
       }
 
-      const config = JSON.parse(readFileSync(OPENCLAW_CONFIG_PATH, 'utf8'));
-      const flattened = flattenConfigForDrift(config);
-      writeFileSync(CONFIG_DRIFT_BASELINE_PATH, `${JSON.stringify(flattened, null, 2)}\n`, 'utf8');
+      let keysInBaseline = 0;
+      if (existsSync(CONFIG_BASELINE_RESET_SCRIPT_PATH)) {
+        execFileSync(CONFIG_BASELINE_RESET_SCRIPT_PATH, [], { timeout: 30000, stdio: ['ignore', 'pipe', 'pipe'] });
+      } else {
+        const config = JSON.parse(readFileSync(OPENCLAW_CONFIG_PATH, 'utf8'));
+        const flattened = flattenConfigForDrift(config);
+        writeFileSync(CONFIG_DRIFT_BASELINE_PATH, `${JSON.stringify(flattened, null, 2)}\n`, 'utf8');
+      }
 
-      const timestamp = new Date().toISOString();
+      if (existsSync(CONFIG_DRIFT_BASELINE_PATH)) {
+        const baseline = JSON.parse(readFileSync(CONFIG_DRIFT_BASELINE_PATH, 'utf8'));
+        if (baseline && typeof baseline === 'object' && !Array.isArray(baseline)) {
+          keysInBaseline = Object.keys(baseline).length;
+        }
+      }
+
+      exec(SECURITY_CHECK_SCRIPT_PATH, { timeout: 30000 }, () => {
+        try {
+          const data = JSON.parse(readFileSync(SECURITY_HEALTH_RESULTS_PATH, 'utf8'));
+          if (Array.isArray(data.checks)) {
+            storeChecks(data.checks);
+            if (data.generated_at) {
+              lastStoredSecurityGeneratedAt = data.generated_at;
+            }
+          }
+        } catch {
+          // best effort
+        }
+      });
+
       logAction({
         category: 'security',
         action: 'config-drift-ack',
         target: 'config-drift-baseline',
         status: 'success',
         detail: 'Config drift acknowledged by dashboard operator',
+        duration_ms: Date.now() - started,
       });
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: true, keyCount: Object.keys(flattened).length, timestamp }));
+      res.end(JSON.stringify({ acknowledged: true, keys_in_baseline: keysInBaseline }));
     } catch (e) {
+      logAction({
+        category: 'security',
+        action: 'config-drift-ack',
+        target: 'config-drift-baseline',
+        status: 'failed',
+        detail: truncateOutput(e.message),
+        duration_ms: Date.now() - started,
+      });
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: e.message }));
     }
@@ -5692,18 +5872,114 @@ const server = createServer(async (req, res) => {
   }
 
   if (path === '/api/security/memory-credentials' && req.method === 'GET') {
+    const started = Date.now();
     try {
-      const payload = getMemoryCached('security-memory-credentials', 60000, () => {
-        const rows = getCredentialReviewRows();
-        return {
-          credentials: rows,
-          count: rows.length,
-          generatedAt: new Date().toISOString(),
-        };
-      });
+      const config = readCredentialPatternsConfig();
+      if (!config) {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: `Credential patterns config not found at ${CREDENTIAL_PATTERNS_CONFIG_PATH}` }));
+        return;
+      }
+
+      const matches = [];
+      const db = openFactsDb();
+      let scannedFacts = 0;
+      try {
+        const facts = db.prepare('SELECT id, entity, key, value, created_at FROM facts').all();
+        scannedFacts = facts.length;
+        for (const fact of facts) {
+          const keyText = String(fact.key || '');
+          const valueText = String(fact.value || '');
+          for (const pattern of config.patterns) {
+            if (pattern.regex.test(valueText) || pattern.regex.test(keyText)) {
+              matches.push({
+                fact_id: Number(fact.id),
+                entity: fact.entity || '',
+                key: keyText,
+                value_masked: maskCredentialValue(valueText),
+                value_full: valueText,
+                pattern_name: pattern.name,
+                created_at: fact.created_at || null,
+              });
+              break;
+            }
+          }
+        }
+      } finally {
+        db.close();
+      }
+
+      const payload = {
+        pattern_version: config.version,
+        matches,
+        scanned_facts: scannedFacts,
+        scan_time_ms: Date.now() - started,
+      };
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(payload));
     } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (path.startsWith('/api/security/memory-credentials/') && req.method === 'DELETE') {
+    const started = Date.now();
+    try {
+      const factIdRaw = path.replace('/api/security/memory-credentials/', '');
+      const factId = Number.parseInt(factIdRaw, 10);
+      if (!Number.isInteger(factId) || factId <= 0) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'factId must be a positive integer' }));
+        return;
+      }
+
+      const patternConfig = readCredentialPatternsConfig();
+      const db = openFactsDbWrite();
+      let fact = null;
+      try {
+        fact = db.prepare('SELECT id, entity, key, value FROM facts WHERE id = ?').get(factId);
+        if (!fact) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Fact not found' }));
+          return;
+        }
+        const tx = db.transaction((id) => {
+          db.prepare('DELETE FROM co_occurrences WHERE fact_a = ? OR fact_b = ?').run(id, id);
+          const result = db.prepare('DELETE FROM facts WHERE id = ?').run(id);
+          return result.changes;
+        });
+        tx(factId);
+      } finally {
+        db.close();
+      }
+
+      const target = `${fact.entity || 'unknown'}:${fact.key || ''}`;
+      const detail = findCredentialPatternName(patternConfig, fact.key, fact.value);
+      logAction({
+        category: 'security',
+        action: 'credential-delete',
+        target,
+        status: 'success',
+        detail,
+        duration_ms: Date.now() - started,
+      });
+
+      memoryApiCache.delete('security-memory-credentials');
+      memoryApiCache.delete('stats');
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ deleted: true, fact_id: factId }));
+    } catch (e) {
+      logAction({
+        category: 'security',
+        action: 'credential-delete',
+        target: 'facts.db',
+        status: 'failed',
+        detail: truncateOutput(e.message),
+        duration_ms: Date.now() - started,
+      });
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: e.message }));
     }
