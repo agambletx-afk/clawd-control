@@ -5665,7 +5665,7 @@ const server = createServer(async (req, res) => {
       return;
     }
 
-    const command = (typeof process.getuid === 'function' && process.getuid() === 0)
+    const command = isRoot
       ? `su -s /bin/bash openclaw -c '${SECURITY_TEST_SCRIPT_PATH}'`
       : SECURITY_TEST_SCRIPT_PATH;
 
@@ -5887,7 +5887,6 @@ const server = createServer(async (req, res) => {
 
     const timeoutSeconds = action === 'run' ? 120 : 60;
     const actionVerb = action === 'run' ? 'run --force' : action;
-    const command = `sudo -u openclaw timeout ${timeoutSeconds} /usr/bin/openclaw cron ${actionVerb} ${jobId} 2>&1`;
     const started = Date.now();
 
     exec(command, { timeout: timeoutSeconds * 1000, maxBuffer: 1024 * 1024 }, (error, stdout = '', stderr = '') => {
@@ -9130,9 +9129,7 @@ const server = createServer(async (req, res) => {
       const requestedLimit = parseInt(url.searchParams.get('limit') || '20', 10);
       const limit = Math.max(1, Math.min(50, Number.isFinite(requestedLimit) ? requestedLimit : 20));
 
-      const escapedQuery = query.replace(/'/g, "'\\''");
-      const command = `python3 /home/openclaw/.openclaw/scripts/graph-search.py '${escapedQuery}' --json --top-k ${limit}`;
-      const run = spawnSync('su', ['-', 'openclaw', '-c', command], {
+      const run = spawnSync('python3', ['/home/openclaw/.openclaw/scripts/graph-search.py', query, '--json', '--top-k', String(limit)], {
         encoding: 'utf8',
         timeout: 3000,
         shell: false,
