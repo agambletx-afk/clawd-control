@@ -76,6 +76,50 @@ main { padding: 24px; max-width: 1500px; margin: 0 auto; }
 .scroll-hint { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px; margin-top: 4px; background: #1e2535; border: 1px solid #363b4d; border-radius: 8px; color: #94a3b8; font-size: 12px; font-weight: 600; cursor: pointer; }
 .scroll-hint:hover { color: #c084fc; }
 .scroll-hint svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 2; }
+.search-panel-body { display: grid; gap: 16px; }
+.memory-search-input-wrap { position: relative; }
+.memory-search-input-icon { position: absolute; left: 16px; top: 50%; width: 16px; height: 16px; transform: translateY(-50%); stroke: #94a3b8; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+.memory-search-input {
+  width: 100%;
+  background: #0d1117;
+  border: 1px solid #363b4d;
+  border-radius: 8px;
+  padding: 8px 16px 8px 40px;
+  color: #f1f5f9;
+  font-size: 14px;
+  outline: none;
+}
+.memory-search-input::placeholder { color: #475569; }
+.memory-search-input:focus { border-color: #c084fc; }
+.memory-search-results { display: none; }
+.memory-search-results.visible { display: block; }
+.memory-search-state { color: #94a3b8; font-size: 13px; }
+.memory-search-state.empty { padding: 0; text-align: left; font-style: italic; }
+.search-list-wrap { position: relative; }
+.search-results-list { display: grid; gap: 8px; }
+.search-results-list.scrollable { max-height: 340px; overflow-y: auto; }
+.search-result-row {
+  background: #1e2535;
+  border: 1px solid #363b4d;
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+.search-result-main { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; align-items: start; }
+.search-result-preview { margin-top: 4px; color: #94a3b8; font-size: 12px; line-height: 1.4; }
+.search-result-right { display: grid; justify-items: end; gap: 8px; }
+.search-score { color: #94a3b8; font-size: 12px; font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+.search-result-expand {
+  margin-top: 8px;
+  border-top: 1px dashed #363b4d;
+  padding-top: 8px;
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-height 180ms ease, opacity 180ms ease;
+}
+.search-result-row.expanded .search-result-expand { max-height: 280px; opacity: 1; }
+.search-match-badge { border-radius: 4px; padding: 4px 8px; font-size: 11px; font-weight: 600; }
 .fact-row {
   padding: 8px 0;
   border-bottom: 1px solid #363b4d;
@@ -175,6 +219,24 @@ main { padding: 24px; max-width: 1500px; margin: 0 auto; }
       <div class="store-right"><div class="tier-track" id="tierTrack" style="width:100%;"></div></div>
     </div>
     <div class="tier-legend" id="tierLegend"></div>
+  </section>
+
+  <section class="section-gap panel">
+    <div class="panel-header">
+      <svg class="panel-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.35-4.35"></path></svg>
+      <span class="domain-capsule"></span>
+      <div class="panel-title-wrap">
+        <p class="panel-title">Memory Search</p>
+        <p class="panel-subtitle">Look up what the system knows</p>
+      </div>
+    </div>
+    <div class="search-panel-body">
+      <div class="memory-search-input-wrap">
+        <svg class="memory-search-input-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.35-4.35"></path></svg>
+        <input id="memorySearchInput" class="memory-search-input" type="text" placeholder="Search facts..." autocomplete="off" />
+      </div>
+      <div id="memorySearchResults" class="memory-search-results"></div>
+    </div>
   </section>
 
   <section class="section-gap summary-grid">
@@ -414,6 +476,116 @@ function renderFactList(id, data, mode, emptyText) {
   }
 }
 
+function searchMatchBadge(label) {
+  if (label === 'Related memory') return { bg: 'rgba(20, 184, 166, 0.18)', fg: '#99f6e4' };
+  if (label === 'Weak match') return { bg: 'rgba(148, 163, 184, 0.18)', fg: '#cbd5e1' };
+  return { bg: 'rgba(192, 132, 252, 0.18)', fg: '#e9d5ff' };
+}
+
+function buildSearchRow(item) {
+  const source = sourceBadge(item.source || '');
+  const badge = searchMatchBadge(item.matchLabel || 'Direct match');
+  const wrapper = document.createElement('article');
+  wrapper.className = 'search-result-row';
+  wrapper.innerHTML = `
+    <div class="search-result-main">
+      <div>
+        <div><span class="fact-name">${item.entity || '—'}</span> <span class="fact-key">${item.key || 'key'}</span></div>
+        <div class="search-result-preview">${String(item.value || '').slice(0, 120)}</div>
+      </div>
+      <div class="search-result-right">
+        <span class="search-match-badge" style="background:${badge.bg};color:${badge.fg};">${item.matchLabel || 'Direct match'}</span>
+        <span class="search-score">${Number(item.score || 0).toFixed(1)}</span>
+      </div>
+    </div>
+    <div class="search-result-expand">
+      <div class="expand-grid">
+        <div>${String(item.value || '')}</div>
+        <div><span class="badge" style="background:${source.bg};color:${source.fg};">${source.text}</span></div>
+        <div>${item.matchDescription || 'Matched your search terms'}</div>
+        <div>score: <span class="fact-mono">${Number(item.score || 0).toFixed(1)}</span></div>
+      </div>
+    </div>
+  `;
+  wrapper.addEventListener('click', () => wrapper.classList.toggle('expanded'));
+  return wrapper;
+}
+
+function renderMemorySearchState(message, isEmpty) {
+  const root = document.getElementById('memorySearchResults');
+  if (!root) return;
+  root.className = 'memory-search-results visible';
+  root.innerHTML = `<div class="memory-search-state${isEmpty ? ' empty' : ''}">${message}</div>`;
+}
+
+function renderMemorySearchResults(payload, query) {
+  const root = document.getElementById('memorySearchResults');
+  if (!root) return;
+  root.className = 'memory-search-results visible';
+
+  if (payload.error) {
+    root.innerHTML = `<div class="memory-search-state">${payload.error}</div>`;
+    return;
+  }
+
+  const items = Array.isArray(payload.items) ? payload.items.slice(0, 20) : [];
+  if (!items.length) {
+    root.innerHTML = `<div class="memory-search-state empty">No results for '${query.replace(/'/g, '&#39;')}'.</div>`;
+    return;
+  }
+
+  const wrap = document.createElement('div');
+  wrap.className = 'search-list-wrap';
+  const list = document.createElement('div');
+  list.className = `search-results-list${items.length > 5 ? ' scrollable' : ''}`;
+  for (const item of items) list.appendChild(buildSearchRow(item));
+  wrap.appendChild(list);
+  if (items.length > 5) {
+    const hint = document.createElement('div');
+    hint.className = 'scroll-hint';
+    hint.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>Scroll for more · ' + items.length + ' results';
+    hint.addEventListener('click', function() { list.scrollBy({ top: 200, behavior: 'smooth' }); });
+    wrap.appendChild(hint);
+  }
+  root.innerHTML = '';
+  root.appendChild(wrap);
+}
+
+async function runMemorySearch(query) {
+  renderMemorySearchState('Searching...');
+  try {
+    const response = await fetch('/api/memory/search?q=' + encodeURIComponent(query) + '&limit=20');
+    const payload = await response.json();
+    renderMemorySearchResults(payload || {}, query);
+  } catch {
+    renderMemorySearchState('Search failed');
+  }
+}
+
+function initMemorySearch() {
+  const input = document.getElementById('memorySearchInput');
+  const results = document.getElementById('memorySearchResults');
+  if (!input || !results) return;
+  results.className = 'memory-search-results';
+  results.innerHTML = '';
+
+  input.addEventListener('keydown', function(event) {
+    if (event.key === 'Enter') {
+      const query = input.value.trim();
+      if (!query) {
+        renderMemorySearchState('Query required');
+        return;
+      }
+      runMemorySearch(query);
+    }
+    if (event.key === 'Escape') {
+      input.value = '';
+      results.className = 'memory-search-results';
+      results.innerHTML = '';
+    }
+  });
+}
+
 function renderSkeletonLists() {
   for (const id of ['mostActiveList', 'recentFactsList']) {
     const target = document.getElementById(id);
@@ -442,6 +614,7 @@ async function fetchData() {
 
 skeletonLane();
 renderSkeletonLists();
+initMemorySearch();
 fetchData();
 setInterval(fetchData, 120000);
 </script>

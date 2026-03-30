@@ -9118,6 +9118,109 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (path === '/api/memory/search' && req.method === 'GET') {
+    try {
+      const query = String(url.searchParams.get('q') || '').trim();
+      if (!query) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Query required', items: [] }));
+        return;
+      }
+
+      const requestedLimit = parseInt(url.searchParams.get('limit') || '20', 10);
+      const limit = Math.max(1, Math.min(50, Number.isFinite(requestedLimit) ? requestedLimit : 20));
+
+      const escapedQuery = query.replace(/'/g, "'\\''");
+      const command = `python3 /home/openclaw/.openclaw/scripts/graph-search.py '${escapedQuery}' --json --top-k ${limit}`;
+      const run = spawnSync('su', ['-', 'openclaw', '-c', command], {
+        encoding: 'utf8',
+        timeout: 3000,
+        shell: false,
+      });
+
+      if (run.error?.code === 'ETIMEDOUT') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Search timed out', items: [] }));
+        return;
+      }
+
+      if (run.status !== 0) {
+        console.error('[API] /api/memory/search process error:', run.stderr || run.stdout || `exit ${run.status}`);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Search failed', items: [] }));
+        return;
+      }
+
+      let rawItems = [];
+      try {
+        rawItems = JSON.parse(run.stdout || '[]');
+      } catch {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Search failed', items: [] }));
+        return;
+      }
+
+      const toMatchQuality = (method, score) => {
+        if (method === 'entity' || method === 'entity+intent') {
+          return { matchLabel: 'Direct match', matchDescription: 'Matched your search terms directly' };
+        }
+        if (method === 'fts') {
+          return { matchLabel: 'Direct match', matchDescription: 'Matched via full-text search' };
+        }
+        if (method === 'relation' || method === 'entity+rel' || method === 'entity+intent+rel' || method === 'fts_rel') {
+          return { matchLabel: 'Related memory', matchDescription: 'Surfaced via linked knowledge' };
+        }
+        if (Number(score) < 45) {
+          return { matchLabel: 'Weak match', matchDescription: 'Low confidence match' };
+        }
+        return { matchLabel: 'Direct match', matchDescription: 'Matched your search terms' };
+      };
+
+      const parseAnswer = (answer) => {
+        const raw = String(answer || '');
+        const match = raw.match(/^([^\.\s][^.]*)\.([^=]+?)\s*=\s*(.*)$/);
+        if (!match) {
+          return { entity: null, key: null, value: raw };
+        }
+        return {
+          entity: String(match[1] || '').trim() || null,
+          key: String(match[2] || '').trim() || null,
+          value: String(match[3] || ''),
+        };
+      };
+
+      const items = (Array.isArray(rawItems) ? rawItems : []).map((row) => {
+        const score = Number(row?.score || 0);
+        const parsed = parseAnswer(row?.answer);
+        const quality = toMatchQuality(String(row?.method || '').toLowerCase(), score);
+        return {
+          entity: parsed.entity,
+          key: parsed.key,
+          value: parsed.value,
+          score,
+          source: row?.path || 'unknown',
+          method: row?.method || null,
+          matchLabel: quality.matchLabel,
+          matchDescription: quality.matchDescription,
+        };
+      });
+
+      const payload = {
+        query,
+        items,
+        total: items.length,
+        generatedAt: new Date().toISOString(),
+      };
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(payload));
+    } catch (e) {
+      console.error('[API] /api/memory/search error:', e.message);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Search failed', items: [] }));
+    }
+    return;
+  }
+
   if (path === '/api/logs' && req.method === 'GET') {
     try {
       const requestedLimit = parseInt(url.searchParams.get('limit') || '50', 10);
