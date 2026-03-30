@@ -8796,6 +8796,7 @@ const server = createServer(async (req, res) => {
         const sourceDistribution = db.prepare('SELECT source, COUNT(*) AS count FROM facts GROUP BY source ORDER BY count DESC LIMIT 20').all();
         const structuredCount = queryCountSafe(db, "SELECT COUNT(*) AS count FROM facts WHERE COALESCE(key, '') != 'note' LIMIT 1");
         const topEntities = db.prepare("SELECT entity, COUNT(*) AS count FROM facts WHERE COALESCE(entity, '') != '' GROUP BY entity ORDER BY count DESC LIMIT 5").all();
+        const agentRows = db.prepare("SELECT DISTINCT agent_id FROM facts WHERE agent_id IS NOT NULL AND agent_id != '' ORDER BY agent_id ASC").all();
         const pendingExpired = queryCountSafe(db, 'SELECT COUNT(*) AS count FROM facts WHERE expires_at IS NOT NULL AND CAST(expires_at AS INTEGER) < ? AND CAST(expires_at AS INTEGER) > 0 LIMIT 1', [nowUnix]);
         db.close();
         const dbSizeBytes = (() => {
@@ -8816,6 +8817,7 @@ const server = createServer(async (req, res) => {
           structuredRatio: totalFacts > 0 ? (structuredCount / totalFacts) * 100 : 0,
           sourceDistribution: sourceDistribution.map((row) => ({ source: row.source || 'unknown', count: Number(row.count || 0) })),
           topEntities: topEntities.map((row) => ({ entity: row.entity, count: Number(row.count || 0) })),
+          agents: agentRows.map((row) => row.agent_id).filter(Boolean),
           decay: decayRows.map((row) => ({ decayClass: row.decay_class || 'unknown', count: Number(row.count || 0) })),
           generatedAt: new Date().toISOString(),
         };

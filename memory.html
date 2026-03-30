@@ -91,6 +91,12 @@ main { padding: 24px; max-width: 1500px; margin: 0 auto; }
 }
 .memory-search-input::placeholder { color: #475569; }
 .memory-search-input:focus { border-color: #c084fc; }
+.search-filters { display: flex; flex-wrap: wrap; gap: 8px; }
+.search-filter-group { display: flex; align-items: center; gap: 4px; }
+.search-filter-label { font-size: 11px; text-transform: uppercase; font-weight: 600; color: #94a3b8; letter-spacing: 0.04em; margin-right: 4px; }
+.search-filter-pill { border: 1px solid #363b4d; border-radius: 9999px; padding: 2px 8px; background: transparent; color: #94a3b8; cursor: pointer; font-size: 11px; font-family: Inter, system-ui, sans-serif; transition: background 140ms ease, border-color 140ms ease; }
+.search-filter-pill:hover { border-color: #c084fc; color: #e9d5ff; }
+.search-filter-pill.active { background: rgba(192, 132, 252, 0.15); border-color: #c084fc; color: #e9d5ff; }
 .memory-search-results { display: none; }
 .memory-search-results.visible { display: block; }
 .memory-search-state { color: #94a3b8; font-size: 13px; }
@@ -280,6 +286,12 @@ main { padding: 24px; max-width: 1500px; margin: 0 auto; }
       <div class="memory-search-input-wrap">
         <svg class="memory-search-input-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.35-4.35"></path></svg>
         <input id="memorySearchInput" class="memory-search-input" type="text" placeholder="Search facts..." autocomplete="off" />
+      </div>
+      <div id="searchFilters" class="search-filters" style="display:none;">
+        <div class="search-filter-group" id="agentFilterGroup"><span class="search-filter-label">Agent</span><button class="search-filter-pill active" data-filter="agent" data-value="all">All</button><button class="search-filter-pill" data-filter="agent" data-value="shared">Shared</button></div>
+        <div class="search-filter-group"><span class="search-filter-label">Decay</span><button class="search-filter-pill" data-filter="decay" data-value="all">All</button><button class="search-filter-pill" data-filter="decay" data-value="permanent">Permanent</button><button class="search-filter-pill" data-filter="decay" data-value="stable">Stable</button><button class="search-filter-pill" data-filter="decay" data-value="active">Active</button><button class="search-filter-pill" data-filter="decay" data-value="session">Session</button></div>
+        <div class="search-filter-group"><span class="search-filter-label">Source</span><button class="search-filter-pill" data-filter="source" data-value="all">All</button><button class="search-filter-pill" data-filter="source" data-value="auto-capture">Capture</button><button class="search-filter-pill" data-filter="source" data-value="daily-ingest">Ingest</button><button class="search-filter-pill" data-filter="source" data-value="conversation">Conversation</button><button class="search-filter-pill" data-filter="source" data-value="manual-seed">Seed</button></div>
+        <div class="search-filter-group"><span class="search-filter-label">Time</span><button class="search-filter-pill" data-filter="time" data-value="all">All</button><button class="search-filter-pill" data-filter="time" data-value="today">Today</button><button class="search-filter-pill" data-filter="time" data-value="7d">7 days</button><button class="search-filter-pill" data-filter="time" data-value="30d">30 days</button></div>
       </div>
       <div id="memorySearchResults" class="memory-search-results"></div>
     </div>
@@ -626,14 +638,62 @@ function renderMemorySearchResults(payload, query) {
 async function runMemorySearch(query) {
   renderMemorySearchState('Searching...');
   try {
-    const response = await fetch('/api/memory/search?q=' + encodeURIComponent(query) + '&limit=20');
-    const payload = await response.json();
-    renderMemorySearchResults(payload || {}, query);
+    var agentParam = searchFilterState.agent !== 'all' ? '&agent=' + encodeURIComponent(searchFilterState.agent) : '';
+    var response = await fetch('/api/memory/search?q=' + encodeURIComponent(query) + '&limit=20' + agentParam);
+    var payload = await response.json();
+    lastSearchPayload = payload || {};
+    var fe = document.getElementById('searchFilters');
+    if (fe) fe.style.display = 'flex';
+    applySearchFilters();
   } catch {
     renderMemorySearchState('Search failed');
   }
 }
 
+var searchFilterState = { agent: 'all', decay: 'all', source: 'all', time: 'all' };
+var lastSearchPayload = null;
+function matchesSearchFilters(item) {
+  if (searchFilterState.decay !== 'all') {
+    var d = (item.decay_class || item.decayClass || 'stable').toLowerCase();
+    if (d !== searchFilterState.decay) return false;
+  }
+  if (searchFilterState.source !== 'all') {
+    if (!(item.source || '').includes(searchFilterState.source)) return false;
+  }
+  if (searchFilterState.time !== 'all') {
+    var c = item.createdAt || item.created_at || '';
+    if (c) {
+      var age = Date.now() - new Date(c).getTime();
+      if (searchFilterState.time === 'today' && age > 86400000) return false;
+      if (searchFilterState.time === '7d' && age > 7*86400000) return false;
+      if (searchFilterState.time === '30d' && age > 30*86400000) return false;
+    }
+  }
+  return true;
+}
+function applySearchFilters() {
+  if (!lastSearchPayload) return;
+  var filtered = { items: (lastSearchPayload.items || []).filter(matchesSearchFilters), total: lastSearchPayload.total, query: lastSearchPayload.query };
+  renderMemorySearchResults(filtered, lastSearchPayload.query || '');
+}
+function initSearchFilters() {
+  var ctr = document.getElementById('searchFilters');
+  if (!ctr) return;
+  ctr.querySelectorAll('.search-filter-pill').forEach(function(pill) {
+    pill.addEventListener('click', function() {
+      var ft = pill.dataset.filter, fv = pill.dataset.value;
+      searchFilterState[ft] = fv;
+      ctr.querySelectorAll('[data-filter="'+ft+'"]').forEach(function(p) { p.classList.toggle('active', p.dataset.value === fv); });
+      if (ft === 'agent') {
+        var input = document.getElementById('memorySearchInput');
+        if (input && input.value.trim()) runMemorySearch(input.value.trim());
+      } else {
+        applySearchFilters();
+      }
+    });
+  });
+  ctr.querySelectorAll('[data-value="all"]').forEach(function(p) { p.classList.add('active'); });
+}
 function initMemorySearch() {
   const input = document.getElementById('memorySearchInput');
   const results = document.getElementById('memorySearchResults');
@@ -654,6 +714,9 @@ function initMemorySearch() {
       input.value = '';
       results.className = 'memory-search-results';
       results.innerHTML = '';
+      lastSearchPayload = null;
+      var fe = document.getElementById('searchFilters');
+      if (fe) fe.style.display = 'none';
     }
   });
 }
@@ -682,6 +745,29 @@ async function fetchData() {
   renderFactStore(stats, health);
   renderFactList('mostActiveList', activeFacts, 'activation', 'No facts available.');
   renderFactList('recentFactsList', recentFacts, 'recent', 'No facts captured today.');
+  renderAgentFilterPills(stats.agents || []);
+}
+
+function renderAgentFilterPills(agents) {
+  var group = document.getElementById('agentFilterGroup');
+  if (!group) return;
+  group.querySelectorAll('[data-filter="agent"][data-value]:not([data-value="all"]):not([data-value="shared"])').forEach(function(p) { p.remove(); });
+  agents.forEach(function(agentId) {
+    if (!group.querySelector('[data-value="' + agentId + '"]')) {
+      var btn = document.createElement('button');
+      btn.className = 'search-filter-pill';
+      btn.dataset.filter = 'agent';
+      btn.dataset.value = agentId;
+      btn.textContent = agentId.charAt(0).toUpperCase() + agentId.slice(1);
+      btn.addEventListener('click', function() {
+        searchFilterState.agent = agentId;
+        group.querySelectorAll('[data-filter="agent"]').forEach(function(p) { p.classList.toggle('active', p.dataset.value === agentId); });
+        var input = document.getElementById('memorySearchInput');
+        if (input && input.value.trim()) runMemorySearch(input.value.trim());
+      });
+      group.appendChild(btn);
+    }
+  });
 }
 
 
@@ -819,6 +905,7 @@ skeletonLane();
 initRecallQuality();
 renderSkeletonLists();
 initMemorySearch();
+initSearchFilters();
 fetchData();
 setInterval(fetchData, 120000);
 </script>
