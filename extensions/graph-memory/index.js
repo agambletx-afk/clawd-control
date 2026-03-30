@@ -54,7 +54,8 @@ const DEFAULTS = {
     memoryDir: "/home/openclaw/.openclaw/memory",
     rootMaxBytes: 3072,
     capture: true,
-    debug: false,             // Set true for redacted diagnostics
+    debug: false,
+    orchestratorAgent: 'jarvis',    // Agent name with full visibility (no --agent filter)             // Set true for redacted diagnostics
 };
 
 // Simple LRU cache for query results
@@ -1039,7 +1040,7 @@ function _runGraphSearch(scriptPath, query, config, scope = {}) {
     return new Promise((resolve, reject) => {
         const timeout = config.timeoutMs || 2000;
         const cmdArgs = [scriptPath, query, '--json', '--top-k', String(config.maxResults || 8)];
-        if (scope?.agentName && scope.agentName !== 'jarvis') {
+        if (scope?.agentName && scope.agentName !== (DEFAULTS.orchestratorAgent || 'jarvis')) {
             cmdArgs.push('--agent', scope.agentName);
         }
         if (scope?.sessionId) {

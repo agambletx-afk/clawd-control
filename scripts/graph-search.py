@@ -269,7 +269,7 @@ def graph_search(
     if scope_clauses and not db_has_scope_columns(db):
         scope_clauses, scope_params = [], []
     facts_scope_where = f" AND {' AND '.join(scope_clauses)}" if scope_clauses else ""
-    relations_scope_exists = scoped_relations_exists_sql("relations", scope_clauses)
+    relations_scope_exists = ""  # Relations are shared knowledge, never agent-scoped
     
     # Phase 1: Entity + Intent matching (highest confidence)
     for candidate in candidates:
@@ -299,7 +299,7 @@ def graph_search(
                 # Search relations
                 rows = db.execute(
                     f"SELECT predicate, object, source FROM relations WHERE subject = ? AND predicate LIKE ?{relations_scope_exists}",
-                    (entity, f"%{intent}%", *scope_params)
+                    (entity, f"%{intent}%")
                 ).fetchall()
                 for pred, obj, source in rows:
                     result_key = f"{entity}:{pred}:{obj}"
@@ -333,7 +333,7 @@ def graph_search(
         # Phase 2b: All relations for entity
         rows = db.execute(
             f"SELECT predicate, object, source FROM relations WHERE subject = ?{relations_scope_exists}",
-            (entity, *scope_params)
+            (entity,)
         ).fetchall()
         for pred, obj, source in rows:
             result_key = f"{entity}:{pred}:{obj}"
@@ -397,9 +397,9 @@ def graph_search(
                     (
                         "SELECT r.subject, r.predicate, r.object "
                         "FROM relations_fts r JOIN relations rel ON rel.rowid = r.rowid "
-                        f"WHERE r MATCH ?{scoped_relations_exists_sql('rel', scope_clauses)}"
+                        "WHERE r MATCH ?"
                     ),
-                    (fts_query, *scope_params)
+                    (fts_query,)
                 ).fetchall()
                 for subj, pred, obj in rows[:top_k]:
                     result_key = f"rel:{subj}:{pred}:{obj}"
@@ -407,7 +407,7 @@ def graph_search(
                         seen.add(result_key)
                         source = db.execute(
                             f"SELECT source FROM relations WHERE subject = ? AND predicate = ? AND object = ?{relations_scope_exists}",
-                            (subj, pred, obj, *scope_params)
+                            (subj, pred, obj)
                         ).fetchone()
                         results.append({
                             "path": (source[0] if source else "facts.db"),
