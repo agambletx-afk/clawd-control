@@ -35,7 +35,8 @@ main { padding: 24px; max-width: 1500px; margin: 0 auto; }
 .lane-labels > div { flex: 1; text-align: center; font-size: 11px; text-transform: uppercase; font-weight: 600; color: #94a3b8; letter-spacing: 0.04em; }
 .lane-row { display: flex; align-items: center; height: 12px; }
 .lane-node { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; z-index: 1; }
-.lane-connector { flex: 1; height: 2px; }
+.lane-connector { flex: 1; height: 2px; position: relative; }
+.lane-connector::after { content: ""; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 0; height: 0; border-top: 3px solid transparent; border-bottom: 3px solid transparent; border-left: 5px solid rgba(255,255,255,0.2); }
 .lane-values { display: flex; margin-top: 8px; }
 .lane-values > div { flex: 1; text-align: center; }
 .station-value { font-size: 16px; font-weight: 700; color: #f1f5f9; font-family: 'JetBrains Mono', 'Fira Code', monospace; line-height: 1.3; }
