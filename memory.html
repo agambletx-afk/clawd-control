@@ -16,7 +16,7 @@ main { padding: 24px; max-width: 1500px; margin: 0 auto; }
 .page-header { margin-bottom: 16px; }
 .page-header h1 { margin: 0; font-size: 20px; font-weight: 700; color: #f1f5f9; text-shadow: 0 0 24px rgba(192, 132, 252, 0.18); }
 .page-header .subtitle { margin: 8px 0 0; font-size: 14px; font-weight: 400; color: #94a3b8; }
-.section-gap { margin-top: 32px; }
+.section-gap { margin-top: 24px; }
 .panel {
   background: #161b26;
   border: 1px solid #363b4d;
@@ -31,14 +31,16 @@ main { padding: 24px; max-width: 1500px; margin: 0 auto; }
 .panel-title { margin: 0; font-size: 14px; font-weight: 600; color: #f1f5f9; }
 .panel-subtitle { margin: 0; font-size: 12px; color: #94a3b8; }
 .pipeline-lane { position: relative; padding: 0; }
-.lane-labels { display: flex; margin-bottom: 8px; }
-.lane-labels > div { flex: 1; text-align: center; font-size: 11px; text-transform: uppercase; font-weight: 600; color: #94a3b8; letter-spacing: 0.04em; }
-.lane-row { display: flex; align-items: center; height: 12px; }
-.lane-node { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; z-index: 1; }
-.lane-connector { flex: 1; height: 2px; position: relative; }
-.lane-connector::after { content: ""; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 0; height: 0; border-top: 3px solid transparent; border-bottom: 3px solid transparent; border-left: 5px solid rgba(255,255,255,0.2); }
-.lane-values { display: flex; margin-top: 8px; }
-.lane-values > div { flex: 1; text-align: center; }
+.lane-labels { display: grid; grid-template-columns: repeat(5, 1fr); margin-bottom: 8px; }
+.lane-labels > div { text-align: center; font-size: 11px; text-transform: uppercase; font-weight: 600; color: #94a3b8; letter-spacing: 0.04em; }
+.lane-track { display: grid; grid-template-columns: repeat(5, 1fr); align-items: center; height: 12px; position: relative; }
+.lane-track::before { content: ''; position: absolute; left: 10%; right: 10%; top: 50%; height: 3px; background: #363b4d; border-radius: 2px; z-index: 0; }
+.lane-station { display: flex; justify-content: center; position: relative; z-index: 1; }
+.lane-node { width: 14px; height: 14px; border-radius: 50%; box-shadow: 0 0 6px rgba(0,0,0,0.4); }
+.lane-segment { position: absolute; top: 50%; height: 3px; border-radius: 2px; transform: translateY(-50%); z-index: 0; }
+.lane-chevron { position: absolute; right: -6px; top: 50%; transform: translateY(-50%); width: 0; height: 0; border-top: 5px solid transparent; border-bottom: 5px solid transparent; border-left: 8px solid rgba(255,255,255,0.35); z-index: 2; }
+.lane-values { display: grid; grid-template-columns: repeat(5, 1fr); margin-top: 8px; }
+.lane-values > div { text-align: center; }
 .station-value { font-size: 16px; font-weight: 700; color: #f1f5f9; font-family: 'JetBrains Mono', 'Fira Code', monospace; line-height: 1.3; }
 .station-sub { font-size: 11px; color: #94a3b8; margin-top: 4px; }
 .lane-legend { display: flex; gap: 16px; margin-top: 16px; padding-top: 16px; border-top: 1px solid #363b4d; font-size: 11px; color: #94a3b8; }
@@ -47,16 +49,19 @@ main { padding: 24px; max-width: 1500px; margin: 0 auto; }
 .status-dot { width: 8px; height: 8px; border-radius: 50%; }
 .status-green { background: #22c55e; }
 .status-red { background: #ef4444; }
-.store-stats { display: flex; gap: 32px; align-items: baseline; flex-wrap: wrap; margin-bottom: 16px; }
+.store-row { display: flex; align-items: center; gap: 0; margin-bottom: 8px; }
+.store-left { display: flex; gap: 32px; align-items: baseline; flex-shrink: 0; padding-right: 24px; }
+.store-divider { width: 1px; background: #363b4d; align-self: stretch; flex-shrink: 0; }
+.store-right { flex: 1; padding-left: 24px; display: flex; align-items: center; }
 .store-stat { display: flex; flex-direction: column; gap: 4px; }
 .store-stat-label { font-size: 11px; text-transform: uppercase; font-weight: 600; color: #94a3b8; letter-spacing: 0.04em; }
 .store-stat-value { font-size: 28px; font-weight: 700; color: #f1f5f9; font-family: 'JetBrains Mono', 'Fira Code', monospace; }
-.tier-track { margin-top: 16px; width: 100%; height: 8px; border-radius: 4px; background: #0d1117; overflow: hidden; display: flex; }
+.tier-track { margin-top: 8px; width: 100%; height: 8px; border-radius: 4px; background: #0d1117; overflow: hidden; display: flex; }
 .tier-seg { height: 100%; }
-.tier-legend { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 8px 16px; }
-.tier-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11px; color: #94a3b8; }
+.tier-legend { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 4px 0; }
+.tier-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #94a3b8; }
 .tier-item-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.tier-swatch { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.tier-swatch { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 .tier-item .mono, .fact-mono, .kv-value { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
 .kv-list { display: grid; gap: 16px; }
 .kv-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; border-bottom: 1px solid #363b4d; padding-bottom: 8px; }
@@ -65,9 +70,12 @@ main { padding: 24px; max-width: 1500px; margin: 0 auto; }
 .kv-inline { display: inline-flex; align-items: center; gap: 8px; }
 .summary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
 .facts-list-wrap { position: relative; }
-.facts-list { display: grid; max-height: 400px; overflow-y: auto; }
-.facts-list-fade { position: absolute; bottom: 0; left: 0; right: 0; height: 48px; background: linear-gradient(transparent, #161b26); pointer-events: none; }
-.facts-list-count { text-align: center; padding: 8px 0 0; font-size: 11px; color: #94a3b8; }
+.facts-list { display: grid; max-height: 340px; overflow-y: auto; }
+.facts-list-fade { display: none; }
+.facts-list-count { text-align: center; padding: 8px 0 0; font-size: 11px; color: #94a3b8; font-weight: 600; }
+.scroll-hint { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px; margin-top: 4px; background: #1e2535; border: 1px solid #363b4d; border-radius: 8px; color: #94a3b8; font-size: 12px; font-weight: 600; cursor: pointer; }
+.scroll-hint:hover { color: #c084fc; }
+.scroll-hint svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 2; }
 .fact-row {
   padding: 8px 0;
   border-bottom: 1px solid #363b4d;
@@ -140,7 +148,7 @@ main { padding: 24px; max-width: 1500px; margin: 0 auto; }
     </div>
     <div class="pipeline-lane">
       <div class="lane-labels" id="laneLabels"></div>
-      <div class="lane-row" id="laneRow"></div>
+      <div class="lane-track" id="laneTrack"></div>
       <div class="lane-values" id="laneValues"></div>
       <div class="lane-legend">
         <div class="legend-item"><span class="legend-dot" style="background:#c084fc"></span>Active</div>
@@ -161,8 +169,11 @@ main { padding: 24px; max-width: 1500px; margin: 0 auto; }
         <p class="panel-subtitle">Knowledge graph overview</p>
       </div>
     </div>
-        <div class="store-stats" id="storeStats"></div>
-    <div class="tier-track" id="tierTrack"></div>
+        <div class="store-row">
+      <div class="store-left" id="storeLeft"></div>
+      <div class="store-divider"></div>
+      <div class="store-right"><div class="tier-track" id="tierTrack" style="width:100%;"></div></div>
+    </div>
     <div class="tier-legend" id="tierLegend"></div>
   </section>
 
@@ -285,9 +296,8 @@ function decayBadge(decay) {
 
 function skeletonLane() {
   document.getElementById('laneLabels').innerHTML = Array.from({ length: 5 }).map(function() { return '<div><span class="skeleton" style="display:inline-block;height:11px;width:64px;"></span></div>'; }).join('');
-  document.getElementById('laneRow').innerHTML = Array.from({ length: 5 }).map(function(_, i) {
-    var n = '<span class="lane-node skeleton" style="background:#1e2535;"></span>';
-    return i < 4 ? n + '<span class="lane-connector" style="background:#363b4d;"></span>' : n;
+  document.getElementById('laneTrack').innerHTML = Array.from({ length: 5 }).map(function() {
+    return '<div class="lane-station"><span class="lane-node skeleton" style="background:#1e2535;"></span></div>';
   }).join('');
   document.getElementById('laneValues').innerHTML = Array.from({ length: 5 }).map(function() { return '<div><span class="skeleton" style="display:inline-block;height:16px;width:56px;"></span></div>'; }).join('');
 }
@@ -309,10 +319,11 @@ function renderPipeline(health) {
   document.getElementById('laneLabels').innerHTML = stations.map(function(s) { return '<div>' + s.label + '</div>'; }).join('');
   var rowParts = [];
   for (var i = 0; i < stations.length; i++) {
-    rowParts.push('<span class="lane-node" style="background:' + colors[i] + '"></span>');
-    if (i < stations.length - 1) rowParts.push('<span class="lane-connector" style="background:' + getSegColor(colors[i]) + '"></span>');
+    var chevron = i < stations.length - 1 ? '<span class="lane-chevron" style="border-left-color:' + getSegColor(colors[i]) + '"></span>' : '';
+    var seg = i < stations.length - 1 ? '<span class="lane-segment" style="background:' + getSegColor(colors[i]) + ';left:50%;right:-50%;"></span>' : '';
+    rowParts.push('<div class="lane-station"><span class="lane-node" style="background:' + colors[i] + '"></span>' + chevron + seg + '</div>');
   }
-  document.getElementById('laneRow').innerHTML = rowParts.join('');
+  document.getElementById('laneTrack').innerHTML = rowParts.join('');
   document.getElementById('laneValues').innerHTML = stations.map(function(s) {
     return '<div><div class="station-value">' + s.value + '</div><div class="station-sub">' + s.sub + '</div></div>';
   }).join('');
@@ -325,7 +336,7 @@ function renderFactStore(stats, health) {
   var h = '<div class="store-stat"><div class="store-stat-label">TOTAL FACTS</div><div class="store-stat-value">' + fmtNum(totalFacts) + '</div></div>';
   h += '<div class="store-stat"><div class="store-stat-label">DB SIZE</div><div class="store-stat-value" style="font-size:16px;">' + dbSize + '</div></div>';
   if (pendingExpired > 0) h += '<div class="store-stat"><div class="store-stat-label">PENDING EXPIRED</div><div class="store-stat-value" style="font-size:16px;">' + fmtNum(pendingExpired) + '</div></div>';
-  document.getElementById('storeStats').innerHTML = h;
+  document.getElementById('storeLeft').innerHTML = h;
   var decayMap = {};
   for (var row of (stats.decay || [])) decayMap[row.decayClass] = Number(row.count || 0);
   var tiers = ['permanent', 'stable', 'active', 'session', 'checkpoint'];
@@ -392,8 +403,15 @@ function renderFactList(id, data, mode, emptyText) {
   for (var item of items) frag.appendChild(buildFactRow(item, mode));
   root.appendChild(frag);
   var total = (data && data.total) || items.length;
-  if (fadeEl) fadeEl.style.display = items.length > 4 ? 'block' : 'none';
-  if (countEl) countEl.textContent = items.length < total ? 'Showing ' + items.length + ' of ' + total : items.length + ' facts';
+  var hasMore = items.length > 4;
+  if (fadeEl) fadeEl.style.display = hasMore ? 'block' : 'none';
+  if (countEl) {
+    if (hasMore) {
+      countEl.innerHTML = '<div class="scroll-hint" onclick="this.closest(\'.facts-list-wrap\').querySelector(\'.facts-list\').scrollBy({top:200,behavior:\'smooth\'})"><svg viewBox="0 0 24 24"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>Scroll for more \u00b7 ' + items.length + ' of ' + total + '</div>';
+    } else {
+      countEl.textContent = items.length + ' facts';
+    }
+  }
 }
 
 function renderSkeletonLists() {
