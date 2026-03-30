@@ -8610,15 +8610,27 @@ const server = createServer(async (req, res) => {
         const now = Date.now();
         const todayIso = new Date().toISOString().slice(0, 10);
         const todayStart = Date.parse(`${todayIso}T00:00:00Z`);
+        const dayAgoMs = now - (24 * 3600000);
+        const rootMdPath = '/home/openclaw/.openclaw/memory/ROOT.md';
+        const ingestLines = safeReadLines(MEMORY_INGEST_LOG_PATH, 5000);
+        const pruneLines = safeReadLines(MEMORY_PRUNE_LOG_PATH, 5000);
 
         let dbAccessible = false;
+        let lastCaptureTimestamp = null;
+        let pendingExpired = 0;
         try {
           const db = openFactsDb();
           db.prepare('SELECT 1 LIMIT 1').get();
+          const captureRow = db.prepare("SELECT created_at FROM facts WHERE source LIKE 'auto-capture:%' ORDER BY datetime(created_at) DESC LIMIT 1").get();
+          const expiredRow = db.prepare('SELECT COUNT(*) AS count FROM facts WHERE expires_at IS NOT NULL AND CAST(expires_at AS INTEGER) < ? AND CAST(expires_at AS INTEGER) > 0 LIMIT 1').get(Math.floor(now / 1000));
+          lastCaptureTimestamp = captureRow?.created_at || null;
+          pendingExpired = Number(expiredRow?.count || 0);
           db.close();
           dbAccessible = true;
         } catch {
           dbAccessible = false;
+          lastCaptureTimestamp = null;
+          pendingExpired = 0;
         }
 
         const cfg = readOpenClawConfig();
@@ -8629,15 +8641,85 @@ const server = createServer(async (req, res) => {
 
         const recallRowsToday = readJsonlWindow(MEMORY_TELEMETRY_PATH, todayStart, 6000);
         const captureRowsToday = readJsonlWindow(MEMORY_CAPTURE_TELEMETRY_PATH, todayStart, 6000);
+        const recallRows24h = readJsonlWindow(MEMORY_TELEMETRY_PATH, dayAgoMs, 8000);
+        const captureRows24h = readJsonlWindow(MEMORY_CAPTURE_TELEMETRY_PATH, dayAgoMs, 8000);
 
         const ingestAgeHours = (() => {
-          const ms = getLastLogTimestampMs(safeReadLines(MEMORY_INGEST_LOG_PATH, 5000));
+          const ms = getLastLogTimestampMs(ingestLines);
           return ms ? ((now - ms) / 3600000) : null;
         })();
 
         const pruneAgeHours = (() => {
-          const ms = getLastLogTimestampMs(safeReadLines(MEMORY_PRUNE_LOG_PATH, 5000));
+          const ms = getLastLogTimestampMs(pruneLines);
           return ms ? ((now - ms) / 3600000) : null;
+        })();
+
+        const parseTimestamp = (value) => {
+          if (!value) return null;
+          const t = Date.parse(String(value).replace(' ', 'T'));
+          return Number.isFinite(t) ? t : null;
+        };
+
+        const lastRecallTimestamp = (() => {
+          let latestMs = null;
+          let latestIso = null;
+          for (const row of recallRows24h) {
+            const candidate = row.timestamp || row.ts || row.time || row.created_at;
+            const ts = parseTimestamp(candidate);
+            if (ts !== null && (latestMs === null || ts > latestMs)) {
+              latestMs = ts;
+              latestIso = new Date(ts).toISOString();
+            }
+          }
+          return latestIso;
+        })();
+
+        const recallsWithHits24h = recallRows24h.filter((row) => Number(row.result_count || row.results || 0) > 0).length;
+        const capturedFacts24h = captureRows24h.reduce((acc, row) => acc + Number(row.captured || 0), 0);
+
+        const ingestLastRunTimestamp = (() => {
+          const tsMatch = ingestLines.join('\n').match(/(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z)?)/g);
+          return tsMatch?.length ? tsMatch[tsMatch.length - 1].replace(' ', 'T') : null;
+        })();
+
+        const ingestSummaryLine = [...ingestLines].reverse().find((line) => /SUMMARY/i.test(line)) || '';
+        const factsInsertedMatch = ingestSummaryLine.match(/(?:facts\s*inserted|inserted\s*facts|new\s*facts|new_facts_stored|facts)[=:\s]+(\d+)/i);
+        const ingestFactsInserted = factsInsertedMatch ? Number(factsInsertedMatch[1]) : null;
+        const summaryIndex = [...ingestLines].map((line, index) => ({ line, index })).filter((row) => /SUMMARY/i.test(row.line)).map((row) => row.index).pop();
+        const ingestErrorsInLastRun = summaryIndex === undefined ? ingestLines.filter((line) => /ERROR/i.test(line)).length : ingestLines.slice(summaryIndex + 1).filter((line) => /ERROR/i.test(line)).length;
+
+        const lastPrunedLine = [...pruneLines].reverse().find((line) => /PRUNED:/i.test(line));
+        const lastPruneStats = (() => {
+          if (!lastPrunedLine) return null;
+          const match = lastPrunedLine.match(/\[(.*?)\]\s*PRUNED:\s*expired_deleted=(\d+),\s*confidence_decayed=(\d+),\s*subthreshold_deleted=(\d+),\s*total_removed=(\d+)/i);
+          if (!match) return null;
+          return {
+            timestamp: match[1].replace(' ', 'T'),
+            expiredDeleted: Number(match[2]),
+            confidenceDecayed: Number(match[3]),
+            subthresholdDeleted: Number(match[4]),
+            totalRemoved: Number(match[5]),
+          };
+        })();
+
+        const rootMdStatus = (() => {
+          if (!existsSync(rootMdPath)) {
+            return { key: 'rootMdGeneration', label: 'ROOT.md generation', status: 'red', ageHours: null, sizeBytes: null, modifiedAt: null };
+          }
+          try {
+            const stats = statSync(rootMdPath);
+            const ageHours = (now - stats.mtimeMs) / 3600000;
+            return {
+              key: 'rootMdGeneration',
+              label: 'ROOT.md generation',
+              status: ageHours < 26 ? 'green' : ageHours <= 48 ? 'yellow' : 'red',
+              ageHours,
+              sizeBytes: stats.size,
+              modifiedAt: new Date(stats.mtimeMs).toISOString(),
+            };
+          } catch {
+            return { key: 'rootMdGeneration', label: 'ROOT.md generation', status: 'red', ageHours: null, sizeBytes: null, modifiedAt: null };
+          }
         })();
 
         const drift = getCaptureDriftDetails();
@@ -8645,11 +8727,42 @@ const server = createServer(async (req, res) => {
         checks.push({ key: 'factsDbAccessible', label: 'facts.db accessible', status: dbAccessible ? 'green' : 'red' });
         checks.push({ key: 'graphMemoryPluginLoaded', label: 'graph-memory plugin loaded', status: graphMemoryPluginSeen ? 'green' : 'red' });
         checks.push({ key: 'memorySearchEnabled', label: 'memorySearch enabled', status: memorySearchEnabled ? 'green' : 'red' });
-        checks.push({ key: 'recallHookActive', label: 'Recall hook active', status: recallRowsToday.length > 0 ? 'green' : 'red', entriesToday: recallRowsToday.length });
-        checks.push({ key: 'captureHookActive', label: 'Capture hook active', status: captureRowsToday.length > 0 ? 'green' : 'red', entriesToday: captureRowsToday.length });
-        checks.push({ key: 'nightlyIngest', label: 'Nightly ingest', status: statusLevel(ingestAgeHours !== null && ingestAgeHours < 26, ingestAgeHours !== null && ingestAgeHours <= 48), ageHours: ingestAgeHours });
-        checks.push({ key: 'hourlyPrune', label: 'Hourly prune', status: statusLevel(pruneAgeHours !== null && pruneAgeHours < 2, pruneAgeHours !== null && pruneAgeHours <= 4), ageHours: pruneAgeHours });
+        checks.push({
+          key: 'recallHookActive',
+          label: 'Recall hook active',
+          status: recallRowsToday.length > 0 ? 'green' : 'red',
+          entriesToday: recallRowsToday.length,
+          lastRecallTimestamp,
+          recallsWithHits24h,
+        });
+        checks.push({
+          key: 'captureHookActive',
+          label: 'Capture hook active',
+          status: captureRowsToday.length > 0 ? 'green' : 'red',
+          entriesToday: captureRowsToday.length,
+          capturedFacts24h,
+          captureRatePerHour: capturedFacts24h / 24,
+          lastCaptureTimestamp,
+        });
+        checks.push({
+          key: 'nightlyIngest',
+          label: 'Nightly ingest',
+          status: statusLevel(ingestAgeHours !== null && ingestAgeHours < 26, ingestAgeHours !== null && ingestAgeHours <= 48),
+          ageHours: ingestAgeHours,
+          lastRunTimestamp: ingestLastRunTimestamp,
+          factsInserted: ingestFactsInserted,
+          errorsInLastRun: ingestErrorsInLastRun,
+        });
+        checks.push({
+          key: 'hourlyPrune',
+          label: 'Hourly prune',
+          status: statusLevel(pruneAgeHours !== null && pruneAgeHours < 2, pruneAgeHours !== null && pruneAgeHours <= 4),
+          ageHours: pruneAgeHours,
+          lastPruneStats,
+          pendingExpired,
+        });
         checks.push({ key: 'runtimeDrift', label: 'Runtime drift', status: drift.drifted ? 'red' : 'green', message: drift.drifted ? 'Runtime differs from repo' : 'Runtime matches repo' });
+        checks.push(rootMdStatus);
 
         return {
           checks,
@@ -8673,6 +8786,7 @@ const server = createServer(async (req, res) => {
     try {
       const payload = getMemoryCached('stats', 60000, () => {
         const todayIso = new Date().toISOString().slice(0, 10);
+        const nowUnix = Math.floor(Date.now() / 1000);
         const db = openFactsDb();
         const totalFacts = queryCountSafe(db, 'SELECT COUNT(*) AS count FROM facts LIMIT 1');
         const relations = queryCountSafe(db, 'SELECT COUNT(*) AS count FROM relations LIMIT 1');
@@ -8683,13 +8797,23 @@ const server = createServer(async (req, res) => {
         const sourceDistribution = db.prepare('SELECT source, COUNT(*) AS count FROM facts GROUP BY source ORDER BY count DESC LIMIT 20').all();
         const structuredCount = queryCountSafe(db, "SELECT COUNT(*) AS count FROM facts WHERE COALESCE(key, '') != 'note' LIMIT 1");
         const topEntities = db.prepare("SELECT entity, COUNT(*) AS count FROM facts WHERE COALESCE(entity, '') != '' GROUP BY entity ORDER BY count DESC LIMIT 5").all();
+        const pendingExpired = queryCountSafe(db, 'SELECT COUNT(*) AS count FROM facts WHERE expires_at IS NOT NULL AND CAST(expires_at AS INTEGER) < ? AND CAST(expires_at AS INTEGER) > 0 LIMIT 1', [nowUnix]);
         db.close();
+        const dbSizeBytes = (() => {
+          try {
+            return statSync(MEMORY_FACTS_DB_PATH).size;
+          } catch {
+            return null;
+          }
+        })();
         return {
           totalFacts,
           relations,
           todayCaptures,
           aliasCount,
           coOccurrenceCount,
+          dbSizeBytes,
+          pendingExpired,
           structuredRatio: totalFacts > 0 ? (structuredCount / totalFacts) * 100 : 0,
           sourceDistribution: sourceDistribution.map((row) => ({ source: row.source || 'unknown', count: Number(row.count || 0) })),
           topEntities: topEntities.map((row) => ({ entity: row.entity, count: Number(row.count || 0) })),
@@ -8715,7 +8839,9 @@ const server = createServer(async (req, res) => {
       const offset = Math.max(0, Number.isFinite(requestedOffset) ? requestedOffset : 0);
       const decay = String(url.searchParams.get('decay') || 'all').toLowerCase();
       const period = String(url.searchParams.get('period') || 'all').toLowerCase();
-      const cacheKey = `facts:${limit}:${offset}:${decay}:${period}`;
+      const sort = String(url.searchParams.get('sort') || 'created_at').toLowerCase();
+      const orderBySql = sort === 'activation' ? 'CAST(activation AS REAL) DESC NULLS LAST, datetime(created_at) DESC' : 'datetime(created_at) DESC';
+      const cacheKey = `facts:${limit}:${offset}:${decay}:${period}:${sort}`;
 
       const payload = getMemoryCached(cacheKey, 30000, () => {
         const conditions = [];
@@ -8733,7 +8859,7 @@ const server = createServer(async (req, res) => {
         const db = openFactsDb();
         const total = Number(db.prepare(`SELECT COUNT(*) AS count FROM facts ${whereSql} LIMIT 1`).get(...params)?.count || 0);
         const rows = db
-          .prepare(`SELECT id, entity, key, value, category, source, decay_class, confidence, activation, expires_at, created_at FROM facts ${whereSql} ORDER BY datetime(created_at) DESC LIMIT ? OFFSET ?`)
+          .prepare(`SELECT id, entity, key, value, category, source, decay_class, confidence, activation, expires_at, created_at FROM facts ${whereSql} ORDER BY ${orderBySql} LIMIT ? OFFSET ?`)
           .all(...params, limit, offset);
         db.close();
 

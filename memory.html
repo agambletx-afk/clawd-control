@@ -5,78 +5,442 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Memory — Clawd Control</title>
 <style>
-:root{--bg:#0f1419;--surface:#161b26;--surface2:#1e2535;--border:#243044;--text:#e2e8f0;--muted:#94a3b8;--dim:#64748b;--emerald:#10b981;--red:#ef4444;--amber:#f59e0b;--green:#22c55e}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,sans-serif}
-main{padding:20px;max-width:1500px;margin:0 auto}.page-header{margin-bottom:24px}.page-header h1{font-size:20px;font-weight:700;color:var(--text-primary);text-shadow:0 0 8px rgba(16, 185, 129, 0.5)}.page-header .subtitle{font-size:13px;font-weight:400;color:var(--text-secondary);margin-top:4px}
-.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px}.panel-title{font-size:1rem;font-weight:800;margin-bottom:8px}
-.health-banner{display:flex;gap:8px;flex-wrap:wrap}.pill{padding:4px 10px;border-radius:9999px;font-size:.72rem;font-weight:700;border:1px solid transparent}
-.pill.green{background:rgba(34,197,94,.15);color:#86efac}.pill.yellow{background:rgba(245,158,11,.18);color:#fcd34d}.pill.red{background:rgba(239,68,68,.18);color:#fca5a5}
-.alert{margin-top:10px;padding:10px;border-radius:10px;font-weight:700}.alert.red{border:1px solid rgba(239,68,68,.45);background:rgba(127,29,29,.35);color:#fca5a5}.alert.amber{border:1px solid rgba(245,158,11,.45);background:rgba(120,53,15,.35);color:#fcd34d}
-.grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:12px}.stat-label{font-size:.7rem;color:var(--dim);text-transform:uppercase}.stat-value{font-size:1.28rem;font-weight:800}.stat-sub{font-size:.8rem;color:var(--muted)}
-.zone{display:grid;grid-template-columns:1.2fr .8fr;gap:12px;margin-top:12px}.right-col{display:grid;gap:12px}.row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);gap:8px}.row:last-child{border-bottom:none}
-.empty{color:var(--muted);font-style:italic;padding:10px 0}.mono{font-family:'JetBrains Mono','Fira Code',monospace}.bar{height:8px;background:#0b1220;border:1px solid var(--border);border-radius:999px;overflow:hidden}
-.bar > span{display:block;height:100%;background:linear-gradient(90deg,#059669,var(--emerald))}.funnel-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.fact-list{border:1px solid var(--border);border-radius:8px;max-height:380px;overflow:auto}.fact-row{padding:8px;border-bottom:1px solid var(--border);cursor:pointer}.fact-row:hover{background:var(--surface2)}.fact-detail{display:none;margin-top:6px;padding-top:6px;border-top:1px dashed #334155;color:var(--muted);font-size:.82rem}.fact-row.expanded .fact-detail{display:block}
-.badge{padding:2px 7px;border-radius:9999px;font-size:.68rem;font-weight:700}.badge.source-auto{background:rgba(20,184,166,.18);color:#99f6e4}.badge.source-ingest{background:rgba(99,102,241,.18);color:#c7d2fe}.badge.source-manual{background:rgba(245,158,11,.16);color:#fcd34d}.badge.source-seed{background:rgba(148,163,184,.18);color:#cbd5e1}
-.badge.decay-permanent{background:rgba(59,130,246,.18);color:#93c5fd}.badge.decay-stable{background:rgba(34,197,94,.18);color:#86efac}.badge.decay-active{background:rgba(245,158,11,.18);color:#fcd34d}.badge.decay-session{background:rgba(148,163,184,.18);color:#cbd5e1}
-.fact-top{display:grid;grid-template-columns:auto auto 1fr auto auto;gap:7px;align-items:center}.dot{width:10px;height:10px;border-radius:999px;display:inline-block}.dot.structured{background:var(--green)}.dot.note{background:var(--amber)}
-.filters{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}.filter-pill{border:1px solid var(--border);border-radius:9999px;padding:4px 9px;background:transparent;color:var(--muted);cursor:pointer;font-size:.72rem}.filter-pill.active{background:var(--surface2);color:var(--text)}
-@media (max-width:1100px){.grid4{grid-template-columns:repeat(2,minmax(0,1fr))}.zone{grid-template-columns:1fr}.funnel-grid{grid-template-columns:1fr}}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: #0f1419;
+  color: #f1f5f9;
+  font-family: Inter, system-ui, sans-serif;
+}
+main { padding: 24px; max-width: 1500px; margin: 0 auto; }
+.page-header { margin-bottom: 16px; }
+.page-header h1 { margin: 0; font-size: 20px; font-weight: 700; color: #f1f5f9; text-shadow: 0 0 24px rgba(192, 132, 252, 0.18); }
+.page-header .subtitle { margin: 8px 0 0; font-size: 14px; font-weight: 400; color: #94a3b8; }
+.section-gap { margin-top: 32px; }
+.panel {
+  background: #161b26;
+  border: 1px solid #363b4d;
+  border-radius: 12px;
+  padding: 16px;
+}
+.panel.table-panel { padding: 24px; }
+.panel-header { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+.panel-icon { width: 16px; height: 16px; stroke: #94a3b8; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+.domain-capsule { width: 14px; height: 4px; border-radius: 2px; background: #c084fc; flex-shrink: 0; }
+.panel-title-wrap { display: flex; flex-direction: column; gap: 4px; }
+.panel-title { margin: 0; font-size: 14px; font-weight: 600; color: #f1f5f9; }
+.panel-subtitle { margin: 0; font-size: 12px; color: #94a3b8; }
+.pipeline-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.stat-card {
+  position: relative;
+  background: #1e2535;
+  border: 1px solid #363b4d;
+  border-radius: 12px;
+  padding: 16px;
+  overflow: hidden;
+}
+.stat-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: #c084fc;
+}
+.status-dot { width: 8px; height: 8px; border-radius: 50%; }
+.status-green { background: #22c55e; }
+.status-yellow { background: #f59e0b; }
+.status-red { background: #ef4444; }
+.status-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.stat-label { font-size: 11px; text-transform: uppercase; font-weight: 600; color: #94a3b8; letter-spacing: 0.04em; }
+.stat-value { font-size: 28px; font-weight: 700; color: #f1f5f9; font-family: 'JetBrains Mono', 'Fira Code', monospace; line-height: 1.2; margin: 0; }
+.stat-sub { margin-top: 8px; font-size: 12px; color: #94a3b8; }
+.store-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.k-label { font-size: 11px; text-transform: uppercase; font-weight: 600; color: #94a3b8; letter-spacing: 0.04em; }
+.k-value-lg { margin-top: 8px; font-size: 28px; font-weight: 700; color: #f1f5f9; font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+.tier-track { margin-top: 16px; width: 100%; height: 8px; border-radius: 4px; background: #0d1117; overflow: hidden; display: flex; }
+.tier-seg { height: 100%; }
+.tier-legend { margin-top: 16px; display: grid; grid-template-columns: 1fr; gap: 8px; }
+.tier-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11px; color: #94a3b8; }
+.tier-item-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.tier-swatch { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.tier-item .mono, .fact-mono, .kv-value { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+.kv-list { display: grid; gap: 16px; }
+.kv-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; border-bottom: 1px solid #363b4d; padding-bottom: 8px; }
+.kv-row:last-child { border-bottom: none; }
+.kv-value { color: #f1f5f9; }
+.kv-inline { display: inline-flex; align-items: center; gap: 8px; }
+.summary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.facts-list { display: grid; }
+.fact-row {
+  padding: 8px 0;
+  border-bottom: 1px solid #363b4d;
+  cursor: pointer;
+  transition: background 140ms ease;
+}
+.fact-row:last-child { border-bottom: none; }
+.fact-row:hover { background: #1e2535; }
+.fact-main { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; align-items: start; }
+.fact-name { font-size: 13px; font-weight: 600; color: #f1f5f9; }
+.fact-key { color: #94a3b8; font-size: 13px; }
+.fact-preview { margin-top: 4px; color: #94a3b8; font-size: 12px; line-height: 1.4; }
+.fact-right { text-align: right; display: grid; gap: 8px; justify-items: end; }
+.badge { border-radius: 4px; padding: 2px 8px; font-size: 11px; }
+.fact-expand {
+  margin-top: 8px;
+  border-top: 1px dashed #363b4d;
+  padding-top: 8px;
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-height 180ms ease, opacity 180ms ease;
+}
+.fact-row.expanded .fact-expand { max-height: 280px; opacity: 1; }
+.expand-grid { display: grid; gap: 8px; font-size: 12px; color: #94a3b8; }
+.empty {
+  text-align: center;
+  padding: 24px;
+  color: #94a3b8;
+  font-size: 13px;
+  font-style: italic;
+}
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: #1e2535;
+  border-radius: 4px;
+}
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(148, 163, 184, 0.18), transparent);
+  animation: shimmer 1.2s infinite;
+}
+@keyframes shimmer { 100% { transform: translateX(100%); } }
+@media (max-width: 1024px) {
+  .pipeline-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .store-grid { grid-template-columns: 1fr; }
+  .summary-grid { grid-template-columns: 1fr; }
+}
 </style>
 </head>
 <body>
-<main class="main">
-  <div class="page-header">
+<main>
+  <header class="page-header">
     <h1>Memory</h1>
-    <p class="subtitle">What the system knows. Pipeline health and knowledge.</p>
-  </div>
+    <p class="subtitle">Pipeline health and knowledge.</p>
+  </header>
 
-  <section class="card">
-    <div class="panel-title">Runtime Status</div>
-    <div id="healthPills" class="health-banner"></div>
-    <div id="memoryDisabledAlert" class="alert red" style="display:none">memorySearch is disabled. Recall and capture quality will degrade.</div>
-    <div id="runtimeDriftAlert" class="alert amber" style="display:none">Runtime differs from repo. Hotfixes may be lost on redeployment.</div>
+  <section>
+    <div class="panel-header" style="margin-bottom:16px;">
+      <svg class="panel-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+      <span class="domain-capsule"></span>
+      <div class="panel-title-wrap">
+        <p class="panel-title">Pipeline Health</p>
+        <p class="panel-subtitle">Core memory pipeline signals</p>
+      </div>
+    </div>
+    <div class="pipeline-grid" id="pipelineGrid"></div>
   </section>
 
-  <section id="statsGrid" class="grid4"></section>
-
-  <section class="zone">
-    <div class="card">
-      <div class="panel-title">Capture Funnel (24h)</div>
-      <div id="capturePanel"></div>
+  <section class="section-gap panel">
+    <div class="panel-header">
+      <svg class="panel-icon" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"></path><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"></path></svg>
+      <span class="domain-capsule"></span>
+      <div class="panel-title-wrap">
+        <p class="panel-title">Fact Store</p>
+        <p class="panel-subtitle">Knowledge graph overview</p>
+      </div>
     </div>
-
-    <div class="right-col">
-      <div class="card"><div class="panel-title">Recall Diagnostics</div><div id="recallPanel"></div></div>
-      <div class="card"><div class="panel-title">Ingest Coverage</div><div id="ingestPanel"></div><div id="dailyFilesPanel" style="margin-top:8px"></div></div>
-      <details class="card" open><summary>Decay & Quality</summary><div id="qualityPanel" style="margin-top:8px"></div></details>
+    <div class="store-grid">
+      <div>
+        <div class="k-label">Total Facts</div>
+        <div class="k-value-lg" id="totalFacts">—</div>
+        <div class="tier-track" id="tierTrack"></div>
+        <div class="tier-legend" id="tierLegend"></div>
+      </div>
+      <div class="kv-list" id="storeRight"></div>
     </div>
   </section>
 
-  <details class="card" open style="margin-top:12px">
-    <summary>Recent Memory Writes</summary>
-    <div id="factFilters" class="filters"></div>
-    <div id="factsList" class="fact-list"></div>
-  </details>
+  <section class="section-gap summary-grid">
+    <div class="panel table-panel">
+      <div class="panel-header">
+        <svg class="panel-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8"></path><path d="M14 7h7v7"></path></svg>
+        <span class="domain-capsule"></span>
+        <div class="panel-title-wrap">
+          <p class="panel-title">Most Active Facts</p>
+          <p class="panel-subtitle">Frequently surfaced facts, ranked by activation score</p>
+        </div>
+      </div>
+      <div id="mostActiveList" class="facts-list"></div>
+    </div>
+    <div class="panel table-panel">
+      <div class="panel-header">
+        <svg class="panel-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 3"></path></svg>
+        <span class="domain-capsule"></span>
+        <div class="panel-title-wrap">
+          <p class="panel-title">Recent Extractions</p>
+          <p class="panel-subtitle">Facts captured in the last 24 hours</p>
+        </div>
+      </div>
+      <div id="recentFactsList" class="facts-list"></div>
+    </div>
+  </section>
 </main>
 <script src="/layout.js"></script>
 <script>
-const filters=[{label:'All',decay:'all',period:'all'},{label:'Permanent',decay:'permanent',period:'all'},{label:'Stable',decay:'stable',period:'all'},{label:'Active',decay:'active',period:'all'},{label:'Session',decay:'session',period:'all'},{label:'Today',decay:'all',period:'today'}];
-let activeFilter=filters[0];
-const fmtRel=(iso)=>{if(!iso)return'—';const ms=Date.now()-new Date(iso).getTime();const m=Math.floor(ms/60000);if(m<1)return'just now';if(m<60)return`${m}m ago`;const h=Math.floor(m/60);if(h<48)return`${h}h ago`;return`${Math.floor(h/24)}d ago`;};
-const sourceClass=(s)=>!s?'source-seed':s.startsWith('auto-capture')?'source-auto':s.includes('daily-ingest')?'source-ingest':s.includes('manual')?'source-manual':'source-seed';
+const TIER_COLORS = {
+  permanent: '#3b82f6',
+  stable: '#14b8a6',
+  active: '#c084fc',
+  session: '#94a3b8',
+  checkpoint: '#475569',
+};
 
-function renderFilters(){const el=document.getElementById('factFilters');el.innerHTML=filters.map(f=>`<button class="filter-pill ${activeFilter.label===f.label?'active':''}" data-label="${f.label}">${f.label}</button>`).join('');el.querySelectorAll('button').forEach(b=>b.onclick=()=>{activeFilter=filters.find(f=>f.label===b.dataset.label)||filters[0];renderFilters();loadFacts();});}
-function renderHealth(data){document.getElementById('healthPills').innerHTML=(data.checks||[]).map(c=>`<span class="pill ${c.status}">${c.label}: ${c.status==="green"?"pass":c.status==="yellow"?"warn":"fail"}</span>`).join('');document.getElementById('memoryDisabledAlert').style.display=data.memoryToolsDisabled?'block':'none';document.getElementById('runtimeDriftAlert').style.display=data.runtimeDriftDetected?'block':'none';}
-function ratioColor(v){if(v>50)return'#86efac';if(v>=25)return'#fcd34d';return'#fca5a5';}
-function renderStats(s){const src=(s.sourceDistribution||[]).slice(0,3).map(r=>`${String(r.source).replace('auto-capture:session','capture').replace('daily-ingest','ingest').replace('manual-seed','seed')}:${r.count}`).join(' ');const ratio=Number(s.structuredRatio||0);document.getElementById('statsGrid').innerHTML=[['Total Facts',Number(s.totalFacts||0).toLocaleString(),'Knowledge graph size'],['Source Mix',src||'No data','manual-seed / auto-capture / daily-ingest'],['Structured Ratio',`<span style="color:${ratioColor(ratio)}">${ratio.toFixed(1)}%</span>`,'Facts with entity + key vs unstructured notes'],['Relations & Aliases',`${Number(s.coOccurrenceCount||0).toLocaleString()} / ${Number(s.aliasCount||0).toLocaleString()}`,'Graph edges and entity aliases']].map(([a,b,c])=>`<div class="card"><div class="stat-label">${a}</div><div class="stat-value mono">${b}</div><div class="stat-sub">${c}</div></div>`).join('');}
-function renderCapture(t){const c=t.capture||{};const el=document.getElementById('capturePanel');if(!c.available){el.innerHTML='<div class="empty">Capture telemetry not available. Deploy capture.js v2 to enable.</div>';return;}const turns=Math.max(1,Number(c.captureTurns||0)-Number(c.skippedTurns||0));const rate=Number(c.capturedFacts||0)/turns;const fb=c.filteredBreakdown||{};el.innerHTML=`<div class="funnel-grid"><div><div class="row"><span>Turns processed / skipped</span><strong class="mono">${c.captureTurns||0} / ${c.skippedTurns||0}</strong></div><div class="row"><span>Total eligible sentences</span><strong class="mono">${c.eligibleSentences||0}</strong></div><div class="row"><span>Facts captured</span><strong class="mono">${c.capturedFacts||0}</strong></div><div class="row"><span>Capture rate (facts/eligible turn)</span><strong class="mono">${rate.toFixed(2)}</strong></div><div class="row"><span>Structured / Note-only</span><strong class="mono">${c.structuredCaptures||0} / ${c.noteOnlyCaptures||0}</strong></div></div><div><div class="row"><span>Filtered: length</span><strong class="mono">${fb.lengthBounds||0}</strong></div><div class="row"><span>Filtered: xml/html</span><strong class="mono">${fb.xmlHtml||0}</strong></div><div class="row"><span>Filtered: emoji</span><strong class="mono">${fb.emojiDensity||0}</strong></div><div class="row"><span>Filtered: markdown</span><strong class="mono">${fb.heavyMarkdown||0}</strong></div><div class="row"><span>Filtered: sensitive</span><strong class="mono">${fb.sensitivePattern||0}</strong></div><div class="row"><span>Filtered: user-msg</span><strong class="mono">${fb.userMessageFilter||0}</strong></div><div class="row"><span>Filtered: duplicate</span><strong class="mono">${fb.duplicate||0}</strong></div></div></div>`;}
-function renderRecall(t){const r=t.recall||{};const el=document.getElementById('recallPanel');if(!r.available){el.innerHTML='<div class="empty">No recall telemetry available.</div>';return;}el.innerHTML=`<div class="row"><span>Recall hit rate</span><strong class="mono">${Number(r.recallHitRate||0).toFixed(1)}%</strong></div><div class="row"><span>Avg facts per recall</span><strong class="mono">${Number(r.avgFactsPerRecall||0).toFixed(2)}</strong></div><div class="row"><span>Avg latency</span><strong class="mono">${Math.round(Number(r.avgLatencyMs||0))} ms</strong></div><div class="row"><span>Cache hit rate</span><strong class="mono">${Number(r.cacheHitRate||0).toFixed(1)}%</strong></div><div class="row"><span>Timeout count</span><strong class="mono">${r.timeoutCount||0}</strong></div><div class="row"><span>Zero-result count</span><strong class="mono">${r.zeroResultCount||0}</strong></div>`;}
-function renderIngest(i,d){const el=document.getElementById('ingestPanel');if(!i.available){el.innerHTML='<div class="empty">No ingest log data available.</div>';}else{el.innerHTML=`<div class="row"><span>Last run</span><strong class="mono">${i.lastRunTimestamp||'—'}</strong></div><div class="row"><span>Source date</span><strong class="mono">${i.sourceDate||'—'}</strong></div><div class="row"><span>Lines scanned</span><strong class="mono">${i.linesScanned??'—'}</strong></div><div class="row"><span>Candidates extracted</span><strong class="mono">${i.candidatesExtracted??'—'}</strong></div><div class="row"><span>Facts inserted</span><strong class="mono">${i.factsInserted??'—'}</strong></div><div class="row"><span>Duplicates skipped</span><strong class="mono">${i.duplicatesSkipped??'—'}</strong></div><div class="row"><span>Last status</span><strong class="mono">${i.lastStatus?.state||'unknown'}</strong></div>`;}const files=d.files||[];const miss=new Set(d.missingDays||[]);const rows=[];for(const f of files){rows.push(`<div class="row"><span>${f.date}</span><span class="mono">${(f.sizeBytes/1024).toFixed(1)} KB • ~${f.estimatedWords} words</span></div>`);}for(const day of [...miss].sort().reverse()){rows.push(`<div class="row"><span>${day}</span><span style="color:#fcd34d">Missing</span></div>`);}document.getElementById('dailyFilesPanel').innerHTML=rows.join('')||'<div class="empty">No daily file data.</div>'}
-function renderQuality(s){const el=document.getElementById('qualityPanel');const total=(s.decay||[]).reduce((a,r)=>a+Number(r.count||0),0)||1;const decay=(s.decay||[]).map(r=>`${r.decayClass}:${Math.round((r.count/total)*100)}%`).join(' • ');const top=(s.topEntities||[]).map(e=>`${e.entity}:${e.count}`).join(', ');el.innerHTML=`<div class="row"><span>Decay distribution</span><strong class="mono">${decay||'No data'}</strong></div><div class="row"><span>Top 5 entities</span><strong class="mono">${top||'No data'}</strong></div><div class="row"><span>Co-occurrence count</span><strong class="mono">${Number(s.coOccurrenceCount||0).toLocaleString()}</strong></div><div class="row"><span>Alias count</span><strong class="mono">${Number(s.aliasCount||0).toLocaleString()}</strong></div>`;}
-async function loadFacts(){const list=document.getElementById('factsList');list.innerHTML='<div class="empty">Loading…</div>';try{const d=await fetch(`/api/memory/facts?limit=50&offset=0&decay=${activeFilter.decay}&period=${activeFilter.period}`).then(r=>r.json());const items=d.items||[];if(!items.length){list.innerHTML='<div class="empty">No facts match this filter.</div>';return;}list.innerHTML=items.map(f=>{const structured=f.entity&&f.key&&f.key!=='note';return`<div class="fact-row"><div class="fact-top"><span class="dot ${structured?'structured':'note'}"></span><span class="badge decay-${f.decay_class||'session'}">${f.decay_class||'unknown'}</span><div><strong>${f.entity||'—'}</strong> • ${f.key||'key'}=${String(f.value||'').slice(0,100)}</div><span class="badge ${sourceClass(f.source)}">${f.source||'unknown'}</span><span style="color:var(--muted)">${fmtRel(f.created_at)}</span></div><div class="fact-detail">confidence: ${f.confidence??'—'} • activation: ${f.activation??'—'} • expires: ${f.expires_at||'—'}<br>${String(f.value||'')}</div></div>`;}).join('');list.querySelectorAll('.fact-row').forEach(r=>r.onclick=()=>r.classList.toggle('expanded'));}catch{list.innerHTML='<div class="empty">Unable to load facts right now.</div>';}}
-async function refresh(){const [health,stats,telemetry,ingest,daily]=await Promise.all([fetch('/api/memory/health').then(r=>r.json()).catch(()=>({checks:[]})),fetch('/api/memory/stats').then(r=>r.json()).catch(()=>({})),fetch('/api/memory/telemetry').then(r=>r.json()).catch(()=>({})),fetch('/api/memory/ingest-coverage').then(r=>r.json()).catch(()=>({available:false})),fetch('/api/memory/daily-files').then(r=>r.json()).catch(()=>({files:[],missingDays:[]}))]);renderHealth(health);renderStats(stats);renderCapture(telemetry);renderRecall(telemetry);renderIngest(ingest,daily);renderQuality(stats);await loadFacts();}
-renderFilters();refresh();setInterval(refresh,120000);
+function statusClass(status) {
+  if (status === 'green') return 'status-green';
+  if (status === 'yellow') return 'status-yellow';
+  return 'status-red';
+}
+
+function formatRelative(timestamp) {
+  if (!timestamp) return 'No data';
+  const t = new Date(timestamp).getTime();
+  if (!Number.isFinite(t)) return 'No data';
+  const ms = Date.now() - t;
+  const min = Math.floor(ms / 60000);
+  if (min < 1) return 'just now';
+  if (min < 60) return `${min}m ago`;
+  const hrs = Math.floor(min / 60);
+  if (hrs < 48) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
+function hoursSince(timestamp) {
+  if (!timestamp) return null;
+  const t = new Date(timestamp).getTime();
+  if (!Number.isFinite(t)) return null;
+  return (Date.now() - t) / 3600000;
+}
+
+function getCardStatus(hours, greenThreshold, amberThreshold) {
+  if (hours === null) return 'red';
+  if (hours <= greenThreshold) return 'green';
+  if (hours <= amberThreshold) return 'yellow';
+  return 'red';
+}
+
+function fmtNum(n, digits = 0) {
+  const v = Number(n || 0);
+  return v.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: digits });
+}
+
+function fmtDbSize(bytes) {
+  const n = Number(bytes || 0);
+  if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+  return `${(n / 1024).toFixed(1)} KB`;
+}
+
+function parseCheck(health, key) {
+  return (health.checks || []).find((c) => c.key === key) || {};
+}
+
+function sourceBadge(source) {
+  if ((source || '').startsWith('auto-capture:')) return { bg: 'rgba(20, 184, 166, 0.18)', fg: '#99f6e4', text: source };
+  if ((source || '').startsWith('daily-ingest:') || (source || '').includes('daily-ingest')) return { bg: 'rgba(99, 102, 241, 0.18)', fg: '#c7d2fe', text: source };
+  if ((source || '') === 'conversation') return { bg: 'rgba(59, 130, 246, 0.18)', fg: '#93c5fd', text: source };
+  if ((source || '') === 'manual-seed') return { bg: 'rgba(148, 163, 184, 0.18)', fg: '#cbd5e1', text: source };
+  return { bg: 'rgba(71, 85, 105, 0.18)', fg: '#94a3b8', text: source || 'unknown' };
+}
+
+function decayBadge(decay) {
+  const map = {
+    permanent: { bg: 'rgba(59, 130, 246, 0.18)', fg: '#93c5fd' },
+    stable: { bg: 'rgba(20, 184, 166, 0.18)', fg: '#99f6e4' },
+    active: { bg: 'rgba(192, 132, 252, 0.18)', fg: '#e9d5ff' },
+    session: { bg: 'rgba(148, 163, 184, 0.18)', fg: '#cbd5e1' },
+    checkpoint: { bg: 'rgba(71, 85, 105, 0.18)', fg: '#94a3b8' },
+  };
+  return map[decay] || map.checkpoint;
+}
+
+function skeletonCards() {
+  const grid = document.getElementById('pipelineGrid');
+  grid.innerHTML = Array.from({ length: 4 }).map(() => (
+    `<div class="stat-card"><div class="skeleton" style="height:11px;width:88px;"></div><div class="skeleton" style="height:28px;width:120px;margin-top:16px;"></div><div class="skeleton" style="height:12px;width:140px;margin-top:16px;"></div></div>`
+  )).join('');
+}
+
+function renderPipeline(health) {
+  const capture = parseCheck(health, 'captureHookActive');
+  const ingest = parseCheck(health, 'nightlyIngest');
+  const prune = parseCheck(health, 'hourlyPrune');
+  const recall = parseCheck(health, 'recallHookActive');
+
+  const captureHours = hoursSince(capture.lastCaptureTimestamp);
+  const ingestHours = hoursSince(ingest.lastRunTimestamp);
+  const pruneHours = hoursSince(prune.lastPruneStats && prune.lastPruneStats.timestamp);
+  const recallHours = hoursSince(recall.lastRecallTimestamp);
+
+  const cards = [
+    {
+      label: 'CAPTURE HOOK',
+      value: formatRelative(capture.lastCaptureTimestamp),
+      sub: `${fmtNum(capture.captureRatePerHour || 0, 2)} facts/hr over 24h`,
+      status: getCardStatus(captureHours, 2, 6),
+    },
+    {
+      label: 'DAILY EXTRACTION',
+      value: formatRelative(ingest.lastRunTimestamp),
+      sub: `${fmtNum(ingest.factsInserted || 0)} facts extracted`,
+      status: getCardStatus(ingestHours, 26, 48),
+    },
+    {
+      label: 'PRUNING',
+      value: formatRelative(prune.lastPruneStats && prune.lastPruneStats.timestamp),
+      sub: `${fmtNum((prune.lastPruneStats && prune.lastPruneStats.totalRemoved) || 0)} pruned · ${fmtNum(prune.pendingExpired || 0)} pending`,
+      status: getCardStatus(pruneHours, 2, 6),
+    },
+    {
+      label: 'TTL / RECALL',
+      value: formatRelative(recall.lastRecallTimestamp),
+      sub: `${fmtNum(recall.recallsWithHits24h || 0)} hits (24h)`,
+      status: getCardStatus(recallHours, 2, 6),
+    },
+  ];
+
+  const grid = document.getElementById('pipelineGrid');
+  grid.innerHTML = cards.map((card) => `
+    <article class="stat-card">
+      <div class="status-top">
+        <div class="stat-label">${card.label}</div>
+        <span class="status-dot ${statusClass(card.status)}"></span>
+      </div>
+      <p class="stat-value">${card.value}</p>
+      <div class="stat-sub">${card.sub}</div>
+    </article>
+  `).join('');
+}
+
+function renderFactStore(stats, health) {
+  const totalFacts = Number(stats.totalFacts || 0);
+  document.getElementById('totalFacts').textContent = fmtNum(totalFacts);
+
+  const decayMap = {};
+  for (const row of (stats.decay || [])) decayMap[row.decayClass] = Number(row.count || 0);
+  const tiers = ['permanent', 'stable', 'active', 'session', 'checkpoint'];
+
+  const track = document.getElementById('tierTrack');
+  track.innerHTML = tiers.map((tier) => {
+    const count = decayMap[tier] || 0;
+    const width = totalFacts > 0 ? (count / totalFacts) * 100 : 0;
+    return `<span class="tier-seg" style="width:${width.toFixed(2)}%;background:${TIER_COLORS[tier]};"></span>`;
+  }).join('');
+
+  const legend = document.getElementById('tierLegend');
+  legend.innerHTML = tiers.map((tier) => {
+    const count = decayMap[tier] || 0;
+    const pct = totalFacts > 0 ? (count / totalFacts) * 100 : 0;
+    return `<div class="tier-item"><div class="tier-item-left"><span class="tier-swatch" style="background:${TIER_COLORS[tier]};"></span><span>${tier}</span></div><span class="mono">${fmtNum(count)} · ${pct.toFixed(1)}%</span></div>`;
+  }).join('');
+
+  const root = parseCheck(health, 'rootMdGeneration');
+  const pendingExpired = Number(stats.pendingExpired || 0);
+  const rootStatus = root.status || 'red';
+  const rootAge = root.ageHours === null || root.ageHours === undefined ? 'missing' : `${Math.round(root.ageHours)}h old`;
+  const rootSize = root.sizeBytes === null || root.sizeBytes === undefined ? '—' : `${fmtNum(root.sizeBytes)} B`;
+
+  const rightRows = [
+    `<div class="kv-row"><span class="k-label">DB SIZE</span><span class="kv-value">${fmtDbSize(stats.dbSizeBytes || 0)}</span></div>`,
+    pendingExpired > 0 ? `<div class="kv-row"><span class="k-label">PENDING EXPIRED</span><span class="kv-inline"><span class="status-dot status-red" style="display:${pendingExpired > 10 ? 'inline-block' : 'none'}"></span><span class="kv-value">${fmtNum(pendingExpired)}</span></span></div>` : '',
+    `<div class="kv-row"><span class="k-label">ROOT.MD</span><span class="kv-inline"><span class="status-dot ${statusClass(rootStatus)}"></span><span class="kv-value">${rootAge} · ${rootSize}</span></span></div>`
+  ].filter(Boolean).join('');
+
+  document.getElementById('storeRight').innerHTML = rightRows;
+}
+
+function buildFactRow(item, mode) {
+  const decay = (item.decay_class || 'checkpoint').toLowerCase();
+  const tier = decayBadge(decay);
+  const source = sourceBadge(item.source || '');
+  const rightVal = mode === 'activation'
+    ? `<span class="fact-mono">${Number(item.activation || 0).toFixed(3)}</span>`
+    : `<span>${formatRelative(item.created_at)}</span>`;
+
+  const wrapper = document.createElement('article');
+  wrapper.className = 'fact-row';
+  wrapper.innerHTML = `
+    <div class="fact-main">
+      <div>
+        <div><span class="fact-name">${item.entity || '—'}</span> <span class="fact-key">${item.key || 'key'}</span></div>
+        <div class="fact-preview">${String(item.value || '').slice(0, 120)}</div>
+      </div>
+      <div class="fact-right">
+        <span class="badge" style="background:${tier.bg};color:${tier.fg};">${decay}</span>
+        ${rightVal}
+      </div>
+    </div>
+    <div class="fact-expand">
+      <div class="expand-grid">
+        <div>${String(item.value || '')}</div>
+        <div><span class="badge" style="background:${source.bg};color:${source.fg};">${source.text}</span></div>
+        <div>confidence: <span class="fact-mono">${item.confidence ?? '—'}</span></div>
+        <div>created: <span class="fact-mono">${item.created_at || '—'}</span></div>
+        <div>expires: <span class="fact-mono">${item.expires_at || '—'}</span></div>
+      </div>
+    </div>
+  `;
+  wrapper.addEventListener('click', () => wrapper.classList.toggle('expanded'));
+  return wrapper;
+}
+
+function renderFactList(id, data, mode, emptyText) {
+  const root = document.getElementById(id);
+  root.innerHTML = '';
+  const items = (data && data.items) || [];
+  if (!items.length) {
+    root.innerHTML = `<div class="empty">${emptyText}</div>`;
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  for (const item of items) frag.appendChild(buildFactRow(item, mode));
+  root.appendChild(frag);
+}
+
+function renderSkeletonLists() {
+  for (const id of ['mostActiveList', 'recentFactsList']) {
+    const target = document.getElementById(id);
+    target.innerHTML = Array.from({ length: 6 }).map(() => `
+      <div class="fact-row" style="cursor:default;">
+        <div class="skeleton" style="height:13px;width:45%;"></div>
+        <div class="skeleton" style="height:12px;width:85%;margin-top:8px;"></div>
+      </div>
+    `).join('');
+  }
+}
+
+async function fetchData() {
+  const [health, stats, activeFacts, recentFacts] = await Promise.all([
+    fetch('/api/memory/health').then((r) => r.json()).catch(() => ({ checks: [] })),
+    fetch('/api/memory/stats').then((r) => r.json()).catch(() => ({})),
+    fetch('/api/memory/facts?limit=20&sort=activation').then((r) => r.json()).catch(() => ({ items: [] })),
+    fetch('/api/memory/facts?limit=20&period=today').then((r) => r.json()).catch(() => ({ items: [] })),
+  ]);
+
+  renderPipeline(health);
+  renderFactStore(stats, health);
+  renderFactList('mostActiveList', activeFacts, 'activation', 'No facts available.');
+  renderFactList('recentFactsList', recentFacts, 'recent', 'No facts captured today.');
+}
+
+skeletonCards();
+renderSkeletonLists();
+fetchData();
+setInterval(fetchData, 120000);
 </script>
 </body>
 </html>
