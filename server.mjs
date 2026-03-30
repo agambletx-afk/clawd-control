@@ -9222,6 +9222,142 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+
+  if (path === '/api/memory/quality' && req.method === 'GET') {
+    try {
+      const payload = getMemoryCached('quality', 300000, () => {
+        const db = openFactsDb();
+        const nowUnix = Math.floor(Date.now() / 1000);
+        const sevenDaysAgoUnix = nowUnix - (7 * 86400);
+        const thirtyDaysAgoUnix = nowUnix - (30 * 86400);
+
+        const coOccurrenceTotal = Number(db.prepare('SELECT COUNT(*) AS count FROM co_occurrences').get()?.count || 0);
+        const coOccurrenceRows = db.prepare(`SELECT co.fact_a, co.fact_b, co.weight, co.last_wired,
+          a.entity AS a_entity, a.key AS a_key, a.value AS a_value,
+          b.entity AS b_entity, b.key AS b_key, b.value AS b_value
+        FROM co_occurrences co
+        JOIN facts a ON a.id = co.fact_a
+        JOIN facts b ON b.id = co.fact_b
+        ORDER BY co.weight DESC
+        LIMIT 20`).all();
+
+        const decayMovementRows = db.prepare(`SELECT id, entity, key, value, decay_class, confidence, last_confirmed_at, created_at
+        FROM facts
+        WHERE last_confirmed_at IS NOT NULL
+          AND CAST(last_confirmed_at AS INTEGER) > ?
+        ORDER BY CAST(last_confirmed_at AS INTEGER) DESC
+        LIMIT 20`).all(sevenDaysAgoUnix);
+
+        const staleWhereSql = `FROM facts
+        WHERE CAST(activation AS REAL) <= 0.0
+          AND (last_confirmed_at IS NULL OR CAST(last_confirmed_at AS INTEGER) < ?)
+          AND decay_class NOT IN ('permanent', 'checkpoint')`;
+        const staleTotal = Number(db.prepare(`SELECT COUNT(*) AS count ${staleWhereSql}`).get(thirtyDaysAgoUnix)?.count || 0);
+        const staleRows = db.prepare(`SELECT id, entity, key, value, decay_class, activation, last_confirmed_at, created_at
+        ${staleWhereSql}
+        ORDER BY CAST(activation AS REAL) ASC, datetime(created_at) ASC
+        LIMIT 20`).all(thirtyDaysAgoUnix);
+
+        db.close();
+
+        const telemetryRows = readJsonlWindow(MEMORY_TELEMETRY_PATH, Date.now() - (7 * 24 * 3600000), 12000);
+        let retrievalDiagnostics = { available: false };
+        if (telemetryRows.length > 0) {
+          let hitCount = 0;
+          let zeroResultCount = 0;
+          let latencySum = 0;
+          let entityMatchCount = 0;
+          let ftsOnlyCount = 0;
+          let cacheHitCount = 0;
+          const reasonBreakdown = {};
+
+          for (const row of telemetryRows) {
+            const resultCount = Number(row.resultCount ?? row.result_count ?? row.results ?? 0);
+            if (resultCount > 0) hitCount += 1;
+            if (resultCount === 0) zeroResultCount += 1;
+
+            const latency = Number(row.latencyMs ?? row.latency_ms ?? row.latency ?? 0);
+            if (Number.isFinite(latency)) latencySum += latency;
+
+            const entityMatched = Number(row.entityMatched ?? row.entity_matched ?? 0);
+            if (entityMatched > 0) entityMatchCount += 1;
+
+            const ftsOnly = Number(row.ftsOnly ?? row.fts_only ?? 0);
+            if (ftsOnly > 0) ftsOnlyCount += 1;
+
+            if (String(row.cache || '').toLowerCase() === 'hit' || row.cache_hit === true) {
+              cacheHitCount += 1;
+            }
+
+            const reason = String(row.reason || 'other').trim() || 'other';
+            reasonBreakdown[reason] = Number(reasonBreakdown[reason] || 0) + 1;
+          }
+
+          const totalRecalls = telemetryRows.length;
+          retrievalDiagnostics = {
+            available: true,
+            windowHours: 168,
+            totalRecalls,
+            hitRate: (hitCount / Math.max(1, totalRecalls)) * 100,
+            zeroResultRate: (zeroResultCount / Math.max(1, totalRecalls)) * 100,
+            avgLatencyMs: latencySum / Math.max(1, totalRecalls),
+            entityMatchRate: (entityMatchCount / Math.max(1, totalRecalls)) * 100,
+            ftsOnlyRate: (ftsOnlyCount / Math.max(1, totalRecalls)) * 100,
+            cacheHitCount,
+            reasonBreakdown,
+          };
+        }
+
+        return {
+          coOccurrences: {
+            total: coOccurrenceTotal,
+            topPairs: coOccurrenceRows.map((row) => ({
+              factA: { id: Number(row.fact_a || 0), entity: row.a_entity, key: row.a_key, value: row.a_value },
+              factB: { id: Number(row.fact_b || 0), entity: row.b_entity, key: row.b_key, value: row.b_value },
+              weight: Number(row.weight || 0),
+              lastWired: row.last_wired || null,
+            })),
+          },
+          decayMovement: {
+            items: decayMovementRows.map((row) => ({
+              id: Number(row.id || 0),
+              entity: row.entity,
+              key: row.key,
+              value: row.value,
+              decayClass: row.decay_class || 'checkpoint',
+              confidence: Number(row.confidence || 0),
+              lastConfirmedAt: row.last_confirmed_at == null ? null : Number(row.last_confirmed_at),
+              createdAt: row.created_at,
+            })),
+          },
+          staleCandidates: {
+            total: staleTotal,
+            items: staleRows.map((row) => ({
+              id: Number(row.id || 0),
+              entity: row.entity,
+              key: row.key,
+              value: row.value,
+              decayClass: row.decay_class || 'checkpoint',
+              activation: Number(row.activation || 0),
+              lastConfirmedAt: row.last_confirmed_at == null ? null : Number(row.last_confirmed_at),
+              createdAt: row.created_at,
+            })),
+          },
+          retrievalDiagnostics,
+          generatedAt: new Date().toISOString(),
+        };
+      });
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(payload));
+    } catch (e) {
+      console.error('[API] /api/memory/quality error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to load memory quality' }));
+    }
+    return;
+  }
+
   if (path === '/api/logs' && req.method === 'GET') {
     try {
       const requestedLimit = parseInt(url.searchParams.get('limit') || '50', 10);
