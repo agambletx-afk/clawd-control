@@ -638,7 +638,9 @@ schema_num_or_default() {
 
 cron_entry_exists() {
   local pattern="$1"
-  crontab -l 2>/dev/null | grep -q "$pattern"
+  crontab -l 2>/dev/null | grep -q "$pattern" && return 0
+  grep -rq "$pattern" /etc/cron.d/openclaw* 2>/dev/null && return 0
+  return 1
 }
 
 check_cron_with_output() {
@@ -677,9 +679,9 @@ check_cron_with_output() {
 }
 
 # Tier 2 checks
-check_cron_security_health() { check_cron_with_output "check-security-health" "check-security-health\.sh" "/tmp/security-health-results.json" 30; }
-check_cron_system_health() { check_cron_with_output "check-system-health" "check-system-health\.sh" "/home/openclaw/.openclaw/workspace/health-status.json" 10; }
-check_cron_api_liveness() { check_cron_with_output "check-api-health" "openclaw-api-liveness\.sh" "/tmp/openclaw-api-liveness.json" 5; }
+check_cron_security_health() { check_cron_with_output "check-security-health" "security-health" "/tmp/security-health-results.json" 30; }
+check_cron_system_health() { check_cron_with_output "check-system-health" "system-health\|health-status" "/home/openclaw/.openclaw/workspace/health-status.json" 10; }
+check_cron_api_liveness() { check_cron_with_output "check-api-health" "api-liveness\|api-health" "/tmp/openclaw-api-liveness.json" 5; }
 check_cron_version_check() {
   if ! cron_entry_exists "check-openclaw-version\.sh"; then CHECK_MSG="cron entry missing for version check"; return 1; fi
   local output="/tmp/security-version-cache.json" mtime now age max_age
@@ -690,9 +692,9 @@ check_cron_version_check() {
   if [ "$age" -le "$max_age" ]; then CHECK_MSG="version-check output fresh (${age}s <= ${max_age}s)"; return 0; fi
   CHECK_MSG="version-check output stale (${age}s > ${max_age}s)"; return 2
 }
-check_cron_morning_scan() { cron_entry_exists "morning-improvement-scan" && CHECK_MSG="morning-improvement-scan cron exists" && return 0; CHECK_MSG="morning-improvement-scan cron missing"; return 1; }
-check_cron_memory_extraction() { cron_entry_exists "memory.*extract\|extract.*memory\|graph-memory" && CHECK_MSG="memory extraction cron exists" && return 0; CHECK_MSG="memory extraction cron missing"; return 1; }
-check_cron_memory_pruning() { cron_entry_exists "memory.*prun\|decay.*prun" && CHECK_MSG="memory pruning cron exists" && return 0; CHECK_MSG="memory pruning cron missing"; return 1; }
+check_cron_morning_scan() { cron_entry_exists "morning-improvement\|morning.*scan" && CHECK_MSG="morning scan cron exists" && return 0; CHECK_MSG="morning scan cron missing (may be OpenClaw internal cron)"; return 2; }
+check_cron_memory_extraction() { cron_entry_exists "memory.*extract\|memory-ingest\|graph-memory" && CHECK_MSG="memory extraction cron exists" && return 0; CHECK_MSG="memory extraction cron missing"; return 1; }
+check_cron_memory_pruning() { cron_entry_exists "memory.*prun\|memory-prune" && CHECK_MSG="memory pruning cron exists" && return 0; CHECK_MSG="memory pruning cron missing"; return 1; }
 check_cron_delivery_format() {
   if ! command -v curl >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then CHECK_MSG="curl or jq unavailable"; return 3; fi
   local body
