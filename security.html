@@ -181,20 +181,20 @@ tbody tr.expandable-row { cursor: pointer; }
 
   <section id="section-enforcement" style="display:none">
     <div class="context-bar" id="enforcementContext">0/0 passing · 0 warning · 0 failures · scanned <span class="mono">—</span></div>
-    <div class="card-grid">
-      <article class="stat-card"><div class="stat-label">Decisions Today</div><div class="stat-value mono" id="decisionsTodayValue">0</div><div class="stat-subtitle" id="decisionsTodaySub">tool calls evaluated · latest —</div></article>
-      <article class="stat-card"><div class="stat-label">Blocked</div><div class="stat-value mono" id="blockedValue">0</div><div class="stat-subtitle">tool calls denied</div></article>
-      <article class="stat-card"><div class="stat-label">Gated</div><div class="stat-value mono" id="gatedValue">0</div><div class="stat-subtitle">sent to Telegram approval</div></article>
-      <article class="stat-card"><div class="stat-label">Hook Mode</div><div class="stat-value mono" id="hookModeValue">—</div><div class="stat-subtitle">rate limit profile active</div></article>
-    </div>
 
-    <section class="panel">
+    <section class="panel table-panel">
       <div class="panel-header">
         <div class="panel-title-wrap">
           <svg class="panel-icon" viewBox="0 0 24 24"><polygon points="3 4 21 4 14 12 14 19 10 21 10 12 3 4"/></svg>
           <span class="domain-capsule"></span>
           <div><p class="panel-title">Hook Decisions</p><p class="panel-subtitle">Pre-execution validation log from Layer 5b.</p></div>
         </div>
+      </div>
+      <div class="card-grid" style="margin-bottom:16px">
+        <article class="stat-card"><div class="stat-label">Decisions Today</div><div class="stat-value mono" id="decisionsTodayValue">0</div><div class="stat-subtitle" id="decisionsTodaySub">tool calls evaluated · latest —</div></article>
+        <article class="stat-card"><div class="stat-label">Blocked</div><div class="stat-value mono" id="blockedValue">0</div><div class="stat-subtitle">tool calls denied</div></article>
+        <article class="stat-card"><div class="stat-label">Gated</div><div class="stat-value mono" id="gatedValue">0</div><div class="stat-subtitle">sent to Telegram approval</div></article>
+        <article class="stat-card"><div class="stat-label">Hook Mode</div><div class="stat-value mono" id="hookModeValue">—</div><div class="stat-subtitle">rate limit profile active</div></article>
       </div>
       <div class="filter-row" id="decisionFilters"></div>
       <div class="table-wrap">
