@@ -150,7 +150,7 @@ tbody tr.expandable-row { cursor: pointer; }
       </div>
       <div class="table-wrap">
         <table id="defenseGridTable">
-          <thead><tr><th style="width:40px">Status</th><th style="width:52px">Layer</th><th>Check</th><th>Message</th><th style="width:80px">Age</th><th style="width:80px;text-align:right">Action</th></tr></thead>
+          <thead><tr><th style="width:40px">Status</th><th style="width:52px">Layer</th><th>Check</th><th>Message</th><th style="width:56px">Age</th><th style="width:56px;text-align:right">Action</th></tr></thead>
           <tbody id="defenseGridBody"></tbody>
         </table>
       </div>
@@ -397,7 +397,8 @@ tbody tr.expandable-row { cursor: pointer; }
       return `<a class="action-link" href="${esc(href)}" target="_blank" rel="noopener">View Release <svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:#ec4899;fill:none;vertical-align:-2px"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M21 14v7H3V3h7"/></svg></a>`;
     }
     if (type === 'memoryMatches') {
-      return '<button class="btn-secondary" data-action="memory-matches">View Matches</button>';
+      const isOpenMem = state.expandedCheck === check.layer + '|' + getCheckName(check);
+      return '<svg class="row-chevron' + (isOpenMem ? ' open' : '') + '" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>';
     }
     const isOpen = state.expandedCheck === `${check.layer}|${getCheckName(check)}`;
     return '<svg class="row-chevron' + (isOpen ? ' open' : '') + '" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>';
@@ -443,7 +444,7 @@ tbody tr.expandable-row { cursor: pointer; }
     const matches = state.memoryMatchesById[rowId];
     const err = state.memoryErrorById[rowId];
     if (err) return `<div class="inline-error">${esc(err)}</div>`;
-    if (!matches) return '<div class="text-secondary">Use View Matches to load credential matches.</div>';
+    if (!matches) return '<div class="text-secondary">Expand to scan for credential matches.</div>';
     const body = matches.map((m, idx) => `<div class="memory-row" data-fact-id="${esc(m.fact_id)}"><div>${esc(m.entity)}</div><div class="mono">${esc(m.key)}</div><div class="mono" data-visible="0">${esc(m.value_masked)}</div><button class="btn-secondary" data-action="toggle-reveal" data-index="${idx}"><svg viewBox="0 0 24 24" style="stroke:#94a3b8;fill:none"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"/><circle cx="12" cy="12" r="3"/></svg>Reveal</button><button class="btn-danger" data-action="delete-match" data-fact-id="${esc(m.fact_id)}"><svg viewBox="0 0 24 24" style="stroke:#ef4444;fill:none"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>Delete</button></div>`).join('');
     return `<div class="memory-matches"><div class="memory-header"><div>Entity</div><div>Key</div><div>Value</div><div>Reveal</div><div>Delete</div></div>${body || '<div class="memory-row"><div class="text-secondary" style="grid-column:1/-1">No credential matches found.</div></div>'}</div>`;
   }
