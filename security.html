@@ -59,7 +59,7 @@ td { padding: 10px 8px; border-top: 1px solid #363b4d; font-size: 13px; color: #
 .dot-red { background: #ef4444; }
 .layer-pill { display: inline-block; border-radius: 4px; padding: 4px 8px; font-size: 11px; color: #94a3b8; background: rgba(148,163,184,0.06); min-width: 28px; text-align: center; font-weight: 600; }
 .action-link { color: #94a3b8; text-decoration: none; font-size: 12px; background: #252a36; border: 1px solid #363b4d; border-radius: 6px; padding: 5px 10px; display: inline-block; cursor: pointer; white-space: nowrap; }
-.row-chevron { width: 14px; height: 14px; stroke: #94a3b8; fill: none; stroke-width: 2; transition: transform 200ms; cursor: pointer; }
+.row-chevron { width: 14px; height: 14px; stroke: #94a3b8; fill: none; stroke-width: 2; transition: transform 200ms; cursor: pointer; display: block; margin-left: auto; }
 .row-chevron.open { transform: rotate(180deg); }
 .action-link:hover { border-color: #94a3b8; color: #f1f5f9; }
 
@@ -90,7 +90,8 @@ tbody tr.expandable-row { cursor: pointer; }
 .event-list::-webkit-scrollbar-thumb { background: #363b4d; border-radius: 3px; }
 .history-summary-box { background: #0d1117; border: 1px solid #363b4d; border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; margin-bottom: 0; font-size: 13px; color: #94a3b8; }
 .history-summary-box:hover { border-color: #94a3b8; }
-.event-row { border: 1px solid #252a36; border-radius: 6px; padding: 8px 10px; display: grid; grid-template-columns: 140px minmax(100px, 1fr) 50px minmax(100px, 1.5fr); gap: 8px; align-items: center; font-size: 12px; background: #1a1e30; }
+.event-row { border: 1px solid #252a36; border-radius: 6px; padding: 8px 12px; display: grid; grid-template-columns: 140px 50px 1fr; gap: 12px; align-items: start; font-size: 12px; background: #1a1e30; }
+.history-header { display: grid; grid-template-columns: 140px 50px 1fr; gap: 12px; padding: 0 12px 8px; font-size: 11px; text-transform: uppercase; font-weight: 600; color: #94a3b8; letter-spacing: 0.04em; }
 
 .badge-action { display: inline-block; border-radius: 999px; padding: 3px 8px; font-size: 11px; text-transform: lowercase; }
 .badge-blocked { background: rgba(239,68,68,0.18); color: #ef4444; }
@@ -149,7 +150,7 @@ tbody tr.expandable-row { cursor: pointer; }
       </div>
       <div class="table-wrap">
         <table id="defenseGridTable">
-          <thead><tr><th style="width:40px">Status</th><th style="width:52px">Layer</th><th>Check</th><th>Message</th><th style="width:80px">Age</th><th style="width:120px">Action</th></tr></thead>
+          <thead><tr><th style="width:40px">Status</th><th style="width:52px">Layer</th><th>Check</th><th>Message</th><th style="width:80px">Age</th><th style="width:80px;text-align:right">Action</th></tr></thead>
           <tbody id="defenseGridBody"></tbody>
         </table>
       </div>
@@ -416,7 +417,7 @@ tbody tr.expandable-row { cursor: pointer; }
       const name = getCheckName(check);
       const meta = parseMeta(check);
       const rowId = `${check.layer}|${name}`;
-      const clickedClass = actionType === 'expand' ? 'expandable-row' : '';
+      const clickedClass = (actionType === 'expand' || actionType === 'memoryMatches') ? 'expandable-row' : '';
       rows.push(`<tr class="${clickedClass}" data-row-id="${esc(rowId)}" data-status="${esc(check.status)}" data-layer="${esc(check.layer || '')}">
         <td>${statusDot(check.status)}</td>
         <td><span class="layer-pill mono">${esc(LAYER_TAGS[check.layer] || check.layer || '—')}</span></td>
@@ -456,7 +457,7 @@ tbody tr.expandable-row { cursor: pointer; }
       if (state.historyFilter === 'recovered') return to < from;
       return true;
     });
-    refs.historyList.innerHTML = list.slice(0, 20).map((t) => { const d = new Date(t.checked_at); const fmt = d.toLocaleString('en-US', { month:'2-digit', day:'2-digit', year:'2-digit', hour:'numeric', minute:'2-digit', hour12:true, timeZone:'America/Chicago' }).replace(',',''); return `<div class="event-row"><div class="mono" style="font-size:11px">${esc(fmt)}</div><div>${statusDot(t.old_status)} → ${statusDot(t.new_status)}</div><div class="text-secondary">${esc(t.name ? t.name + ': ' : '')}${esc(t.message || '')}</div></div>`; }).join('') || '<div class="empty-state">No transitions recorded.</div>';
+    refs.historyList.innerHTML = '<div class="history-header"><div>Date</div><div>Status</div><div>Details</div></div>' + list.slice(0, 20).map((t) => { const d = new Date(t.checked_at); const fmt = d.toLocaleString('en-US', { month:'2-digit', day:'2-digit', year:'2-digit', hour:'numeric', minute:'2-digit', hour12:true, timeZone:'America/Chicago' }).replace(',',''); return `<div class="event-row"><div class="mono" style="font-size:11px">${esc(fmt)}</div><div>${statusDot(t.old_status)} → ${statusDot(t.new_status)}</div><div class="text-secondary">${esc(t.name ? t.name + ': ' : '')}${esc(t.message || '')}</div></div>`; }).join('') || '<div class="empty-state">No transitions recorded.</div>';
   }
 
   function renderDecisionsStats() {
@@ -664,12 +665,7 @@ tbody tr.expandable-row { cursor: pointer; }
         await navigator.clipboard.writeText(actionBtn.dataset.remediation || '');
         return;
       }
-      if (actionBtn?.dataset.action === 'memory-matches') {
-        state.expandedCheck = state.expandedCheck === rowId ? null : rowId;
-        renderDefenseGrid();
-        if (state.expandedCheck) await loadMemoryMatches(rowId);
-        return;
-      }
+      
       if (actionBtn?.dataset.action === 'toggle-reveal') {
         const idx = Number(actionBtn.dataset.index);
         const match = state.memoryMatchesById[rowId]?.[idx];
@@ -688,9 +684,10 @@ tbody tr.expandable-row { cursor: pointer; }
         await loadMemoryMatches(rowId);
         return;
       }
-      if (getActionType(check) === 'expand') {
+      if (getActionType(check) === 'expand' || getActionType(check) === 'memoryMatches') {
         state.expandedCheck = state.expandedCheck === rowId ? null : rowId;
         renderDefenseGrid();
+        if (state.expandedCheck && getActionType(check) === 'memoryMatches') await loadMemoryMatches(rowId);
       }
     });
 
