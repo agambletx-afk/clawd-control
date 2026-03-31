@@ -386,7 +386,7 @@ tbody tr.expandable-row { cursor: pointer; }
     if (type === 'memoryMatches') {
       return '<button class="btn-secondary" data-action="memory-matches">View Matches</button>';
     }
-    const isOpen = state.expandedCheck === \`\${check.layer}|\${getCheckName(check)}\`;
+    const isOpen = state.expandedCheck === `${check.layer}|${getCheckName(check)}`;
     return isOpen ? '<span class="text-secondary" style="cursor:pointer">Collapse</span>' : '<span class="text-secondary" style="cursor:pointer">Expand</span>';
   }
 
