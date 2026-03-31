@@ -146,7 +146,7 @@ tbody tr.expandable-row { cursor: pointer; }
         <article class="stat-card" id="card-checks-passing"><div class="stat-label">Checks Passing</div><div class="stat-value mono" id="checksPassingValue">0/0</div><div class="stat-subtitle" id="checksPassingSub">of 0 automated checks</div></article>
         <article class="stat-card interactive" id="card-warnings"><div class="stat-label">Warnings</div><div class="stat-value mono" id="warningsValue">0</div><div class="stat-subtitle">checks need attention</div></article>
         <article class="stat-card interactive" id="card-failures"><div class="stat-label">Failures</div><div class="stat-value mono" id="failuresValue">0</div><div class="stat-subtitle">checks critically failed</div></article>
-        <article class="stat-card" id="card-last-scan"><div class="stat-label">Last Scan</div><div class="stat-value mono" id="lastScanValue">—</div><div class="stat-subtitle">15-min cron cycle</div></article>
+        <article class="stat-card" id="card-version"><div class="stat-label">Version</div><div class="stat-value mono" id="versionValue">—</div><div class="stat-subtitle" id="versionSub">checking...</div></article>
       </div>
       <div class="table-wrap">
         <table id="defenseGridTable">
@@ -275,8 +275,7 @@ tbody tr.expandable-row { cursor: pointer; }
     'security hook': 'enforcement'
   };
   const CHECK_ACTION_OVERRIDES = {
-    'memory security': 'memoryMatches',
-    'version currency': 'releaseLink'
+    'memory security': 'memoryMatches'
   };
   const state = {
     checks: [],
@@ -321,7 +320,7 @@ tbody tr.expandable-row { cursor: pointer; }
   }
   function severity(status) { return status === 'red' ? 3 : status === 'yellow' ? 2 : 1; }
   function layerRank(layer) {
-    const ranks = { 'network_firewall': 1, 'network_brute_force': 1.1, 'access': 2, 'public': 3, 'gateway': 4, 'version': 4.5, 'channel': 5, 'reasoning': 6, 'operational': 7, 'memory': 8, 'injection-defense': 9, 'gateway-health': 10 };
+    const ranks = { 'network_firewall': 1, 'network_brute_force': 1.1, 'access': 2, 'public': 3, 'gateway': 4, 'channel': 5, 'reasoning': 6, 'operational': 7, 'memory': 8, 'injection-defense': 9, 'gateway-health': 10 };
     return ranks[layer] || 999;
   }
   function statusDot(status) { return `<span class="status-dot dot-${status === 'yellow' ? 'yellow' : status === 'red' ? 'red' : 'green'}"></span>`; }
@@ -369,7 +368,19 @@ tbody tr.expandable-row { cursor: pointer; }
     refs.checksPassingSub.textContent = `of ${total} automated checks`;
     refs.warningsValue.textContent = String(yellow);
     refs.failuresValue.textContent = String(red);
-    refs.lastScanValue.textContent = rel(state.generatedAt);
+    const vCheck = state.checks.find(ch => ch.layer === 'version');
+    const vMeta = vCheck ? parseMeta(vCheck) : {};
+    const vCurrent = vMeta.current_version ? 'v' + vMeta.current_version : '—';
+    const vBehind = Number(vMeta.versions_behind || 0);
+    const vHasSec = Number(vMeta.total_security_fixes || 0) > 0;
+    refs.versionValue.textContent = vCurrent;
+    if (!vCheck || vCheck.status === 'green') {
+      refs.versionSub.textContent = 'Up to date';
+      refs.versionValue.style.color = '#f1f5f9';
+    } else {
+      refs.versionSub.textContent = vBehind + ' behind' + (vHasSec ? ' · security patches' : '');
+      refs.versionValue.style.color = vCheck.status === 'red' ? '#ef4444' : '#f59e0b';
+    }
     refs.warningsValue.style.color = yellow > 0 ? '#f59e0b' : '#f1f5f9';
     refs.failuresValue.style.color = red > 0 ? '#ef4444' : '#f1f5f9';
   }
@@ -391,11 +402,7 @@ tbody tr.expandable-row { cursor: pointer; }
       const label = 'Details';
       return `<a href="#" class="action-link" data-action="switch" data-target="${target}">${label}</a>`;
     }
-    if (type === 'releaseLink') {
-      const meta = parseMeta(check);
-      const href = meta.release_url || meta.github_release || 'https://github.com';
-      return `<a class="action-link" href="${esc(href)}" target="_blank" rel="noopener">View Release <svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:#ec4899;fill:none;vertical-align:-2px"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M21 14v7H3V3h7"/></svg></a>`;
-    }
+    
     if (type === 'memoryMatches') {
       const isOpenMem = state.expandedCheck === check.layer + '|' + getCheckName(check);
       return '<svg class="row-chevron' + (isOpenMem ? ' open' : '') + '" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>';
@@ -405,7 +412,7 @@ tbody tr.expandable-row { cursor: pointer; }
   }
 
   function sortedChecks() {
-    const list = [...state.checks];
+    const list = state.checks.filter(ch => ch.layer !== 'version');
     list.sort((a, b) => layerRank(a.layer) - layerRank(b.layer) || getCheckName(a).localeCompare(getCheckName(b)));
     return list;
   }
@@ -751,7 +758,8 @@ tbody tr.expandable-row { cursor: pointer; }
     refs.checksPassingSub = document.getElementById('checksPassingSub');
     refs.warningsValue = document.getElementById('warningsValue');
     refs.failuresValue = document.getElementById('failuresValue');
-    refs.lastScanValue = document.getElementById('lastScanValue');
+    refs.versionValue = document.getElementById('versionValue');
+    refs.versionSub = document.getElementById('versionSub');
     refs.defenseGridTable = document.getElementById('defenseGridTable');
     refs.defenseGridBody = document.getElementById('defenseGridBody');
     refs.historyToggleBtn = document.getElementById('historyToggleBtn');
