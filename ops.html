@@ -1833,24 +1833,25 @@
       }
 
       const disk = payload.disk || {};
-      const memory = payload.memory || {};
-      const latency = payload.latency || {};
-      const errors = payload.errors || {};
-      const diskUsedPct = Number(payload.disk_used_pct ?? disk.used_pct);
-      const diskFree = Number(payload.disk_free_bytes ?? disk.free_bytes);
-      const diskTotal = Number(payload.disk_total_bytes ?? disk.total_bytes);
-      const memoryRss = Number(payload.gateway_rss_bytes ?? memory.gateway_rss_bytes ?? memory.rss_bytes);
-      const sysAvail = Number(payload.system_available_bytes ?? memory.system_available_bytes ?? memory.available_bytes);
-      const latencyP95 = Number(payload.gateway_p95_ms ?? latency.gateway_p95_ms ?? latency.p95_ms);
-      const incidents = Number(payload.error_incidents_60m ?? errors.incidents_60m ?? errors.incident_count);
-      const memoryStatus = normalizeOpsColor(payload.memory_status ?? memory.status);
+      const gw = payload.gateway || {};
+      const sysMem = payload.system_memory || {};
+      const st = payload.status || {};
+      const diskUsedPct = Number(disk.used_pct);
+      const diskFree = Number(disk.free_bytes);
+      const diskTotal = Number(disk.total_bytes);
+      const memoryRss = Number(gw.rss_bytes);
+      const sysAvail = Number(sysMem.available_bytes);
+      const latencyP95 = Number(payload.latency_p95_ms);
+      const incidents = Number(payload.incidents_1h);
+      const memoryStatus = normalizeOpsColor(st.memory);
+      const memorySignal = payload.status?.memory_signal || '';
       const latencyMissing = !Number.isFinite(latencyP95) || latencyP95 < 0;
 
       root.innerHTML = [
         {
           label: 'DISK USAGE',
           value: Number.isFinite(diskUsedPct) ? `${Math.round(diskUsedPct)}%` : 'N/A',
-          valueClass: normalizeOpsColor(payload.disk_status ?? disk.status),
+          valueClass: normalizeOpsColor(st.disk),
           subtitle: (Number.isFinite(diskFree) && Number.isFinite(diskTotal))
             ? `${formatBytes(diskFree)} free of ${formatBytes(diskTotal)}`
             : 'space unavailable',
@@ -1861,20 +1862,20 @@
           value: Number.isFinite(memoryRss) ? formatBytes(memoryRss) : 'N/A',
           valueClass: memoryStatus,
           subtitle: Number.isFinite(sysAvail) ? `${formatBytes(sysAvail)} system available` : 'system memory unavailable',
-          attention: (memoryStatus === 'amber' || memoryStatus === 'red') && (payload.memory_signal || memory.signal) ? String(payload.memory_signal || memory.signal) : '',
+          attention: (memoryStatus === 'amber' || memoryStatus === 'red') && memorySignal ? memorySignal : '',
           stale
         },
         {
           label: 'GATEWAY LATENCY',
           value: latencyMissing ? 'N/A' : `${Math.round(latencyP95)}ms`,
-          valueClass: latencyMissing ? 'tertiary' : normalizeOpsColor(payload.latency_status ?? latency.status),
+          valueClass: latencyMissing ? 'tertiary' : normalizeOpsColor(st.latency),
           subtitle: 'p95 rolling 5-sample',
           stale
         },
         {
           label: 'GATEWAY ERRORS',
           value: Number.isFinite(incidents) ? String(incidents) : 'N/A',
-          valueClass: normalizeOpsColor(payload.error_status ?? errors.status, Number(incidents) >= 1 ? 'red' : 'green'),
+          valueClass: normalizeOpsColor(st.errors, Number(incidents) >= 1 ? 'red' : 'green'),
           subtitle: 'incidents last 60 min',
           stale
         }
@@ -2428,8 +2429,8 @@
       const payload = state.contextBudget.data || {};
       const status = String(payload.status || 'info').toLowerCase();
       const estTokens = formatApproxTokens(payload.est_total_tokens);
-      const estChars = Number(payload.est_total_chars);
-      const maxChars = Number(payload.max_context_chars || 150000);
+      const estChars = Number(payload.total_chars ?? payload.est_total_chars);
+      const maxChars = Number(payload.max_total_chars ?? payload.max_context_chars ?? 150000);
       const estCharsText = Number.isFinite(estChars) ? estChars.toLocaleString() : '-';
       const maxCharsText = Number.isFinite(maxChars) ? maxChars.toLocaleString() : '150,000';
       headline.innerHTML = `
@@ -2450,7 +2451,7 @@
           : '-';
         return `<tr>
           <td><span class="ops-context-dot ${contextDotClass(fileStatus)}" title="${esc(fileStatus)}"></span></td>
-          <td>${esc(file.path || file.file || '-')}</td>
+          <td>${esc(file.name || file.path || file.file || '-')}</td>
           <td class="mono">${esc(sizeChars.toLocaleString())}</td>
           <td class="mono">${esc(estFileTokens)}</td>
           <td class="mono">${esc(target)}</td>
@@ -2458,7 +2459,7 @@
         </tr>`;
       }).join('') : '<tr><td colspan="6" class="muted">No injected files found.</td></tr>';
 
-      const ownershipDrift = Number(payload.workspace?.ownership_drift_files ?? payload.ownership_drift_files ?? 0);
+      const ownershipDrift = Number(payload.workspace?.ownership_drift ?? payload.workspace?.ownership_drift_files ?? 0);
       const ownershipClass = ownershipDrift > 0 ? 'amber' : 'green';
       workspace.innerHTML = `
         <div class="ops-context-workspace-row">
