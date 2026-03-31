@@ -7,7 +7,7 @@
 <style>
 * { box-sizing: border-box; }
 body { margin: 0; background: #0f1419; color: #f1f5f9; font-family: Inter, system-ui, sans-serif; }
-main.main { padding: 24px; max-width: 1600px; margin: 0 auto; }
+main.main { padding: 24px; }
 .page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
 .page-header h1 { margin: 0; font-size: 20px; font-weight: 700; color: #f1f5f9; text-shadow: 0 0 24px rgba(236, 72, 153, 0.18); }
 .subtitle { margin: 6px 0 0; font-size: 13px; font-weight: 400; color: #94a3b8; }
@@ -43,7 +43,7 @@ button svg { width: 14px; height: 14px; vertical-align: text-bottom; margin-righ
 .panel-subtitle { margin: 4px 0 0; font-size: 12px; color: #94a3b8; }
 
 .table-wrap { overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; min-width: 920px; }
+table { width: 100%; border-collapse: collapse; }
 th { text-align: left; font-size: 11px; text-transform: uppercase; font-weight: 600; color: #94a3b8; letter-spacing: 0.04em; padding: 10px 8px; background: #1a1e30; }
 td { padding: 10px 8px; border-top: 1px solid #363b4d; font-size: 13px; color: #f1f5f9; vertical-align: top; }
 .mono { font-family: "JetBrains Mono", "Fira Code", monospace; }
@@ -53,7 +53,7 @@ td { padding: 10px 8px; border-top: 1px solid #363b4d; font-size: 13px; color: #
 .dot-green { background: #22c55e; }
 .dot-yellow { background: #f59e0b; }
 .dot-red { background: #ef4444; }
-.layer-pill { display: inline-block; border-radius: 4px; padding: 4px 8px; font-size: 11px; color: #ec4899; background: rgba(236,72,153,0.12); }
+.layer-pill { display: inline-block; border-radius: 4px; padding: 4px 8px; font-size: 11px; color: #ec4899; background: rgba(236,72,153,0.12); min-width: 28px; text-align: center; }
 .action-link { color: #ec4899; text-decoration: none; font-size: 13px; }
 .action-link:hover { text-decoration: underline; }
 
@@ -75,7 +75,7 @@ tbody tr.expandable-row { cursor: pointer; }
 .collapsible-content { display: none; margin-top: 10px; }
 .collapsible-content.open { display: block; }
 .event-list { display: grid; gap: 8px; }
-.event-row { border: 1px solid #363b4d; border-radius: 8px; padding: 8px; display: grid; grid-template-columns: 120px 64px minmax(120px, 1fr) 60px minmax(120px, 1fr); gap: 8px; align-items: center; font-size: 12px; }
+.event-row { border: 1px solid #363b4d; border-radius: 8px; padding: 8px; display: grid; grid-template-columns: 100px 52px minmax(80px, 1fr) 50px minmax(80px, 1fr); gap: 8px; align-items: center; font-size: 12px; overflow: hidden; }
 
 .badge-action { display: inline-block; border-radius: 999px; padding: 3px 8px; font-size: 11px; text-transform: lowercase; }
 .badge-blocked { background: rgba(239,68,68,0.18); color: #ef4444; }
@@ -84,7 +84,7 @@ tbody tr.expandable-row { cursor: pointer; }
 .badge-allowed { background: rgba(34,197,94,0.08); color: rgba(34,197,94,0.72); }
 
 .memory-matches { border: 1px solid #363b4d; border-radius: 8px; overflow: hidden; }
-.memory-header, .memory-row { display: grid; grid-template-columns: minmax(120px,1fr) minmax(140px,1fr) minmax(180px,1fr) 90px 90px; gap: 8px; padding: 8px; align-items: center; }
+.memory-header, .memory-row { display: grid; grid-template-columns: minmax(80px,1fr) minmax(80px,1fr) minmax(120px,1fr) 72px 72px; gap: 8px; padding: 8px; align-items: center; }
 .memory-header { background: #1a1e30; font-size: 11px; text-transform: uppercase; color: #94a3b8; }
 .memory-row { border-top: 1px solid #363b4d; font-size: 12px; }
 .inline-error { color: #ef4444; font-size: 12px; }
@@ -96,18 +96,20 @@ tbody tr.expandable-row { cursor: pointer; }
 .accept-guard input { background: #0d1117; color: #f1f5f9; border: 1px solid #363b4d; border-radius: 8px; padding: 6px 8px; font-family: "JetBrains Mono", "Fira Code", monospace; width: 120px; }
 .empty-state { text-align: center; color: #475569; padding: 14px; }
 
-@media (max-width: 1024px) {
+@media (max-width: 1280px) {
   .card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 </style>
 </head>
 <body>
 <main class="main" id="securityRoot">
-  <div class="page-header">
+  <div class="page-header" style="display:none">
     <div>
       <h1>Security</h1>
       <p class="subtitle">Security posture and enforcement status.</p>
     </div>
+  </div>
+  <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
     <button class="btn-primary" id="checkNowBtn">Check Now</button>
   </div>
 
@@ -136,7 +138,7 @@ tbody tr.expandable-row { cursor: pointer; }
       </div>
       <div class="table-wrap">
         <table id="defenseGridTable">
-          <thead><tr><th style="width:40px">Status</th><th style="width:60px">Layer</th><th>Check</th><th>Message</th><th style="width:80px">Age</th><th style="width:120px">Action</th></tr></thead>
+          <thead><tr><th style="width:40px">Status</th><th style="width:52px">Layer</th><th>Check</th><th>Message</th><th style="width:80px">Age</th><th style="width:120px">Action</th></tr></thead>
           <tbody id="defenseGridBody"></tbody>
         </table>
       </div>
@@ -248,6 +250,12 @@ tbody tr.expandable-row { cursor: pointer; }
 (() => {
   'use strict';
 
+  const LAYER_TAGS = {
+    'network_firewall': 'L1', 'network_brute_force': 'L1',
+    'access': 'L2', 'public': 'L3', 'gateway': 'L4', 'channel': 'L5',
+    'reasoning': 'L6', 'operational': 'L7', 'memory': 'L8',
+    'version': '\u2014', 'injection-defense': 'L9', 'gateway-health': 'L10',
+  };
   const SECTION_CHECK_TARGETS = {
     'soul.md integrity': 'integrity',
     'config drift': 'integrity',
@@ -401,7 +409,7 @@ tbody tr.expandable-row { cursor: pointer; }
         <td>${statusDot(check.status)}</td>
         <td><span class="layer-pill mono">${esc(check.layer || '—')}</span></td>
         <td>${esc(name)}</td>
-        <td class="text-secondary" title="${esc(check.message || '')}">${esc(check.message || '')}</td>
+        <td class="text-secondary" style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(check.message || '')}">${esc(check.message || '')}</td>
         <td class="mono" style="color:${ageColor(check.checked_at || state.generatedAt)}">${esc(rel(check.checked_at || state.generatedAt))}</td>
         <td>${buildActionCell(check)}</td>
       </tr>`);
@@ -466,7 +474,7 @@ tbody tr.expandable-row { cursor: pointer; }
   }
 
   function renderDecisionsTable() {
-    refs.decisionsBody.innerHTML = state.decisions.map((d) => `<tr><td class="mono">${esc(rel(d.timestamp))}</td><td>${esc(d.tool || '—')}</td><td>${actionBadge(d.action || 'unknown')}</td><td class="mono" title="${esc(d.target || '')}">${esc(d.target || '')}</td><td class="text-secondary">${esc(d.rule || '—')}</td></tr>`).join('');
+    refs.decisionsBody.innerHTML = state.decisions.map((d) => `<tr><td class="mono">${esc(rel(d.timestamp))}</td><td>${esc(d.tool || '—')}</td><td>${actionBadge(d.action || 'unknown')}</td><td class="mono" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(d.target || '')}">${esc(d.target || '')}</td><td class="text-secondary">${esc(d.rule || '—')}</td></tr>`).join('');
     refs.decisionsEmpty.style.display = state.decisions.length ? 'none' : 'block';
   }
 
