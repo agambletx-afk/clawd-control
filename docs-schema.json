@@ -1,0 +1,29 @@
+{
+  "expected_crons": {
+    "check-security-health": {
+      "output": "/tmp/security-health-results.json",
+      "max_stale_minutes": 30
+    },
+    "check-api-health": {
+      "output": "/tmp/openclaw-api-liveness.json",
+      "max_stale_minutes": 5
+    },
+    "check-system-health": {
+      "output": "/home/openclaw/.openclaw/workspace/health-status.json",
+      "max_stale_minutes": 10
+    }
+  },
+  "context_limits": {
+    "max_workspace_md_files": 10,
+    "max_workspace_md_bytes": 32768,
+    "max_soul_words": 4000,
+    "max_agents_words": 1200,
+    "max_heartbeat_words": 800
+  },
+  "latency_thresholds_ms": {
+    "gateway_http": 2000,
+    "dashboard_http": 2000,
+    "monitoring_http": 2000,
+    "fts5_query": 500
+  }
+}
