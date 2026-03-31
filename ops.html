@@ -1384,16 +1384,7 @@
         <div id="opsDoctorSections"></div>
       </section>
 
-      <section class="panel" style="background: #161b26; border: 1px solid #363b4d; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
-        <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="m9 15 2 2 4-4"/></svg>
-          <div>
-            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: #e2e8f0; margin: 0;"><span class="ops-domain-capsule"></span>Integrity</h2>
-            <p class="panel-sub" style="font-size: 12px; color: #94a3b8; margin: 2px 0 0 0;">File hash monitoring and runtime/repo drift detection.</p>
-          </div>
-        </div>
-        <div id="opsIntegrityPanel"></div>
-      </section>
+
 
       <section class="panel" style="background: #161b26; border: 1px solid #363b4d; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
@@ -1534,7 +1525,6 @@
       killSwitches: { loading: false, data: {} },
       recoveryLog: { expanded: false, limit: 20, entries: [] },
       doctor: { loading: false, data: null, sectionsExpanded: {}, repairToken: '', repairInput: '', repairPrepared: null },
-      integrity: { loading: false, data: null },
       opsLogs: {
         initialized: false,
         page: 0,
@@ -3394,7 +3384,7 @@
       };
 
       try {
-        await Promise.all([loadServices(), loadVersionCheck(), loadVerification(), loadCrons(), loadBackups(), loadGatewayEvents(), loadWatcherHealth(), loadServiceHealth(true), loadMonitoringLayers(), loadKillSwitches(), loadDoctorPanel(), loadIntegrityPanel()]);
+        await Promise.all([loadServices(), loadVersionCheck(), loadVerification(), loadCrons(), loadBackups(), loadGatewayEvents(), loadWatcherHealth(), loadServiceHealth(true), loadMonitoringLayers(), loadKillSwitches(), loadDoctorPanel()]);
         applyCollapsibleState();
         if (window.__opsServicesRefreshTimer) clearInterval(window.__opsServicesRefreshTimer);
         window.__opsServicesRefreshTimer = setInterval(() => {
@@ -3417,7 +3407,6 @@
         if (window.__opsChecksRefreshTimer) clearInterval(window.__opsChecksRefreshTimer);
         window.__opsChecksRefreshTimer = setInterval(() => {
           loadDoctorPanel().catch(() => {});
-          loadIntegrityPanel().catch(() => {});
         }, 300000);
         if (window.__opsWatcherRefreshTimer) clearInterval(window.__opsWatcherRefreshTimer);
         window.__opsWatcherRefreshTimer = setInterval(() => {
