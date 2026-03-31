@@ -1112,6 +1112,121 @@ fi
 add_check "$(make_check_json 'os-hardening' 'Immutable Configs' "$immutable_status" "$immutable_message" "$immutable_details" "$immutable_remediation")"
 update_overall "$immutable_status"
 
+
+# Check 20: Config Not World-Readable
+perm_cfg_file='/home/openclaw/.openclaw/openclaw.json'
+perm_cfg_mode=$(stat -c '%A' "$perm_cfg_file" 2>/dev/null)
+perm_cfg_other="${perm_cfg_mode:7:3}"
+perm_cfg_status='green'
+perm_cfg_message="openclaw.json not world-readable (${perm_cfg_mode})"
+perm_cfg_remediation=''
+if echo "$perm_cfg_other" | grep -q 'r'; then
+  perm_cfg_status='yellow'
+  perm_cfg_message="openclaw.json is world-readable (${perm_cfg_mode}). Run: chmod 640 openclaw.json"
+  perm_cfg_remediation='chmod 640 /home/openclaw/.openclaw/openclaw.json'
+fi
+add_check "$(make_check_json 'os-hardening' 'Config Permissions' "$perm_cfg_status" "$perm_cfg_message" "mode=${perm_cfg_mode}" "$perm_cfg_remediation")"
+update_overall "$perm_cfg_status"
+
+# Check 21: Env Not World-Readable
+perm_env_file='/opt/openclaw.env'
+perm_env_mode=$(stat -c '%A' "$perm_env_file" 2>/dev/null)
+perm_env_status='green'
+perm_env_message="openclaw.env not world-readable (${perm_env_mode})"
+perm_env_remediation=''
+if [ -z "$perm_env_mode" ]; then
+  perm_env_status='yellow'
+  perm_env_message='openclaw.env not found at /opt/openclaw.env'
+elif echo "${perm_env_mode:7:3}" | grep -q 'r'; then
+  perm_env_status='yellow'
+  perm_env_message="openclaw.env is world-readable (${perm_env_mode}). Run: chmod 640 /opt/openclaw.env"
+  perm_env_remediation='chmod 640 /opt/openclaw.env'
+fi
+add_check "$(make_check_json 'os-hardening' 'Env Permissions' "$perm_env_status" "$perm_env_message" "mode=${perm_env_mode:-missing}" "$perm_env_remediation")"
+update_overall "$perm_env_status"
+
+# Check 22: Facts.db Not World-Writable
+perm_facts_file='/home/openclaw/.openclaw/memory/facts.db'
+perm_facts_mode=$(stat -c '%A' "$perm_facts_file" 2>/dev/null)
+perm_facts_status='green'
+perm_facts_message="facts.db not world-writable (${perm_facts_mode})"
+perm_facts_remediation=''
+if [ -n "$perm_facts_mode" ] && echo "${perm_facts_mode:7:3}" | grep -q 'w'; then
+  perm_facts_status='yellow'
+  perm_facts_message="facts.db is world-writable (${perm_facts_mode}). Run: chmod 660 facts.db"
+  perm_facts_remediation='chmod 660 /home/openclaw/.openclaw/memory/facts.db'
+fi
+add_check "$(make_check_json 'os-hardening' 'Facts DB Permissions' "$perm_facts_status" "$perm_facts_message" "mode=${perm_facts_mode:-missing}" "$perm_facts_remediation")"
+update_overall "$perm_facts_status"
+
+
+# Check 23: Workspace Markdown File Count
+ctx_ws_dir='/home/openclaw/.openclaw/workspace'
+ctx_md_count=$(find "$ctx_ws_dir" -maxdepth 1 -type f -name '*.md' 2>/dev/null | wc -l)
+ctx_md_max=10
+ctx_count_status='green'
+ctx_count_message="Workspace has ${ctx_md_count} markdown files (limit: ${ctx_md_max})"
+ctx_count_remediation=''
+if [ "$ctx_md_count" -gt "$ctx_md_max" ]; then
+  ctx_count_status='yellow'
+  ctx_count_message="Workspace has ${ctx_md_count} markdown files, exceeds ${ctx_md_max} limit."
+  ctx_count_remediation='Review workspace .md files. Remove or archive unused files.'
+fi
+add_check "$(make_check_json 'context' 'Workspace File Count' "$ctx_count_status" "$ctx_count_message" "count=${ctx_md_count}; max=${ctx_md_max}" "$ctx_count_remediation")"
+
+# Check 24: Workspace Markdown Total Bytes
+ctx_md_bytes=$(find "$ctx_ws_dir" -maxdepth 1 -type f -name '*.md' -printf '%s
+' 2>/dev/null | awk '{s+=$1} END{print s+0}')
+ctx_md_bytes_max=32768
+ctx_bytes_status='green'
+ctx_bytes_message="Workspace markdown total: $((ctx_md_bytes / 1024))KB (limit: $((ctx_md_bytes_max / 1024))KB)"
+ctx_bytes_remediation=''
+if [ "$ctx_md_bytes" -gt "$ctx_md_bytes_max" ]; then
+  ctx_bytes_status='yellow'
+  ctx_bytes_message="Workspace markdown total: $((ctx_md_bytes / 1024))KB exceeds $((ctx_md_bytes_max / 1024))KB limit."
+  ctx_bytes_remediation='Reduce workspace .md file sizes. Run SOUL.md diet pass or archive old files.'
+fi
+add_check "$(make_check_json 'context' 'Workspace Total Size' "$ctx_bytes_status" "$ctx_bytes_message" "bytes=${ctx_md_bytes}; max=${ctx_md_bytes_max}" "$ctx_bytes_remediation")"
+
+# Check 25: SOUL.md Word Count
+ctx_soul_words=$(wc -w < '/home/openclaw/.openclaw/workspace/SOUL.md' 2>/dev/null || echo 0)
+ctx_soul_max=4000
+ctx_soul_status='green'
+ctx_soul_message="SOUL.md: ${ctx_soul_words} words (limit: ${ctx_soul_max})"
+ctx_soul_remediation=''
+if [ "$ctx_soul_words" -gt "$ctx_soul_max" ]; then
+  ctx_soul_status='yellow'
+  ctx_soul_message="SOUL.md: ${ctx_soul_words} words exceeds ${ctx_soul_max} limit. Run diet pass."
+  ctx_soul_remediation='SOUL.md diet pass needed. Reduce word count below 4000.'
+fi
+add_check "$(make_check_json 'context' 'SOUL.md Size' "$ctx_soul_status" "$ctx_soul_message" "words=${ctx_soul_words}; max=${ctx_soul_max}" "$ctx_soul_remediation")"
+
+# Check 26: AGENTS.md Word Count
+ctx_agents_words=$(wc -w < '/home/openclaw/.openclaw/workspace/AGENTS.md' 2>/dev/null || echo 0)
+ctx_agents_max=1200
+ctx_agents_status='green'
+ctx_agents_message="AGENTS.md: ${ctx_agents_words} words (limit: ${ctx_agents_max})"
+ctx_agents_remediation=''
+if [ "$ctx_agents_words" -gt "$ctx_agents_max" ]; then
+  ctx_agents_status='yellow'
+  ctx_agents_message="AGENTS.md: ${ctx_agents_words} words exceeds ${ctx_agents_max} limit."
+  ctx_agents_remediation='Reduce AGENTS.md word count below 1200.'
+fi
+add_check "$(make_check_json 'context' 'AGENTS.md Size' "$ctx_agents_status" "$ctx_agents_message" "words=${ctx_agents_words}; max=${ctx_agents_max}" "$ctx_agents_remediation")"
+
+# Check 27: HEARTBEAT.md Word Count
+ctx_hb_words=$(wc -w < '/home/openclaw/.openclaw/workspace/HEARTBEAT.md' 2>/dev/null || echo 0)
+ctx_hb_max=800
+ctx_hb_status='green'
+ctx_hb_message="HEARTBEAT.md: ${ctx_hb_words} words (limit: ${ctx_hb_max})"
+ctx_hb_remediation=''
+if [ "$ctx_hb_words" -gt "$ctx_hb_max" ]; then
+  ctx_hb_status='yellow'
+  ctx_hb_message="HEARTBEAT.md: ${ctx_hb_words} words exceeds ${ctx_hb_max} limit."
+  ctx_hb_remediation='Reduce HEARTBEAT.md word count below 800.'
+fi
+add_check "$(make_check_json 'context' 'HEARTBEAT.md Size' "$ctx_hb_status" "$ctx_hb_message" "words=${ctx_hb_words}; max=${ctx_hb_max}" "$ctx_hb_remediation")"
+
 final_json=$(node -e "
   const out = {
     generated_at: process.argv[1],
