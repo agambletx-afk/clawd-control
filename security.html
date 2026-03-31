@@ -209,12 +209,7 @@ tbody tr.expandable-row { cursor: pointer; }
 
   <section id="section-integrity" style="display:none">
     <div class="context-bar" id="integrityContext">0/0 passing · 0 warning · 0 failures · scanned <span class="mono">—</span></div>
-    <div class="card-grid">
-      <article class="stat-card"><div class="stat-label">Files Monitored</div><div class="stat-value mono" id="filesMonitoredValue">0</div><div class="stat-subtitle">in integrity baseline</div></article>
-      <article class="stat-card"><div class="stat-label">Verified</div><div class="stat-value mono" id="verifiedValue">0/0</div><div class="stat-subtitle">hashes match baseline</div></article>
-      <article class="stat-card"><div class="stat-label">Config Drift</div><div class="stat-value mono" id="configDriftValue">none</div><div class="stat-subtitle">changes since baseline</div></article>
-      <article class="stat-card"><div class="stat-label">Last Verified</div><div class="stat-value mono" id="lastVerifiedValue">—</div><div class="stat-subtitle">15-min cron cycle</div></article>
-    </div>
+
 
     <section class="panel featured">
       <div class="panel-header">
@@ -510,11 +505,7 @@ tbody tr.expandable-row { cursor: pointer; }
     
     const driftDetected = configDrift && configDrift.status !== 'green';
 
-    refs.filesMonitoredValue.textContent = String(filesMonitored);
-    refs.verifiedValue.textContent = `${verified}/${integrityChecks.length || 0}`;
-    refs.configDriftValue.textContent = driftDetected ? 'detected' : 'none';
-    refs.configDriftValue.style.color = driftDetected ? '#f59e0b' : '#22c55e';
-    refs.lastVerifiedValue.textContent = rel(integrityChecks[0]?.checked_at || state.generatedAt);
+    
 
     const soul = state.checks.find((c) => String(c.name || '').toLowerCase().includes('soul.md integrity')) || integrityChecks[0];
     const soulMeta = parseMeta(soul);
@@ -789,10 +780,10 @@ tbody tr.expandable-row { cursor: pointer; }
     refs.decisionFilters = document.getElementById('decisionFilters');
     refs.decisionsBody = document.getElementById('decisionsBody');
     refs.decisionsEmpty = document.getElementById('decisionsEmpty');
-    refs.filesMonitoredValue = document.getElementById('filesMonitoredValue');
-    refs.verifiedValue = document.getElementById('verifiedValue');
-    refs.configDriftValue = document.getElementById('configDriftValue');
-    refs.lastVerifiedValue = document.getElementById('lastVerifiedValue');
+    
+    
+    
+    
     refs.integrityTableBody = document.getElementById('integrityTableBody');
     refs.acknowledgeBtn = document.getElementById('acknowledgeBtn');
     refs.configDriftToggleBtn = document.getElementById('configDriftToggleBtn');
