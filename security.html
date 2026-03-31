@@ -317,7 +317,7 @@ tbody tr.expandable-row { cursor: pointer; }
   function severity(status) { return status === 'red' ? 3 : status === 'yellow' ? 2 : 1; }
   function layerRank(layer) {
     const ranks = { 'os-hardening': 0, 'network_firewall': 1, 'network_brute_force': 1.1, 'access': 2, 'public': 3, 'gateway': 4, 'channel': 5, 'reasoning': 6, 'operational': 7, 'memory': 8, 'injection-defense': 9, 'gateway-health': 10 };
-    return ranks[layer] || 999;
+    return ranks[layer] !== undefined ? ranks[layer] : 999;
   }
   function statusDot(status) { return `<span class="status-dot dot-${status === 'yellow' ? 'yellow' : status === 'red' ? 'red' : 'green'}"></span>`; }
   function ageColor(ts) { const diffMin = Math.floor((Date.now() - new Date(ts || 0).getTime()) / 60000); return diffMin > 30 ? '#f59e0b' : '#f1f5f9'; }
