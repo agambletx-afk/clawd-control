@@ -5075,6 +5075,77 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+
+  if (path === '/api/ops/health-metrics' && req.method === 'GET') {
+    try {
+      const snapshotPath = '/tmp/ops-health-metrics.json';
+      if (!existsSync(snapshotPath)) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ available: false }));
+        return;
+      }
+      const raw = readFileSync(snapshotPath, 'utf8');
+      const data = JSON.parse(raw);
+      const sampledAt = data.sampled_at ? new Date(data.sampled_at).getTime() : 0;
+      data.stale = (Date.now() - sampledAt) > 120000;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(data));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ available: false, error: e.message }));
+    }
+    return;
+  }
+
+  if (path === '/api/ops/context-budget' && req.method === 'GET') {
+    try {
+      const wsDir = '/home/openclaw/.openclaw/workspace';
+      const bootstrapFiles = ['SOUL.md','AGENTS.md','TOOLS.md','IDENTITY.md','USER.md','HEARTBEAT.md','BOOTSTRAP.md'];
+      const targets = { 'SOUL.md': 3000, 'AGENTS.md': 1000, 'TOOLS.md': 1500, 'HEARTBEAT.md': 800, 'BOOTSTRAP.md': 2000 };
+      const maxPerFile = 20000;
+      const maxTotal = 150000;
+      const files = [];
+      let totalChars = 0;
+      for (const name of bootstrapFiles) {
+        const fp = wsDir + '/' + name;
+        let size = 0, exists = false;
+        try { const st = require('fs').statSync(fp); size = st.size; exists = true; } catch {}
+        const estTokens = Math.round(size / 4);
+        const target = targets[name] || null;
+        let status = 'info';
+        if (target) {
+          if (size > maxPerFile) status = 'red';
+          else if (estTokens > target) status = 'amber';
+          else status = 'green';
+        } else if (exists) {
+          status = size > maxPerFile ? 'red' : 'info';
+        }
+        files.push({ name, exists, size_chars: size, est_tokens: estTokens, target_tokens: target, max_chars: maxPerFile, status, truncated: size > maxPerFile });
+        if (exists) totalChars += size;
+      }
+      let ownershipDrift = 0;
+      try {
+        const out = require('child_process').execSync("find " + wsDir + " -mindepth 1 -maxdepth 1 ! -user openclaw 2>/dev/null | wc -l", { encoding: 'utf8', timeout: 5000 }).trim();
+        ownershipDrift = parseInt(out, 10) || 0;
+      } catch {}
+      const totalTokens = Math.round(totalChars / 4);
+      let overallStatus = 'green';
+      if (totalChars > maxTotal || files.some(f => f.truncated)) overallStatus = 'red';
+      else if (files.some(f => f.status === 'amber') || ownershipDrift > 0) overallStatus = 'amber';
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        total_chars: totalChars, max_total_chars: maxTotal, est_total_tokens: totalTokens,
+        file_count: files.filter(f => f.exists).length, files,
+        workspace: { ownership_drift: ownershipDrift },
+        status: overallStatus
+      }));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
   if (path === '/api/ops/monitoring-layers' && req.method === 'GET') {
     try {
       const now = Date.now();
