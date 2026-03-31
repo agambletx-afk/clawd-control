@@ -237,19 +237,7 @@ tbody tr.expandable-row { cursor: pointer; }
       <div class="collapsible-content" id="configDriftContent"></div>
     </section>
 
-    <section class="panel">
-      <button class="collapsible-toggle" id="hardeningToggleBtn">
-        <div class="panel-header" style="margin-bottom:0">
-          <div class="panel-title-wrap">
-            <svg class="panel-icon" viewBox="0 0 24 24"><path d="m12 3 7 4v5c0 5-3.5 8.5-7 9-3.5-.5-7-4-7-9V7z"/></svg>
-            <span class="domain-capsule"></span>
-            <div><p class="panel-title">OS Hardening</p><p class="panel-subtitle">Kernel and filesystem hardening verification.</p></div>
-          </div>
-          <svg class="collapsible-chevron" id="hardeningChevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
-        </div>
-      </button>
-      <div class="collapsible-content" id="hardeningContent"><div id="hardeningChecks"></div></div>
-    </section>
+    
   </section>
 </main>
 
@@ -530,7 +518,7 @@ tbody tr.expandable-row { cursor: pointer; }
     const anyRed = soul && soul.status === 'red';
     refs.acknowledgeBtn.style.display = anyRed ? '' : 'none';
     renderConfigDriftPanel(configDrift);
-    renderHardeningPanel();
+    
   }
 
   function detectCritical(changeKey) {
@@ -586,20 +574,7 @@ tbody tr.expandable-row { cursor: pointer; }
     await loadHealth();
   }
 
-  function renderHardeningPanel() {
-    const el = document.getElementById('hardeningChecks');
-    if (!el) return;
-    const osChecks = state.checks.filter(ch => ch.layer === 'os-hardening');
-    if (osChecks.length === 0) {
-      el.innerHTML = '<p class="text-secondary" style="font-size:12px">No hardening verification data available.</p>';
-      return;
-    }
-    el.innerHTML = '<div class="table-wrap"><table><thead><tr><th style="width:40px">Status</th><th>Check</th><th>Details</th></tr></thead><tbody>' +
-      osChecks.map(ch => '<tr><td>' + statusDot(ch.status) + '</td><td style="font-weight:500">' + esc(ch.name) + '</td><td class="text-secondary">' + esc(ch.message) + '</td></tr>').join('') +
-      '</tbody></table></div>';
-  }
-
-  async function loadHealth() {
+    async function loadHealth() {
     const data = await api('/api/security/health');
     state.checks = Array.isArray(data.checks) ? data.checks : [];
     state.generatedAt = data.generated_at;
@@ -759,10 +734,7 @@ tbody tr.expandable-row { cursor: pointer; }
       document.getElementById('configDriftChevron').style.transform = open ? 'rotate(180deg)' : '';
     });
 
-    refs.hardeningToggleBtn.addEventListener('click', () => {
-      const open = refs.hardeningContent.classList.toggle('open');
-      document.getElementById('hardeningChevron').style.transform = open ? 'rotate(180deg)' : '';
-    });
+    
 
     refs.acknowledgeBtn.addEventListener('click', async () => {
       await api('/api/security/acknowledge', { method: 'POST' });
@@ -829,9 +801,9 @@ tbody tr.expandable-row { cursor: pointer; }
     refs.configDriftToggleBtn = document.getElementById('configDriftToggleBtn');
     
     refs.configDriftContent = document.getElementById('configDriftContent');
-    refs.hardeningToggleBtn = document.getElementById('hardeningToggleBtn');
     
-    refs.hardeningContent = document.getElementById('hardeningContent');
+    
+    
   }
 
   async function initialLoad() {
