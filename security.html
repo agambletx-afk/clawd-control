@@ -220,7 +220,7 @@ tbody tr.expandable-row { cursor: pointer; }
         </div>
         <button class="btn-secondary" id="acknowledgeBtn" style="display:none">Acknowledge</button>
       </div>
-      <div class="table-wrap"><table><thead><tr><th style="width:40px">Status</th><th>File</th><th style="width:120px">Last Verified</th><th style="width:100px">Hash</th></tr></thead><tbody id="integrityTableBody"></tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th style="width:40px">Status</th><th>File</th><th style="width:80px">Size</th><th style="width:120px">Last Verified</th><th style="width:100px">Status</th></tr></thead><tbody id="integrityTableBody"></tbody></table></div>
     </section>
 
     <section class="panel">
@@ -287,6 +287,7 @@ tbody tr.expandable-row { cursor: pointer; }
     decisionActions: new Set(['blocked', 'rate-limited', 'confirmed']),
     healthTimer: null,
     decisionsTimer: null,
+    integrityFiles: null,
   };
 
   const refs = {};
@@ -507,11 +508,26 @@ tbody tr.expandable-row { cursor: pointer; }
 
     
 
-    const soul = state.checks.find((c) => String(c.name || '').toLowerCase().includes('soul.md integrity')) || integrityChecks[0];
-    const soulMeta = parseMeta(soul);
-    refs.integrityTableBody.innerHTML = soul ? `<tr><td>${statusDot(soul.status === 'yellow' ? 'red' : soul.status)}</td><td class="mono">SOUL.md</td><td class="mono">${esc(rel(soul.checked_at || state.generatedAt))}</td><td class="mono" style="color:${soul.status === 'green' ? '#22c55e' : '#ef4444'}">${soul.status === 'green' ? 'verified' : 'mismatch'}</td></tr>` : '<tr><td colspan="4" class="empty-state">No integrity checks available.</td></tr>';
+    const soul = state.checks.find((c) => String(c.name || '').toLowerCase().includes('soul.md integrity'));
+    const iData = state.integrityFiles;
+    const iFiles = iData?.hashes?.files || {};
+    const iGenAt = iData?.hashes?.generated_at;
+    const fileEntries = Object.entries(iFiles);
+    if (fileEntries.length > 0) {
+      refs.integrityTableBody.innerHTML = fileEntries.map(([path, meta]) => {
+        const name = path.split('/').pop();
+        const isSoul = name === 'SOUL.md';
+        const status = isSoul && soul ? soul.status : 'green';
+        const sizeKB = meta.size ? (meta.size / 1024).toFixed(1) + ' KB' : '\u2014';
+        const statusLabel = status === 'green' ? 'verified' : 'mismatch';
+        const statusColor = status === 'green' ? '#22c55e' : '#ef4444';
+        return '<tr><td>' + statusDot(status) + '</td><td class="mono">' + esc(name) + '</td><td class="mono">' + esc(sizeKB) + '</td><td class="mono">' + esc(rel(iGenAt)) + '</td><td class="mono" style="color:' + statusColor + '">' + statusLabel + '</td></tr>';
+      }).join('');
+    } else {
+      refs.integrityTableBody.innerHTML = '<tr><td colspan="5" class="empty-state">No integrity data available.</td></tr>';
+    }
 
-    const anyRed = integrityChecks.some((c) => c.status === 'red');
+    const anyRed = soul && soul.status === 'red';
     refs.acknowledgeBtn.style.display = anyRed ? '' : 'none';
     renderConfigDriftPanel(configDrift);
   }
@@ -604,6 +620,14 @@ tbody tr.expandable-row { cursor: pointer; }
     const data = await api(`/api/security/decisions?${params.toString()}`);
     state.decisions = Array.isArray(data.decisions) ? data.decisions : [];
     renderDecisionsTable();
+  }
+
+  async function loadIntegrityFiles() {
+    try {
+      const data = await api('/api/ops/integrity');
+      state.integrityFiles = data;
+      renderIntegrity();
+    } catch (e) { console.error('integrity files load failed', e); }
   }
 
   async function triggerRecheck() {
@@ -796,7 +820,7 @@ tbody tr.expandable-row { cursor: pointer; }
 
   async function initialLoad() {
     renderDecisionFilters();
-    await Promise.all([loadHealth(), loadDecisionStats(), loadDecisions(), loadTransitions()]);
+    await Promise.all([loadHealth(), loadDecisionStats(), loadDecisions(), loadTransitions(), loadIntegrityFiles()]);
   }
 
   window.initSecurityTab = function() {
