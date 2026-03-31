@@ -503,10 +503,11 @@ tbody tr.expandable-row { cursor: pointer; }
   }
 
   function renderIntegrity() {
-    const integrityChecks = state.checks.filter((c) => String(c.name || '').toLowerCase().includes('integrity') || String(c.name || '').toLowerCase().includes('config drift'));
+    const integrityChecks = state.checks.filter((c) => String(c.name || '').toLowerCase().includes('integrity'));
+    const configDriftCheck = state.checks.find((c) => String(c.name || '').toLowerCase().includes('config drift'));
     const filesMonitored = state.checks.filter((c) => String(c.layer || '').toLowerCase().includes('reasoning')).length;
     const verified = integrityChecks.filter((c) => c.status === 'green').length;
-    const configDrift = integrityChecks.find((c) => String(c.name || '').toLowerCase().includes('config drift'));
+    
     const driftDetected = configDrift && configDrift.status !== 'green';
 
     refs.filesMonitoredValue.textContent = String(filesMonitored);
@@ -517,7 +518,7 @@ tbody tr.expandable-row { cursor: pointer; }
 
     const soul = state.checks.find((c) => String(c.name || '').toLowerCase().includes('soul.md integrity')) || integrityChecks[0];
     const soulMeta = parseMeta(soul);
-    refs.integrityTableBody.innerHTML = soul ? `<tr><td>${statusDot(soul.status === 'yellow' ? 'red' : soul.status)}</td><td class="mono">SOUL.md</td><td class="mono">${esc(rel(soul.checked_at || state.generatedAt))}</td><td class="mono">${esc(String(soulMeta.hash || soulMeta.sha256 || '—').slice(0, 8))}</td></tr>` : '<tr><td colspan="4" class="empty-state">No integrity checks available.</td></tr>';
+    refs.integrityTableBody.innerHTML = soul ? `<tr><td>${statusDot(soul.status === 'yellow' ? 'red' : soul.status)}</td><td class="mono">SOUL.md</td><td class="mono">${esc(rel(soul.checked_at || state.generatedAt))}</td><td class="mono" style="color:${soul.status === 'green' ? '#22c55e' : '#ef4444'}">${soul.status === 'green' ? 'verified' : 'mismatch'}</td></tr>` : '<tr><td colspan="4" class="empty-state">No integrity checks available.</td></tr>';
 
     const anyRed = integrityChecks.some((c) => c.status === 'red');
     refs.acknowledgeBtn.style.display = anyRed ? '' : 'none';
