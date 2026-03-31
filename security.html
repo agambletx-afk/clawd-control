@@ -259,7 +259,7 @@ tbody tr.expandable-row { cursor: pointer; }
   'use strict';
 
   const LAYER_TAGS = {
-    'network_firewall': 'L1', 'network_brute_force': 'L1',
+    'os-hardening': 'L0', 'network_firewall': 'L1', 'network_brute_force': 'L1',
     'access': 'L2', 'public': 'L3', 'gateway': 'L4', 'channel': 'L5',
     'reasoning': 'L6', 'operational': 'L7', 'memory': 'L8',
     'version': '\u2014', 'injection-defense': 'L9', 'gateway-health': 'L10',
@@ -316,7 +316,7 @@ tbody tr.expandable-row { cursor: pointer; }
   }
   function severity(status) { return status === 'red' ? 3 : status === 'yellow' ? 2 : 1; }
   function layerRank(layer) {
-    const ranks = { 'network_firewall': 1, 'network_brute_force': 1.1, 'access': 2, 'public': 3, 'gateway': 4, 'channel': 5, 'reasoning': 6, 'operational': 7, 'memory': 8, 'injection-defense': 9, 'gateway-health': 10 };
+    const ranks = { 'os-hardening': 0, 'network_firewall': 1, 'network_brute_force': 1.1, 'access': 2, 'public': 3, 'gateway': 4, 'channel': 5, 'reasoning': 6, 'operational': 7, 'memory': 8, 'injection-defense': 9, 'gateway-health': 10 };
     return ranks[layer] || 999;
   }
   function statusDot(status) { return `<span class="status-dot dot-${status === 'yellow' ? 'yellow' : status === 'red' ? 'red' : 'green'}"></span>`; }
