@@ -33,3 +33,5 @@ logs.db
 logs.db-shm
 logs.db-wal
 security-decisions.db
+security-decisions.db-shm
+security-decisions.db-wal
