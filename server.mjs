@@ -6073,8 +6073,7 @@ const server = createServer(async (req, res) => {
         }
 
         if (layer === 'reasoning') {
-          const hash = execSync(`sha256sum ${SOUL_MD_PATH} | awk '{print $1}'`, { encoding: 'utf8' }).trim();
-          writeFileSync(SOUL_HASH_PATH, hash, 'utf8');
+          execSync('/usr/local/bin/reset-integrity-baseline.sh', { encoding: 'utf8', timeout: 10000 });
           logAction({
             category: 'security',
             action: 'security-acknowledge',
@@ -6083,7 +6082,7 @@ const server = createServer(async (req, res) => {
             detail: `Acknowledged ${layer}: ${note}`,
           });
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: true, message: 'SOUL.md baseline updated' }));
+          res.end(JSON.stringify({ success: true, message: 'Integrity manifest updated (7 files)' }));
           return;
         }
 

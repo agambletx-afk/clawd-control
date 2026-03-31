@@ -248,7 +248,7 @@ tbody tr.expandable-row { cursor: pointer; }
           <svg class="collapsible-chevron" id="hardeningChevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
         </div>
       </button>
-      <div class="collapsible-content" id="hardeningContent"><p class="text-secondary" style="font-size:12px">No hardening verification data available. Deploy OS hardening checks to populate this panel.</p></div>
+      <div class="collapsible-content" id="hardeningContent"><div id="hardeningChecks"></div></div>
     </section>
   </section>
 </main>
@@ -265,7 +265,7 @@ tbody tr.expandable-row { cursor: pointer; }
     'version': '\u2014', 'injection-defense': 'L9', 'gateway-health': 'L10',
   };
   const SECTION_CHECK_TARGETS = {
-    'soul.md integrity': 'integrity',
+    'critical file integrity': 'integrity',
     'config drift': 'integrity',
     'security hook': 'enforcement'
   };
@@ -508,7 +508,7 @@ tbody tr.expandable-row { cursor: pointer; }
 
     
 
-    const soul = state.checks.find((c) => String(c.name || '').toLowerCase().includes('soul.md integrity'));
+    const soul = state.checks.find((c) => String(c.name || '').toLowerCase().includes('critical file integrity'));
     const iData = state.integrityFiles;
     const iFiles = iData?.hashes?.files || {};
     const iGenAt = iData?.hashes?.generated_at;
@@ -530,6 +530,7 @@ tbody tr.expandable-row { cursor: pointer; }
     const anyRed = soul && soul.status === 'red';
     refs.acknowledgeBtn.style.display = anyRed ? '' : 'none';
     renderConfigDriftPanel(configDrift);
+    renderHardeningPanel();
   }
 
   function detectCritical(changeKey) {
@@ -583,6 +584,19 @@ tbody tr.expandable-row { cursor: pointer; }
   async function acceptBaseline() {
     await api('/api/security/config-drift/ack', { method: 'POST' });
     await loadHealth();
+  }
+
+  function renderHardeningPanel() {
+    const el = document.getElementById('hardeningChecks');
+    if (!el) return;
+    const osChecks = state.checks.filter(ch => ch.layer === 'os-hardening');
+    if (osChecks.length === 0) {
+      el.innerHTML = '<p class="text-secondary" style="font-size:12px">No hardening verification data available.</p>';
+      return;
+    }
+    el.innerHTML = '<div class="table-wrap"><table><thead><tr><th style="width:40px">Status</th><th>Check</th><th>Details</th></tr></thead><tbody>' +
+      osChecks.map(ch => '<tr><td>' + statusDot(ch.status) + '</td><td style="font-weight:500">' + esc(ch.name) + '</td><td class="text-secondary">' + esc(ch.message) + '</td></tr>').join('') +
+      '</tbody></table></div>';
   }
 
   async function loadHealth() {
