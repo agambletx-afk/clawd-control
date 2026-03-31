@@ -10,37 +10,41 @@ body { margin: 0; background: #0f1419; color: #f1f5f9; font-family: Inter, syste
 main.main { padding: 24px; }
 .page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
 .page-header h1 { margin: 0; font-size: 20px; font-weight: 700; color: #f1f5f9; text-shadow: 0 0 24px rgba(236, 72, 153, 0.18); }
-.subtitle { margin: 6px 0 0; font-size: 13px; font-weight: 400; color: #94a3b8; }
+.subtitle { margin: 8px 0 0; font-size: 14px; font-weight: 400; color: #94a3b8; }
 .btn-primary, .btn-secondary, .btn-danger { border-radius: 8px; border: 1px solid #363b4d; padding: 6px 12px; font-size: 13px; cursor: pointer; color: #f1f5f9; }
-.btn-primary { background: #2dd4bf; color: #0f1419; border-color: #2dd4bf; font-weight: 600; }
+.btn-primary { background: #2dd4bf; color: #0f1419; border-color: #2dd4bf; font-weight: 600; transition: opacity 150ms; }
+.btn-primary:hover { opacity: 0.88; }
 .btn-primary:disabled { opacity: 0.6; cursor: default; }
-.btn-secondary { background: #252a36; }
+.btn-secondary { background: #252a36; transition: border-color 150ms; }
+.btn-secondary:hover { border-color: #94a3b8; }
 .btn-danger { background: rgba(239,68,68,0.16); border-color: rgba(239,68,68,0.45); color: #ef4444; }
 button svg { width: 14px; height: 14px; vertical-align: text-bottom; margin-right: 6px; stroke-width: 2; }
 
-.sub-nav { display: inline-flex; gap: 8px; padding: 4px; border-radius: 10px; background: #161b26; border: 1px solid #363b4d; margin-bottom: 16px; }
+.sub-nav { display: inline-flex; gap: 8px; padding: 4px; border-radius: 10px; background: #161b26; border: 1px solid #363b4d; margin-bottom: 24px; }
 .sub-nav-btn { border: 0; border-radius: 8px; background: #252a36; color: #94a3b8; padding: 6px 12px; font-size: 13px; cursor: pointer; }
 .sub-nav-btn.active { background: #2dd4bf; color: #0f1419; font-weight: 600; }
 
 .context-bar { margin-bottom: 16px; font-size: 13px; color: #94a3b8; }
 .context-bar .mono { font-family: "JetBrains Mono", "Fira Code", monospace; color: #f1f5f9; }
 
-.card-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
+.card-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-bottom: 24px; }
 .stat-card { position: relative; background: #1e2535; border: 1px solid #363b4d; border-radius: 12px; padding: 16px; min-height: 108px; }
 .stat-card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: #ec4899; border-top-left-radius: 12px; border-bottom-left-radius: 12px; }
-.stat-card.interactive { cursor: pointer; }
+.stat-card.interactive { cursor: pointer; transition: border-color 150ms; }
+.stat-card.interactive:hover { border-color: rgba(236,72,153,0.35); }
 .stat-label { font-size: 11px; text-transform: uppercase; font-weight: 600; color: #94a3b8; letter-spacing: 0.04em; }
 .stat-value { margin-top: 8px; font-family: "JetBrains Mono", "Fira Code", monospace; font-size: 28px; font-weight: 700; color: #f1f5f9; line-height: 1.1; }
 .stat-subtitle { margin-top: 8px; font-size: 12px; color: #94a3b8; }
 
 .panel { background: #161b26; border: 1px solid #363b4d; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
 .panel.featured { border-color: rgba(236,72,153,0.20); }
-.panel-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+.panel.table-panel { padding: 24px; }
+.panel-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 16px; }
 .panel-title-wrap { display: flex; gap: 8px; align-items: flex-start; min-width: 0; }
 .panel-icon { width: 16px; height: 16px; stroke: #94a3b8; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; margin-top: 1px; }
 .domain-capsule { width: 14px; height: 4px; margin-top: 7px; border-radius: 2px; background: #ec4899; flex-shrink: 0; }
 .panel-title { margin: 0; font-size: 14px; font-weight: 600; color: #f1f5f9; }
-.panel-subtitle { margin: 4px 0 0; font-size: 12px; color: #94a3b8; }
+.panel-subtitle { margin: 8px 0 0; font-size: 12px; color: #94a3b8; }
 
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; }
@@ -68,11 +72,11 @@ tbody tr.expandable-row { cursor: pointer; }
 .expand-copy { display: flex; gap: 8px; align-items: center; }
 
 .filter-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
-.filter-pill { border: 1px solid #363b4d; border-radius: 999px; padding: 4px 10px; background: #252a36; color: #94a3b8; font-size: 11px; cursor: pointer; }
+.filter-pill { border: 1px solid #363b4d; border-radius: 999px; padding: 4px 10px; background: #252a36; color: #94a3b8; font-size: 11px; cursor: pointer; transition: border-color 150ms, background 150ms; }
 .filter-pill.active { background: rgba(45,212,191,0.16); border-color: #2dd4bf; color: #ccfbf1; }
 
 .collapsible-toggle { width: 100%; background: transparent; border: 0; color: inherit; text-align: left; padding: 0; cursor: pointer; }
-.collapsible-content { display: none; margin-top: 10px; }
+.collapsible-content { display: none; margin-top: 16px; }
 .collapsible-content.open { display: block; }
 .event-list { display: grid; gap: 8px; }
 .event-row { border: 1px solid #363b4d; border-radius: 8px; padding: 8px; display: grid; grid-template-columns: 100px 52px minmax(80px, 1fr) 50px minmax(80px, 1fr); gap: 8px; align-items: center; font-size: 12px; overflow: hidden; }
@@ -96,21 +100,18 @@ tbody tr.expandable-row { cursor: pointer; }
 .accept-guard input { background: #0d1117; color: #f1f5f9; border: 1px solid #363b4d; border-radius: 8px; padding: 6px 8px; font-family: "JetBrains Mono", "Fira Code", monospace; width: 120px; }
 .empty-state { text-align: center; color: #475569; padding: 14px; }
 
-@media (max-width: 1280px) {
+@media (max-width: 1024px) {
   .card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 </style>
 </head>
 <body>
 <main class="main" id="securityRoot">
-  <div class="page-header" style="display:none">
+  <div class="page-header">
     <div>
       <h1>Security</h1>
       <p class="subtitle">Security posture and enforcement status.</p>
     </div>
-  </div>
-  <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
-    <button class="btn-primary" id="checkNowBtn">Check Now</button>
   </div>
 
   <div class="sub-nav" id="securitySubNav" role="tablist" aria-label="Security sections">
@@ -127,13 +128,14 @@ tbody tr.expandable-row { cursor: pointer; }
       <article class="stat-card" id="card-last-scan"><div class="stat-label">Last Scan</div><div class="stat-value mono" id="lastScanValue">—</div><div class="stat-subtitle">15-min cron cycle</div></article>
     </div>
 
-    <section class="panel featured">
+    <section class="panel featured table-panel">
       <div class="panel-header">
         <div class="panel-title-wrap">
           <svg class="panel-icon" viewBox="0 0 24 24"><path d="m12 3 7 4v5c0 5-3.5 8.5-7 9-3.5-.5-7-4-7-9V7z"/><path d="m9 12 2 2 4-4"/></svg>
           <span class="domain-capsule"></span>
           <div><p class="panel-title">Defense Posture</p><p class="panel-subtitle">All automated security checks. Sorted by severity.</p></div>
         </div>
+        <button class="btn-primary" id="checkNowBtn">Check Now</button>
         <button class="btn-secondary" id="sortToggleBtn">Sort: Severity</button>
       </div>
       <div class="table-wrap">
