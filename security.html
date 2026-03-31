@@ -22,7 +22,7 @@ button svg { width: 14px; height: 14px; vertical-align: text-bottom; margin-righ
 
 .sub-nav { display: inline-flex; gap: 8px; padding: 4px; border-radius: 10px; background: #161b26; border: 1px solid #363b4d; margin-bottom: 24px; }
 .sub-nav-btn { border: 0; border-radius: 8px; background: #252a36; color: #94a3b8; padding: 6px 12px; font-size: 13px; cursor: pointer; }
-.sub-nav-btn.active { background: #2dd4bf; color: #0f1419; font-weight: 600; }
+.sub-nav-btn.active { background: #2a3040; color: #f1f5f9; font-weight: 600; }
 
 .context-bar { margin-bottom: 16px; font-size: 13px; color: #94a3b8; }
 .context-bar .mono { font-family: "JetBrains Mono", "Fira Code", monospace; color: #f1f5f9; }
@@ -57,15 +57,17 @@ td { padding: 10px 8px; border-top: 1px solid #363b4d; font-size: 13px; color: #
 .dot-green { background: #22c55e; }
 .dot-yellow { background: #f59e0b; }
 .dot-red { background: #ef4444; }
-.layer-pill { display: inline-block; border-radius: 4px; padding: 4px 8px; font-size: 11px; color: #ec4899; background: rgba(236,72,153,0.12); min-width: 28px; text-align: center; }
-.action-link { color: #ec4899; text-decoration: none; font-size: 13px; }
-.action-link:hover { text-decoration: underline; }
+.layer-pill { display: inline-block; border-radius: 4px; padding: 4px 8px; font-size: 11px; color: #94a3b8; background: rgba(148,163,184,0.06); min-width: 28px; text-align: center; font-weight: 600; }
+.action-link { color: #94a3b8; text-decoration: none; font-size: 12px; background: #252a36; border: 1px solid #363b4d; border-radius: 8px; padding: 4px 10px; display: inline-block; }
+.action-link:hover { border-color: #94a3b8; color: #f1f5f9; }
 
 #defenseGridTable.highlight-warning tbody tr[data-status="yellow"] { background: rgba(245,158,11,0.08); }
 #defenseGridTable.highlight-failure tbody tr[data-status="red"] { background: rgba(239,68,68,0.08); }
 
 tbody tr.expandable-row { cursor: pointer; }
 .expand-row td { background: rgba(30,37,53,0.65); }
+.expand-row { animation: expandSlide 200ms ease; }
+@keyframes expandSlide { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
 .expand-box { background: #0d1117; border: 1px solid #363b4d; border-radius: 8px; padding: 12px; display: grid; gap: 10px; }
 .expand-block { display: grid; gap: 6px; }
 .expand-title { font-size: 11px; text-transform: uppercase; font-weight: 600; color: #94a3b8; letter-spacing: 0.04em; }
@@ -78,7 +80,7 @@ tbody tr.expandable-row { cursor: pointer; }
 .collapsible-toggle { width: 100%; background: transparent; border: 0; color: inherit; text-align: left; padding: 0; cursor: pointer; }
 .collapsible-content { display: none; margin-top: 16px; }
 .collapsible-content.open { display: block; }
-.event-list { display: grid; gap: 8px; }
+.event-list { display: grid; gap: 8px; max-height: 400px; overflow-y: auto; }
 .event-row { border: 1px solid #363b4d; border-radius: 8px; padding: 8px; display: grid; grid-template-columns: 100px 52px minmax(80px, 1fr) 50px minmax(80px, 1fr); gap: 8px; align-items: center; font-size: 12px; overflow: hidden; }
 
 .badge-action { display: inline-block; border-radius: 999px; padding: 3px 8px; font-size: 11px; text-transform: lowercase; }
@@ -121,13 +123,6 @@ tbody tr.expandable-row { cursor: pointer; }
   </div>
 
   <section id="section-posture">
-    <div class="card-grid">
-      <article class="stat-card" id="card-checks-passing"><div class="stat-label">Checks Passing</div><div class="stat-value mono" id="checksPassingValue">0/0</div><div class="stat-subtitle" id="checksPassingSub">of 0 automated checks</div></article>
-      <article class="stat-card interactive" id="card-warnings"><div class="stat-label">Warnings</div><div class="stat-value mono" id="warningsValue">0</div><div class="stat-subtitle">checks need attention</div></article>
-      <article class="stat-card interactive" id="card-failures"><div class="stat-label">Failures</div><div class="stat-value mono" id="failuresValue">0</div><div class="stat-subtitle">checks critically failed</div></article>
-      <article class="stat-card" id="card-last-scan"><div class="stat-label">Last Scan</div><div class="stat-value mono" id="lastScanValue">—</div><div class="stat-subtitle">15-min cron cycle</div></article>
-    </div>
-
     <section class="panel featured table-panel">
       <div class="panel-header">
         <div class="panel-title-wrap">
@@ -137,6 +132,12 @@ tbody tr.expandable-row { cursor: pointer; }
         </div>
         <button class="btn-primary" id="checkNowBtn">Check Now</button>
         <button class="btn-secondary" id="sortToggleBtn">Sort: Severity</button>
+      </div>
+      <div class="card-grid" style="margin-bottom:16px">
+        <article class="stat-card" id="card-checks-passing"><div class="stat-label">Checks Passing</div><div class="stat-value mono" id="checksPassingValue">0/0</div><div class="stat-subtitle" id="checksPassingSub">of 0 automated checks</div></article>
+        <article class="stat-card interactive" id="card-warnings"><div class="stat-label">Warnings</div><div class="stat-value mono" id="warningsValue">0</div><div class="stat-subtitle">checks need attention</div></article>
+        <article class="stat-card interactive" id="card-failures"><div class="stat-label">Failures</div><div class="stat-value mono" id="failuresValue">0</div><div class="stat-subtitle">checks critically failed</div></article>
+        <article class="stat-card" id="card-last-scan"><div class="stat-label">Last Scan</div><div class="stat-value mono" id="lastScanValue">—</div><div class="stat-subtitle">15-min cron cycle</div></article>
       </div>
       <div class="table-wrap">
         <table id="defenseGridTable">
@@ -385,7 +386,8 @@ tbody tr.expandable-row { cursor: pointer; }
     if (type === 'memoryMatches') {
       return '<button class="btn-secondary" data-action="memory-matches">View Matches</button>';
     }
-    return '<span class="text-secondary">Expand</span>';
+    const isOpen = state.expandedCheck === \`\${check.layer}|\${getCheckName(check)}\`;
+    return isOpen ? '<span class="text-secondary" style="cursor:pointer">Collapse</span>' : '<span class="text-secondary" style="cursor:pointer">Expand</span>';
   }
 
   function sortedChecks() {
@@ -446,7 +448,7 @@ tbody tr.expandable-row { cursor: pointer; }
       if (state.historyFilter === 'recovered') return to < from;
       return true;
     });
-    refs.historyList.innerHTML = list.slice(0, 50).map((t) => `<div class="event-row"><div class="mono">${esc(new Date(t.checked_at).toISOString())}</div><div><span class="layer-pill mono">${esc(t.layer || '—')}</span></div><div>${esc(t.name || '')}</div><div>${statusDot(t.old_status)} → ${statusDot(t.new_status)}</div><div class="text-secondary" title="${esc(t.message || '')}">${esc(t.message || '')}</div></div>`).join('') || '<div class="empty-state">No transitions recorded.</div>';
+    refs.historyList.innerHTML = list.slice(0, 20).map((t) => `<div class="event-row"><div class="mono">${esc(new Date(t.checked_at).toISOString())}</div><div><span class="layer-pill mono">${esc(t.layer || '—')}</span></div><div>${esc(t.name || '')}</div><div>${statusDot(t.old_status)} → ${statusDot(t.new_status)}</div><div class="text-secondary" title="${esc(t.message || '')}">${esc(t.message || '')}</div></div>`).join('') || '<div class="empty-state">No transitions recorded.</div>';
   }
 
   function renderDecisionsStats() {
