@@ -40,9 +40,9 @@ button svg { width: 14px; height: 14px; vertical-align: text-bottom; margin-righ
 .panel.featured { border-color: rgba(236,72,153,0.20); }
 .panel.table-panel { padding: 24px; }
 .panel-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 16px; }
-.panel-title-wrap { display: flex; gap: 8px; align-items: flex-start; min-width: 0; }
-.panel-icon { width: 16px; height: 16px; stroke: #94a3b8; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; margin-top: 1px; }
-.domain-capsule { width: 14px; height: 4px; margin-top: 7px; border-radius: 2px; background: #ec4899; flex-shrink: 0; }
+.panel-title-wrap { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.panel-icon { width: 16px; height: 16px; stroke: #94a3b8; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+.domain-capsule { width: 14px; height: 4px; border-radius: 2px; background: #ec4899; flex-shrink: 0; }
 .panel-title { margin: 0; font-size: 14px; font-weight: 600; color: #f1f5f9; }
 .panel-subtitle { margin: 8px 0 0; font-size: 12px; color: #94a3b8; }
 
@@ -58,7 +58,7 @@ td { padding: 10px 8px; border-top: 1px solid #363b4d; font-size: 13px; color: #
 .dot-yellow { background: #f59e0b; }
 .dot-red { background: #ef4444; }
 .layer-pill { display: inline-block; border-radius: 4px; padding: 4px 8px; font-size: 11px; color: #94a3b8; background: rgba(148,163,184,0.06); min-width: 28px; text-align: center; font-weight: 600; }
-.action-link { color: #94a3b8; text-decoration: none; font-size: 12px; background: #252a36; border: 1px solid #363b4d; border-radius: 8px; padding: 4px 10px; display: inline-block; }
+.action-link { color: #94a3b8; text-decoration: none; font-size: 12px; background: #252a36; border: 1px solid #363b4d; border-radius: 6px; padding: 5px 10px; display: inline-block; cursor: pointer; white-space: nowrap; }
 .action-link:hover { border-color: #94a3b8; color: #f1f5f9; }
 
 #defenseGridTable.highlight-warning tbody tr[data-status="yellow"] { background: rgba(245,158,11,0.08); }
@@ -78,6 +78,8 @@ tbody tr.expandable-row { cursor: pointer; }
 .filter-pill.active { background: rgba(45,212,191,0.16); border-color: #2dd4bf; color: #ccfbf1; }
 
 .collapsible-toggle { width: 100%; background: transparent; border: 0; color: inherit; text-align: left; padding: 0; cursor: pointer; }
+.collapsible-chevron { width: 16px; height: 16px; stroke: #94a3b8; fill: none; transition: transform 200ms; }
+.collapsible-content.open + .x-ignore, .collapsible-toggle.is-open .collapsible-chevron { transform: rotate(180deg); }
 .collapsible-content { display: none; margin-top: 16px; }
 .collapsible-content.open { display: block; }
 .event-list { display: grid; gap: 8px; max-height: 400px; overflow-y: auto; }
@@ -131,7 +133,6 @@ tbody tr.expandable-row { cursor: pointer; }
           <div><p class="panel-title">Defense Posture</p><p class="panel-subtitle">All automated security checks. Sorted by severity.</p></div>
         </div>
         <button class="btn-primary" id="checkNowBtn">Check Now</button>
-        <button class="btn-secondary" id="sortToggleBtn">Sort: Severity</button>
       </div>
       <div class="card-grid" style="margin-bottom:16px">
         <article class="stat-card" id="card-checks-passing"><div class="stat-label">Checks Passing</div><div class="stat-value mono" id="checksPassingValue">0/0</div><div class="stat-subtitle" id="checksPassingSub">of 0 automated checks</div></article>
@@ -155,7 +156,7 @@ tbody tr.expandable-row { cursor: pointer; }
             <span class="domain-capsule"></span>
             <div><p class="panel-title">Status History</p><p class="panel-subtitle">Check status transitions over time.</p></div>
           </div>
-          <span class="text-secondary mono" id="historyToggleText">Collapsed</span>
+          <svg class="collapsible-chevron" id="historyChevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
         </div>
       </button>
       <div class="collapsible-content" id="historyPanelContent">
@@ -226,7 +227,7 @@ tbody tr.expandable-row { cursor: pointer; }
             <span class="domain-capsule"></span>
             <div><p class="panel-title">Config Drift</p><p class="panel-subtitle">Changes to openclaw.json since last accepted baseline.</p></div>
           </div>
-          <span class="text-secondary mono" id="configDriftToggleText">Collapsed</span>
+          <svg class="collapsible-chevron" id="configDriftChevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
         </div>
       </button>
       <div class="collapsible-content" id="configDriftContent"></div>
@@ -240,7 +241,7 @@ tbody tr.expandable-row { cursor: pointer; }
             <span class="domain-capsule"></span>
             <div><p class="panel-title">OS Hardening</p><p class="panel-subtitle">Kernel and filesystem hardening verification.</p></div>
           </div>
-          <span class="text-secondary mono" id="hardeningToggleText">Collapsed</span>
+          <svg class="collapsible-chevron" id="hardeningChevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
         </div>
       </button>
       <div class="collapsible-content" id="hardeningContent"><p class="text-secondary" style="font-size:12px">No hardening verification data available. Deploy OS hardening checks to populate this panel.</p></div>
@@ -277,7 +278,7 @@ tbody tr.expandable-row { cursor: pointer; }
     expandedCheck: null,
     memoryMatchesById: {},
     memoryErrorById: {},
-    sortMode: 'severity',
+    sortMode: 'layer',
     historyFilter: 'all',
     activeSection: 'posture',
     decisionActions: new Set(['blocked', 'rate-limited', 'confirmed']),
@@ -310,7 +311,10 @@ tbody tr.expandable-row { cursor: pointer; }
     return `${Math.floor(hours / 24)}d`;
   }
   function severity(status) { return status === 'red' ? 3 : status === 'yellow' ? 2 : 1; }
-  function layerRank(layer) { const n = Number(String(layer || '').replace(/[^0-9]/g, '')); return Number.isFinite(n) && n > 0 ? n : 999; }
+  function layerRank(layer) {
+    const ranks = { 'network_firewall': 1, 'network_brute_force': 1.1, 'access': 2, 'public': 3, 'gateway': 4, 'version': 4.5, 'channel': 5, 'reasoning': 6, 'operational': 7, 'memory': 8, 'injection-defense': 9, 'gateway-health': 10 };
+    return ranks[layer] || 999;
+  }
   function statusDot(status) { return `<span class="status-dot dot-${status === 'yellow' ? 'yellow' : status === 'red' ? 'red' : 'green'}"></span>`; }
   function ageColor(ts) { const diffMin = Math.floor((Date.now() - new Date(ts || 0).getTime()) / 60000); return diffMin > 30 ? '#f59e0b' : '#f1f5f9'; }
 
@@ -387,16 +391,12 @@ tbody tr.expandable-row { cursor: pointer; }
       return '<button class="btn-secondary" data-action="memory-matches">View Matches</button>';
     }
     const isOpen = state.expandedCheck === `${check.layer}|${getCheckName(check)}`;
-    return isOpen ? '<span class="text-secondary" style="cursor:pointer">Collapse</span>' : '<span class="text-secondary" style="cursor:pointer">Expand</span>';
+    return isOpen ? '<span class="action-link">Collapse</span>' : '<span class="action-link">Expand</span>';
   }
 
   function sortedChecks() {
     const list = [...state.checks];
-    if (state.sortMode === 'layer') {
-      list.sort((a, b) => layerRank(a.layer) - layerRank(b.layer));
-    } else {
-      list.sort((a, b) => severity(b.status) - severity(a.status) || layerRank(a.layer) - layerRank(b.layer));
-    }
+    list.sort((a, b) => layerRank(a.layer) - layerRank(b.layer) || getCheckName(a).localeCompare(getCheckName(b)));
     return list;
   }
 
@@ -630,11 +630,7 @@ tbody tr.expandable-row { cursor: pointer; }
 
     refs.checkNowBtn.addEventListener('click', () => { triggerRecheck(); });
 
-    refs.sortToggleBtn.addEventListener('click', () => {
-      state.sortMode = state.sortMode === 'severity' ? 'layer' : 'severity';
-      refs.sortToggleBtn.textContent = state.sortMode === 'severity' ? 'Sort: Severity' : 'Sort: Layer';
-      renderDefenseGrid();
-    });
+    
 
     refs.cardWarnings.addEventListener('mouseenter', () => refs.defenseGridTable.classList.add('highlight-warning'));
     refs.cardWarnings.addEventListener('mouseleave', () => refs.defenseGridTable.classList.remove('highlight-warning'));
@@ -698,17 +694,17 @@ tbody tr.expandable-row { cursor: pointer; }
 
     refs.historyToggleBtn.addEventListener('click', () => {
       const open = refs.historyPanelContent.classList.toggle('open');
-      refs.historyToggleText.textContent = open ? 'Expanded' : 'Collapsed';
+      document.getElementById('historyChevron').style.transform = open ? 'rotate(180deg)' : '';
     });
 
     refs.configDriftToggleBtn.addEventListener('click', () => {
       const open = refs.configDriftContent.classList.toggle('open');
-      refs.configDriftToggleText.textContent = open ? 'Expanded' : 'Collapsed';
+      document.getElementById('configDriftChevron').style.transform = open ? 'rotate(180deg)' : '';
     });
 
     refs.hardeningToggleBtn.addEventListener('click', () => {
       const open = refs.hardeningContent.classList.toggle('open');
-      refs.hardeningToggleText.textContent = open ? 'Expanded' : 'Collapsed';
+      document.getElementById('hardeningChevron').style.transform = open ? 'rotate(180deg)' : '';
     });
 
     refs.acknowledgeBtn.addEventListener('click', async () => {
@@ -740,7 +736,7 @@ tbody tr.expandable-row { cursor: pointer; }
     refs.sectionEnforcement = document.getElementById('section-enforcement');
     refs.sectionIntegrity = document.getElementById('section-integrity');
     refs.checkNowBtn = document.getElementById('checkNowBtn');
-    refs.sortToggleBtn = document.getElementById('sortToggleBtn');
+    
     refs.cardWarnings = document.getElementById('card-warnings');
     refs.cardFailures = document.getElementById('card-failures');
     refs.checksPassingValue = document.getElementById('checksPassingValue');
@@ -751,7 +747,7 @@ tbody tr.expandable-row { cursor: pointer; }
     refs.defenseGridTable = document.getElementById('defenseGridTable');
     refs.defenseGridBody = document.getElementById('defenseGridBody');
     refs.historyToggleBtn = document.getElementById('historyToggleBtn');
-    refs.historyToggleText = document.getElementById('historyToggleText');
+    
     refs.historyPanelContent = document.getElementById('historyPanelContent');
     refs.historyFilters = document.getElementById('historyFilters');
     refs.historyList = document.getElementById('historyList');
@@ -772,10 +768,10 @@ tbody tr.expandable-row { cursor: pointer; }
     refs.integrityTableBody = document.getElementById('integrityTableBody');
     refs.acknowledgeBtn = document.getElementById('acknowledgeBtn');
     refs.configDriftToggleBtn = document.getElementById('configDriftToggleBtn');
-    refs.configDriftToggleText = document.getElementById('configDriftToggleText');
+    
     refs.configDriftContent = document.getElementById('configDriftContent');
     refs.hardeningToggleBtn = document.getElementById('hardeningToggleBtn');
-    refs.hardeningToggleText = document.getElementById('hardeningToggleText');
+    
     refs.hardeningContent = document.getElementById('hardeningContent');
   }
 
