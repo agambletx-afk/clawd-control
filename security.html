@@ -208,7 +208,7 @@ tbody tr.expandable-row { cursor: pointer; }
   </section>
 
   <section id="section-integrity" style="display:none">
-    <div class="context-bar" id="integrityContext">0/0 passing · 0 warning · 0 failures · scanned <span class="mono">—</span></div>
+
 
 
     <section class="panel featured">
@@ -388,7 +388,7 @@ tbody tr.expandable-row { cursor: pointer; }
     const red = state.checks.filter((c) => c.status === 'red').length;
     const txt = `${green}/${total} passing · ${yellow} warning · ${red} failures · scanned ${rel(state.generatedAt)} ago`;
     refs.enforcementContext.textContent = txt;
-    refs.integrityContext.textContent = txt;
+    
   }
 
   function buildActionCell(check) {
@@ -771,7 +771,7 @@ tbody tr.expandable-row { cursor: pointer; }
     refs.historyFilters = document.getElementById('historyFilters');
     refs.historyList = document.getElementById('historyList');
     refs.enforcementContext = document.getElementById('enforcementContext');
-    refs.integrityContext = document.getElementById('integrityContext');
+    
     refs.decisionsTodayValue = document.getElementById('decisionsTodayValue');
     refs.decisionsTodaySub = document.getElementById('decisionsTodaySub');
     refs.blockedValue = document.getElementById('blockedValue');
