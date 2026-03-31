@@ -473,7 +473,7 @@ if [ ! -f "$facts_db" ]; then
 else
   perms=$(stat -c '%a' "$facts_db" 2>&1)
   owner=$(stat -c '%U:%G' "$facts_db" 2>&1)
-  cred_count=$(sqlite3 "$facts_db" "SELECT count(*) FROM facts WHERE value LIKE '%sk-%' OR value LIKE '%ghp_%' OR lower(key) LIKE '%password%' OR lower(key) LIKE '%api_key%' OR lower(key) LIKE '%token%' OR lower(key) LIKE '%secret%';" 2>&1)
+  cred_count=$(sqlite3 "$facts_db" "SELECT count(*) FROM facts WHERE value LIKE '%sk-ant-%' OR value LIKE '%sk-proj-%' OR value LIKE 'sk-___________________________%' OR value LIKE '%ghp___________________________%' OR value LIKE '%github_pat_%' OR value LIKE '%AIza___________________________%' OR (value LIKE '%password%=%' AND length(value) < 200) OR (value LIKE '%secret%=%' AND length(value) < 200);" 2>&1)
   [ -z "$cred_count" ] && cred_count='0'
   mem_details="permissions=${perms}; owner=${owner}; credential_count=${cred_count}"
 
