@@ -646,6 +646,7 @@ tbody tr.expandable-row { cursor: pointer; }
 
   async function triggerRecheck() {
     refs.checkNowBtn.disabled = true;
+      refs.checkNowBtn.textContent = 'Checking...';
     try {
       const data = await api('/api/security/recheck', { method: 'POST' });
       state.checks = Array.isArray(data.checks) ? data.checks : state.checks;
@@ -657,6 +658,7 @@ tbody tr.expandable-row { cursor: pointer; }
       await Promise.all([loadTransitions(), loadDecisionStats(), loadDecisions()]);
     } finally {
       refs.checkNowBtn.disabled = false;
+      refs.checkNowBtn.textContent = 'Check Now';
     }
   }
 
