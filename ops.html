@@ -741,6 +741,9 @@
       gap: 16px;
       margin-bottom: 16px;
     }
+    .ops-summary-grid.infra-health-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
 
 
     .ops-summary-card[data-stat] {
@@ -900,6 +903,63 @@
       padding: 8px 8px 8px 12px;
       overflow: hidden;
       min-height: auto;
+    }
+
+    .ops-context-headline {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      padding: 10px 12px;
+      border: 1px solid #363b4d;
+      border-radius: 10px;
+      background: #1e2535;
+      font-size: 13px;
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+    .ops-context-headline strong {
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+    .ops-context-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      flex: 0 0 auto;
+      background: #64748b;
+    }
+    .ops-context-dot.green { background: #22c55e; }
+    .ops-context-dot.amber { background: #f59e0b; }
+    .ops-context-dot.red { background: #ef4444; }
+    .ops-context-dot.gray { background: #64748b; }
+    .ops-context-table td:nth-child(1),
+    .ops-context-table td:nth-child(4),
+    .ops-context-table td:nth-child(5),
+    .ops-context-table td:nth-child(6) {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+    .ops-context-table td:nth-child(1) {
+      width: 40px;
+    }
+    .ops-context-workspace-label {
+      margin: 14px 0 8px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-tertiary);
+      font-weight: 600;
+    }
+    .ops-context-workspace-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      padding: 8px 0;
+      border-top: 1px solid #363b4d;
     }
 
 
@@ -1189,7 +1249,7 @@
     .ops-kill-switch-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
     .ops-monocard { background: #1e2535; border: 1px solid #363b4d; border-radius: 12px; padding: 10px 12px; display: block; min-height: 80px; }
     .ops-doctor-finding { background: #1e2535; border: 1px solid #363b4d; border-radius: 12px; padding: 8px 12px; display: block; min-height: 40px; font-size: 12px; }
-    @media (max-width: 1024px) { .ops-monitoring-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ops-kill-switch-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 1024px) { .ops-monitoring-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ops-kill-switch-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ops-summary-grid.infra-health-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     @media (max-width: 900px) { .ops-kill-switch-grid { grid-template-columns: 1fr; } }
     @media (max-width: 768px) { .ops-monitoring-grid { grid-template-columns: 1fr; } }
   </style>
@@ -1213,6 +1273,17 @@
     </div>
 
     <div id="ops-health-view">
+      <section class="panel" style="background: #161b26; border: 1px solid #363b4d; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
+        <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 4-6"/></svg>
+          <div>
+            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;"><span class="ops-domain-capsule"></span>Infrastructure Health</h2>
+            <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">System resource utilization and gateway performance.</p>
+          </div>
+        </div>
+        <div id="infraHealthCards" class="ops-summary-grid infra-health-grid"></div>
+      </section>
+
       <section class="panel" style="background: #161b26; border: 1px solid rgba(167, 139, 250, 0.20); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
@@ -1384,6 +1455,38 @@
         <div id="opsDoctorSections"></div>
       </section>
 
+      <section class="panel" style="background: #161b26; border: 1px solid #363b4d; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
+        <div class="panel-header" style="display:flex; align-items:center; gap:8px; margin-bottom: 12px;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/><path d="M9 6v12"/></svg>
+          <div>
+            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;"><span class="ops-domain-capsule"></span>Bootstrap Context and Workspace Health</h2>
+            <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Injected workspace files and token budget tracking.</p>
+          </div>
+          <div style="margin-left:auto; display:flex; gap:4px; align-items:center;">
+            <button id="contextBudgetRefreshBtn" class="btn btn-secondary">Refresh</button>
+            <button id="contextBudgetToggleBtn" class="icon-btn" aria-label="Toggle context budget details" aria-expanded="false"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+          </div>
+        </div>
+        <div id="contextBudgetBody" class="collapsible-body collapsed">
+          <div id="contextBudgetHeadline" class="ops-context-headline"></div>
+          <table class="ops-table ops-context-table">
+            <thead>
+              <tr>
+                <th style="width: 40px;">Status</th>
+                <th>File</th>
+                <th>Size</th>
+                <th>Est. Tokens</th>
+                <th>Target</th>
+                <th>Result</th>
+              </tr>
+            </thead>
+            <tbody id="contextBudgetRows"></tbody>
+          </table>
+          <div class="ops-context-workspace-label">Workspace</div>
+          <div id="contextBudgetWorkspace"></div>
+        </div>
+      </section>
+
 
 
       <section class="panel" style="background: #161b26; border: 1px solid #363b4d; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
@@ -1515,6 +1618,8 @@
       serviceHealthLoading: false,
       serviceHealthLoaded: false,
       serviceHealthError: '',
+      infraHealth: { loading: false, data: null, loaded: false },
+      contextBudget: { loading: false, loaded: false, expanded: false, data: null, error: '' },
       opsView: 'health',
       crons: [],
       jobExpanded: {},
@@ -1573,6 +1678,21 @@
       }
       return `${value.toFixed(value > 100 ? 0 : 1)} ${units[unitIndex]}`;
     };
+
+    function formatBytes(bytes) {
+      const value = Number(bytes);
+      if (!Number.isFinite(value) || value < 0) return '0B';
+      if (value === 0) return '0B';
+      const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+      let amount = value;
+      let unitIndex = 0;
+      while (amount >= 1024 && unitIndex < units.length - 1) {
+        amount /= 1024;
+        unitIndex += 1;
+      }
+      const precision = amount >= 100 ? 0 : (amount >= 10 ? 1 : 1);
+      return `${amount.toFixed(precision)}${units[unitIndex]}`;
+    }
 
     // Format relative time from ISO timestamp.
     const rel = (iso) => {
@@ -1663,6 +1783,102 @@
         ${config.meta ? `<div class="ops-summary-meta">${esc(config.meta)}</div>` : ''}
         <div class="ops-summary-sub">${esc(config.subtitle)}</div>
       </article>`;
+    }
+
+    function normalizeOpsColor(status, fallback = 'tertiary') {
+      if (status === 'green' || status === 'amber' || status === 'red') return status;
+      if (status === 'gray' || status === 'tertiary') return 'tertiary';
+      return fallback;
+    }
+
+    function formatApproxTokens(value) {
+      const n = Number(value);
+      if (!Number.isFinite(n) || n < 0) return '~-';
+      return `~${Math.round(n).toLocaleString()}`;
+    }
+
+    function renderInfraHealthCards() {
+      const root = $('infraHealthCards');
+      if (!root) return;
+      const payload = state.infraHealth.data;
+      if (!payload || state.infraHealth.loading) {
+        root.innerHTML = [
+          { label: 'DISK USAGE' },
+          { label: 'GATEWAY MEMORY' },
+          { label: 'GATEWAY LATENCY' },
+          { label: 'GATEWAY ERRORS' }
+        ].map((card) => renderSummaryCard({
+          label: card.label,
+          value: '—',
+          valueClass: 'tertiary',
+          subtitle: 'Loading...'
+        })).join('');
+        return;
+      }
+      const stale = Boolean(payload.stale);
+      if (payload.available === false) {
+        root.innerHTML = [
+          { label: 'DISK USAGE' },
+          { label: 'GATEWAY MEMORY' },
+          { label: 'GATEWAY LATENCY' },
+          { label: 'GATEWAY ERRORS' }
+        ].map((card) => renderSummaryCard({
+          label: card.label,
+          value: 'N/A',
+          valueClass: 'tertiary',
+          subtitle: 'sampler unavailable',
+          stale
+        })).join('');
+        return;
+      }
+
+      const disk = payload.disk || {};
+      const memory = payload.memory || {};
+      const latency = payload.latency || {};
+      const errors = payload.errors || {};
+      const diskUsedPct = Number(payload.disk_used_pct ?? disk.used_pct);
+      const diskFree = Number(payload.disk_free_bytes ?? disk.free_bytes);
+      const diskTotal = Number(payload.disk_total_bytes ?? disk.total_bytes);
+      const memoryRss = Number(payload.gateway_rss_bytes ?? memory.gateway_rss_bytes ?? memory.rss_bytes);
+      const sysAvail = Number(payload.system_available_bytes ?? memory.system_available_bytes ?? memory.available_bytes);
+      const latencyP95 = Number(payload.gateway_p95_ms ?? latency.gateway_p95_ms ?? latency.p95_ms);
+      const incidents = Number(payload.error_incidents_60m ?? errors.incidents_60m ?? errors.incident_count);
+      const memoryStatus = normalizeOpsColor(payload.memory_status ?? memory.status);
+      const latencyMissing = !Number.isFinite(latencyP95) || latencyP95 < 0;
+
+      root.innerHTML = [
+        {
+          label: 'DISK USAGE',
+          value: Number.isFinite(diskUsedPct) ? `${Math.round(diskUsedPct)}%` : 'N/A',
+          valueClass: normalizeOpsColor(payload.disk_status ?? disk.status),
+          subtitle: (Number.isFinite(diskFree) && Number.isFinite(diskTotal))
+            ? `${formatBytes(diskFree)} free of ${formatBytes(diskTotal)}`
+            : 'space unavailable',
+          stale
+        },
+        {
+          label: 'GATEWAY MEMORY',
+          value: Number.isFinite(memoryRss) ? formatBytes(memoryRss) : 'N/A',
+          valueClass: memoryStatus,
+          subtitle: Number.isFinite(sysAvail) ? `${formatBytes(sysAvail)} system available` : 'system memory unavailable',
+          attention: (memoryStatus === 'amber' || memoryStatus === 'red') && (payload.memory_signal || memory.signal) ? String(payload.memory_signal || memory.signal) : '',
+          stale
+        },
+        {
+          label: 'GATEWAY LATENCY',
+          value: latencyMissing ? 'N/A' : `${Math.round(latencyP95)}ms`,
+          valueClass: latencyMissing ? 'tertiary' : normalizeOpsColor(payload.latency_status ?? latency.status),
+          subtitle: 'p95 rolling 5-sample',
+          stale
+        },
+        {
+          label: 'GATEWAY ERRORS',
+          value: Number.isFinite(incidents) ? String(incidents) : 'N/A',
+          valueClass: normalizeOpsColor(payload.error_status ?? errors.status, Number(incidents) >= 1 ? 'red' : 'green'),
+          subtitle: 'incidents last 60 min',
+          stale
+        }
+      ].map(renderSummaryCard).join('');
     }
 
     function watcherStatusClass(status) {
@@ -2157,6 +2373,116 @@
       }
       setTimeout(() => { renderJobsStatusDots(); renderJobsSummaryCards(); }, 200);
       return state.watcherHealth;
+    }
+
+    async function loadInfraHealth(force = false) {
+      if (!force && state.opsView !== 'health') return;
+      state.infraHealth.loading = true;
+      renderInfraHealthCards();
+      try {
+        const data = await api('/api/ops/health-metrics');
+        state.infraHealth.data = data || {};
+      } catch {
+        state.infraHealth.data = { available: false, stale: false };
+      } finally {
+        state.infraHealth.loading = false;
+        state.infraHealth.loaded = true;
+        renderInfraHealthCards();
+      }
+    }
+
+    function contextDotClass(status) {
+      if (status === 'green') return 'green';
+      if (status === 'amber') return 'amber';
+      if (status === 'red') return 'red';
+      return 'gray';
+    }
+
+    function contextResultLabel(status) {
+      if (status === 'green') return 'OK';
+      if (status === 'amber') return 'OVER';
+      if (status === 'red') return 'TRUNCATED';
+      return '-';
+    }
+
+    function renderContextBudget() {
+      const headline = $('contextBudgetHeadline');
+      const rows = $('contextBudgetRows');
+      const workspace = $('contextBudgetWorkspace');
+      if (!headline || !rows || !workspace) return;
+
+      if (state.contextBudget.loading && !state.contextBudget.loaded) {
+        headline.innerHTML = '<span class="ops-context-dot gray"></span><span>Loading context budget…</span>';
+        rows.innerHTML = '<tr><td colspan="6" class="muted">Loading context budget...</td></tr>';
+        workspace.innerHTML = '';
+        return;
+      }
+
+      if (state.contextBudget.error) {
+        headline.innerHTML = `<span class="ops-context-dot red"></span><span>${esc(state.contextBudget.error)}</span>`;
+        rows.innerHTML = '<tr><td colspan="6" class="muted">Unable to load context budget.</td></tr>';
+        workspace.innerHTML = '';
+        return;
+      }
+
+      const payload = state.contextBudget.data || {};
+      const status = String(payload.status || 'info').toLowerCase();
+      const estTokens = formatApproxTokens(payload.est_total_tokens);
+      const estChars = Number(payload.est_total_chars);
+      const maxChars = Number(payload.max_context_chars || 150000);
+      const estCharsText = Number.isFinite(estChars) ? estChars.toLocaleString() : '-';
+      const maxCharsText = Number.isFinite(maxChars) ? maxChars.toLocaleString() : '150,000';
+      headline.innerHTML = `
+        <span class="ops-context-dot ${contextDotClass(status)}"></span>
+        <span>Estimated injected context: <strong>${esc(estTokens)} tokens (${esc(estCharsText)} of ${esc(maxCharsText)} chars)</strong></span>
+      `;
+
+      const files = (Array.isArray(payload.files) ? payload.files : (Array.isArray(payload.bootstrap_files) ? payload.bootstrap_files : []))
+        .filter((file) => file && file.exists)
+        .sort((a, b) => Number(b.size_chars || 0) - Number(a.size_chars || 0));
+
+      rows.innerHTML = files.length ? files.map((file) => {
+        const fileStatus = String(file.status || 'info').toLowerCase();
+        const sizeChars = Number(file.size_chars || 0);
+        const estFileTokens = formatApproxTokens(file.est_tokens);
+        const target = Number.isFinite(Number(file.target_tokens))
+          ? formatApproxTokens(file.target_tokens)
+          : '-';
+        return `<tr>
+          <td><span class="ops-context-dot ${contextDotClass(fileStatus)}" title="${esc(fileStatus)}"></span></td>
+          <td>${esc(file.path || file.file || '-')}</td>
+          <td class="mono">${esc(sizeChars.toLocaleString())}</td>
+          <td class="mono">${esc(estFileTokens)}</td>
+          <td class="mono">${esc(target)}</td>
+          <td class="mono">${esc(contextResultLabel(fileStatus))}</td>
+        </tr>`;
+      }).join('') : '<tr><td colspan="6" class="muted">No injected files found.</td></tr>';
+
+      const ownershipDrift = Number(payload.workspace?.ownership_drift_files ?? payload.ownership_drift_files ?? 0);
+      const ownershipClass = ownershipDrift > 0 ? 'amber' : 'green';
+      workspace.innerHTML = `
+        <div class="ops-context-workspace-row">
+          <span class="ops-context-dot ${ownershipClass}"></span>
+          <span>Ownership drift: ${esc(String(ownershipDrift))} files</span>
+        </div>
+      `;
+    }
+
+    async function loadContextBudget(force = false) {
+      if (!force && state.opsView !== 'checks') return;
+      state.contextBudget.loading = true;
+      state.contextBudget.error = '';
+      renderContextBudget();
+      try {
+        const data = await api('/api/ops/context-budget');
+        state.contextBudget.data = data || {};
+      } catch (error) {
+        state.contextBudget.error = error.message || 'Failed to load context budget.';
+      } finally {
+        state.contextBudget.loading = false;
+        state.contextBudget.loaded = true;
+        renderContextBudget();
+      }
     }
 
     function getVersionCheckView(data = {}) {
@@ -2952,6 +3278,10 @@
         loadServiceHealth(true).catch(() => {});
         loadVersionCheck().catch(() => {});
         loadOpsLogsHealth().catch(() => {});
+        loadContextBudget(true).catch(() => {});
+      }
+      if (view === 'health') {
+        loadInfraHealth(true).catch(() => {});
       }
       setTimeout(renderLucideIcons, 50);
       setTimeout(renderLucideIcons, 150);
@@ -3285,11 +3615,17 @@
         retentionBody.classList.toggle('collapsed', !state.retentionOpen);
       }
       setChevronIcon('retentionToggleBtn', state.retentionOpen);
+      const contextBudgetBody = $('contextBudgetBody');
+      if (contextBudgetBody) {
+        contextBudgetBody.classList.toggle('collapsed', !state.contextBudget.expanded);
+      }
+      setChevronIcon('contextBudgetToggleBtn', state.contextBudget.expanded);
     }
 
     function initPanelCollapseState() {
       state.gatewayEventsOpen = localStorage.getItem('ops_gateway_events_open') === 'true';
       state.retentionOpen = localStorage.getItem('ops_retention_open') === 'true';
+      state.contextBudget.expanded = localStorage.getItem('ops_context_budget_open') === 'true';
       applyCollapsibleState();
     }
 
@@ -3353,6 +3689,17 @@
       if (doctorRunBtn) doctorRunBtn.onclick = () => runDoctorNow().catch((error) => toast(error.message));
       const doctorPrepareBtn = $('opsDoctorPrepareRepair');
       if (doctorPrepareBtn) doctorPrepareBtn.onclick = () => prepareDoctorRepair().catch((error) => toast(error.message));
+      const contextBudgetToggle = $('contextBudgetToggleBtn');
+      if (contextBudgetToggle) contextBudgetToggle.onclick = (event) => {
+        event.stopPropagation();
+        state.contextBudget.expanded = !state.contextBudget.expanded;
+        localStorage.setItem('ops_context_budget_open', state.contextBudget.expanded ? 'true' : 'false');
+        applyCollapsibleState();
+      };
+      const contextBudgetRefreshBtn = $('contextBudgetRefreshBtn');
+      if (contextBudgetRefreshBtn) contextBudgetRefreshBtn.onclick = () => {
+        loadContextBudget(true).catch((error) => toast(error.message));
+      };
       $('gatewayEventsHeader').onclick = () => {
         state.gatewayEventsOpen = !state.gatewayEventsOpen;
         localStorage.setItem('ops_gateway_events_open', state.gatewayEventsOpen ? 'true' : 'false');
@@ -3384,7 +3731,7 @@
       };
 
       try {
-        await Promise.all([loadServices(), loadVersionCheck(), loadVerification(), loadCrons(), loadBackups(), loadGatewayEvents(), loadWatcherHealth(), loadServiceHealth(true), loadMonitoringLayers(), loadKillSwitches(), loadDoctorPanel()]);
+        await Promise.all([loadServices(), loadVersionCheck(), loadVerification(), loadCrons(), loadBackups(), loadGatewayEvents(), loadWatcherHealth(), loadInfraHealth(true), loadServiceHealth(true), loadMonitoringLayers(), loadKillSwitches(), loadDoctorPanel()]);
         applyCollapsibleState();
         if (window.__opsServicesRefreshTimer) clearInterval(window.__opsServicesRefreshTimer);
         window.__opsServicesRefreshTimer = setInterval(() => {
@@ -3394,6 +3741,7 @@
           if (state.opsView === 'checks') {
             loadVersionCheck().catch((error) => toast(error.message));
           }
+          loadInfraHealth().catch(() => {});
         }, 60000);
         if (window.__opsSelfHealingRefreshTimer) clearInterval(window.__opsSelfHealingRefreshTimer);
         window.__opsSelfHealingRefreshTimer = setInterval(() => {
