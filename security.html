@@ -504,7 +504,7 @@ tbody tr.expandable-row { cursor: pointer; }
 
   function renderIntegrity() {
     const integrityChecks = state.checks.filter((c) => String(c.name || '').toLowerCase().includes('integrity'));
-    const configDriftCheck = state.checks.find((c) => String(c.name || '').toLowerCase().includes('config drift'));
+    const configDrift = state.checks.find((c) => String(c.name || '').toLowerCase().includes('config drift'));
     const filesMonitored = state.checks.filter((c) => String(c.layer || '').toLowerCase().includes('reasoning')).length;
     const verified = integrityChecks.filter((c) => c.status === 'green').length;
     
