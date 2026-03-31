@@ -300,50 +300,116 @@ fi
 add_check "$(make_check_json 'channel' 'Channel Allowlist' "$ch_status" "$ch_message" "$ch_details" "$ch_remediation")"
 update_overall "$ch_status"
 
-# Check 7: SOUL.md Integrity
-soul_path='/home/openclaw/.openclaw/workspace/SOUL.md'
-expected_hash_file='/home/openclaw/.openclaw/.soul-hash'
-current_hash=$(sha256sum "$soul_path" 2>&1 | awk '{print $1}')
-soul_status='green'
-soul_message='SOUL.md integrity verified. Hash matches baseline.'
-soul_remediation=''
+# Check 7: Critical File Integrity
+integrity_manifest='/home/openclaw/.openclaw/.integrity-manifest'
+legacy_soul_hash='/home/openclaw/.openclaw/.soul-hash'
+integrity_files=(
+  '/home/openclaw/.openclaw/workspace/SOUL.md'
+  '/home/openclaw/.openclaw/extensions/security-hook/index.ts'
+  '/home/openclaw/.openclaw/security-hook.json'
+  '/home/openclaw/.openclaw/openclaw.json'
+  '/home/openclaw/.openclaw/workspace/AGENTS.md'
+  '/home/openclaw/.openclaw/workspace/HEARTBEAT.md'
+  '/home/openclaw/.openclaw/extensions/security-hook/package.json'
+)
+integrity_status='green'
+integrity_message='All 7 critical files verified. Hashes match baseline.'
+integrity_details=''
+integrity_remediation=''
+integrity_metadata='{}'
+mismatched_files=()
+missing_files=()
+mismatch_details=()
+manifest_files=0
 
-if [ ! -f "$soul_path" ]; then
-  soul_status='red'
-  soul_message='SOUL.md has been modified since last approved change.'
-  soul_details="current=missing; expected=unknown"
-  soul_remediation="SOUL.md has been modified since last approved change. Verify changes with: diff <backup> SOUL.md — If changes are approved, update baseline: sha256sum SOUL.md | awk '{print \$1}' > ~/.openclaw/.soul-hash"
+write_integrity_manifest() {
+  local manifest_path="$1"
+  local tmp_path="${manifest_path}.tmp"
+  local manifest_dir
+  manifest_dir=$(dirname "$manifest_path")
+  local count=0
+  mkdir -p "$manifest_dir" 2>/dev/null || true
+  : > "$tmp_path" 2>/dev/null || {
+    printf '0'
+    return
+  }
+  for f in "${integrity_files[@]}"; do
+    if [ -f "$f" ]; then
+      sha256sum "$f" >> "$tmp_path"
+      count=$((count + 1))
+    fi
+  done
+  mv "$tmp_path" "$manifest_path"
+  printf '%s' "$count"
+}
+
+if [ ! -f "$integrity_manifest" ] && [ -f "$legacy_soul_hash" ]; then
+  manifest_files=$(write_integrity_manifest "$integrity_manifest")
+  rm -f "$legacy_soul_hash"
+  integrity_message="Baseline manifest created for ${manifest_files} files."
+elif [ ! -f "$integrity_manifest" ]; then
+  manifest_files=$(write_integrity_manifest "$integrity_manifest")
+  integrity_message="Baseline manifest created for ${manifest_files} files."
 else
-  hash_dir=$(dirname "$expected_hash_file")
-  if [ ! -f "$expected_hash_file" ] && [ -d "$hash_dir" ]; then
-    echo "$current_hash" > "$expected_hash_file" 2>/dev/null
-    soul_message='Baseline hash recorded.'
-  fi
+  while IFS= read -r manifest_line || [ -n "$manifest_line" ]; do
+    [ -z "$manifest_line" ] && continue
+    expected_hash=$(echo "$manifest_line" | awk '{print $1}')
+    tracked_path=$(echo "$manifest_line" | cut -d' ' -f3-)
+    [ -z "$tracked_path" ] && continue
+    manifest_files=$((manifest_files + 1))
 
-  expected_hash=''
-  if [ -f "$expected_hash_file" ]; then
-    expected_hash=$(cat "$expected_hash_file" 2>/dev/null)
-  fi
-  if [ -z "$expected_hash" ]; then
-    expected_hash='missing'
-  fi
-  acip_present=$(grep -c 'Security Anchor\|Content Trust Policy\|Prompt Injection Defense' "$soul_path" 2>/dev/null)
-  soul_details="current=${current_hash:0:12}; expected=${expected_hash:0:12}"
+    if [ ! -f "$tracked_path" ]; then
+      missing_files+=("$(basename "$tracked_path")")
+      continue
+    fi
 
-  if [ "$current_hash" != "$expected_hash" ]; then
-    soul_status='red'
-    soul_message='SOUL.md has been modified since last approved change.'
-    soul_details="${soul_details}; mismatch=true"
-    soul_remediation="SOUL.md has been modified since last approved change. Verify changes with: diff <backup> SOUL.md — If changes are approved, update baseline: sha256sum SOUL.md | awk '{print \$1}' > ~/.openclaw/.soul-hash"
-  elif [ "$acip_present" = '0' ]; then
-    soul_status='yellow'
-    soul_message='ACIP injection defense section missing from SOUL.md.'
-    soul_remediation='ACIP injection defense section missing from SOUL.md. Restore from backup.'
+    current_hash=$(sha256sum "$tracked_path" | awk '{print $1}')
+    if [ "$current_hash" != "$expected_hash" ]; then
+      mismatched_files+=("$(basename "$tracked_path")")
+      mismatch_details+=("$(basename "$tracked_path"): expected=${expected_hash:0:12} actual=${current_hash:0:12}")
+    fi
+  done < "$integrity_manifest"
+
+  if [ "${#missing_files[@]}" -gt 0 ]; then
+    integrity_status='red'
+    integrity_message="Critical file missing: $(IFS=', '; echo "${missing_files[*]}")"
+    integrity_remediation='Restore missing critical files from approved backup, then run /usr/local/bin/reset-integrity-baseline.sh if changes are approved.'
+  elif [ "${#mismatched_files[@]}" -gt 0 ]; then
+    integrity_status='red'
+    integrity_message="Modified since last approved change: $(IFS=', '; echo "${mismatched_files[*]}")"
+    integrity_details=$(IFS='; '; echo "${mismatch_details[*]}")
+    integrity_remediation='Review file diffs and approved changes, then run /usr/local/bin/reset-integrity-baseline.sh to refresh baseline.'
+  else
+    integrity_message="All ${manifest_files} critical files verified. Hashes match baseline."
   fi
 fi
 
-add_check "$(make_check_json 'reasoning' 'SOUL.md Integrity' "$soul_status" "$soul_message" "$soul_details" "$soul_remediation")"
-update_overall "$soul_status"
+if [ -z "$integrity_details" ]; then
+  integrity_details='No mismatches detected.'
+fi
+
+if [ "$integrity_status" = 'green' ]; then
+  soul_path='/home/openclaw/.openclaw/workspace/SOUL.md'
+  if [ -f "$soul_path" ]; then
+    acip_present=$(grep -c 'Security Anchor\|Content Trust Policy\|Prompt Injection Defense' "$soul_path" 2>/dev/null)
+    if [ "$acip_present" = '0' ]; then
+      integrity_status='yellow'
+      integrity_message='ACIP injection defense section missing from SOUL.md.'
+      integrity_remediation='ACIP injection defense section missing from SOUL.md. Restore from approved baseline.'
+    fi
+  fi
+fi
+
+integrity_metadata=$(node -e "
+  console.log(JSON.stringify({
+    manifest_files: parseInt(process.argv[1], 10) || 0,
+    mismatched: process.argv[2] ? process.argv[2].split('|').filter(Boolean) : [],
+    missing: process.argv[3] ? process.argv[3].split('|').filter(Boolean) : []
+  }));
+" "$manifest_files" "$(IFS='|'; echo "${mismatched_files[*]}")" "$(IFS='|'; echo "${missing_files[*]}")" 2>/dev/null)
+
+add_check "$(make_check_json 'reasoning' 'Critical File Integrity' "$integrity_status" "$integrity_message" "$integrity_details" "$integrity_remediation" "$integrity_metadata")"
+update_overall "$integrity_status"
 
 # Check 8: Tool Policy (FIX 3: sandbox-only is green, tools.deny not in config schema)
 tool_result=$(node -e "
@@ -918,6 +984,133 @@ security_hook_metadata=$(node -e "
 
 add_check "$(make_check_json 'injection-defense' 'Security Hook' "$security_hook_status" "$security_hook_message" "$security_hook_details" "$security_hook_remediation" "$security_hook_metadata")"
 update_overall "$security_hook_status"
+
+# Check 15: Kernel Sysctl Hardening
+kernel_sysctl_pairs=(
+  'net.ipv4.conf.all.rp_filter=1'
+  'net.ipv4.tcp_syncookies=1'
+  'net.ipv4.icmp_echo_ignore_broadcasts=1'
+  'net.ipv6.conf.all.disable_ipv6=1'
+  'kernel.dmesg_restrict=1'
+  'fs.suid_dumpable=0'
+)
+kernel_noncompliant=()
+kernel_details_parts=()
+for pair in "${kernel_sysctl_pairs[@]}"; do
+  key="${pair%%=*}"
+  expected="${pair#*=}"
+  actual=$(sysctl -n "$key" 2>/dev/null)
+  [ -z "$actual" ] && actual='missing'
+  kernel_details_parts+=("${key}=${actual}")
+  if [ "$actual" != "$expected" ]; then
+    kernel_noncompliant+=("${key}=${actual} (expected ${expected})")
+  fi
+done
+
+kernel_status='green'
+kernel_message='Kernel hardening sysctl values compliant.'
+kernel_details=$(IFS='; '; echo "${kernel_details_parts[*]}")
+kernel_remediation=''
+if [ "${#kernel_noncompliant[@]}" -gt 0 ]; then
+  kernel_status='yellow'
+  kernel_message="Non-compliant sysctl values: $(IFS=', '; echo "${kernel_noncompliant[*]}")"
+  kernel_remediation='Apply hardening: sudo sysctl --system. Config at /etc/sysctl.d/99-hardening.conf'
+fi
+
+add_check "$(make_check_json 'os-hardening' 'Kernel Hardening' "$kernel_status" "$kernel_message" "$kernel_details" "$kernel_remediation")"
+update_overall "$kernel_status"
+
+# Check 16: Mount Flags
+mount_shm_line=$(mount | grep ' on /dev/shm ' | head -n 1)
+mount_status='yellow'
+mount_message='/dev/shm mount missing noexec flag.'
+mount_details="${mount_shm_line:-/dev/shm mount not found}"
+mount_remediation='Remount /dev/shm: sudo mount -o remount,noexec,nosuid,nodev /dev/shm'
+if echo "$mount_shm_line" | grep -q 'noexec'; then
+  mount_status='green'
+  mount_message='/dev/shm mount includes noexec.'
+  mount_remediation=''
+fi
+
+add_check "$(make_check_json 'os-hardening' 'Mount Security' "$mount_status" "$mount_message" "$mount_details" "$mount_remediation")"
+update_overall "$mount_status"
+
+# Check 17: Core Dump Suppression
+core_pattern=$(sysctl -n kernel.core_pattern 2>/dev/null)
+core_status='yellow'
+core_message='Core dumps are enabled.'
+core_details="kernel.core_pattern=${core_pattern:-missing}"
+core_remediation='Disable core dumps: set kernel.core_pattern=|/bin/false in /etc/sysctl.d/99-hardening.conf'
+if echo "$core_pattern" | grep -q '/bin/false'; then
+  core_status='green'
+  core_message='Core dump suppression is enabled.'
+  core_remediation=''
+fi
+
+add_check "$(make_check_json 'os-hardening' 'Core Dumps' "$core_status" "$core_message" "$core_details" "$core_remediation")"
+update_overall "$core_status"
+
+# Check 18: Module Blacklisting
+module_blacklist_file='/etc/modprobe.d/blacklist-hardening.conf'
+module_status='yellow'
+module_message='Hardening module blacklist file missing.'
+module_details="path=${module_blacklist_file}"
+module_remediation='Create /etc/modprobe.d/blacklist-hardening.conf with module blacklist entries'
+if [ -f "$module_blacklist_file" ]; then
+  module_status='green'
+  module_message='Hardening module blacklist file present.'
+  module_remediation=''
+fi
+
+add_check "$(make_check_json 'os-hardening' 'Module Blacklist' "$module_status" "$module_message" "$module_details" "$module_remediation")"
+update_overall "$module_status"
+
+# Check 19: Immutable Config Files
+immutable_files=(
+  '/home/openclaw/.openclaw/openclaw.json'
+  '/home/openclaw/.openclaw/workspace/SOUL.md'
+  '/home/openclaw/.openclaw/security-hook.json'
+)
+immutable_missing=()
+immutable_not_set=()
+immutable_status='green'
+immutable_message='Immutable attribute is set on all critical config files.'
+immutable_details=''
+immutable_remediation=''
+
+if ! command -v lsattr >/dev/null 2>&1; then
+  immutable_status='yellow'
+  immutable_message='Immutable config check skipped: lsattr not available.'
+  immutable_details='lsattr command not found'
+  immutable_remediation='Install e2fsprogs to enable immutable attribute verification.'
+else
+  for file in "${immutable_files[@]}"; do
+    if [ ! -f "$file" ]; then
+      immutable_missing+=("$(basename "$file")")
+      continue
+    fi
+    if ! lsattr "$file" 2>/dev/null | grep -q 'i'; then
+      immutable_not_set+=("$(basename "$file")")
+    fi
+  done
+
+  if [ "${#immutable_missing[@]}" -gt 0 ]; then
+    immutable_status='red'
+    immutable_message="Immutable check failed; files missing: $(IFS=', '; echo "${immutable_missing[*]}")"
+    immutable_details="missing=$(IFS=', '; echo "${immutable_missing[*]}")"
+    immutable_remediation='Restore missing config files before applying immutable attributes.'
+  elif [ "${#immutable_not_set[@]}" -gt 0 ]; then
+    immutable_status='yellow'
+    immutable_message="Files not immutable: $(IFS=', '; echo "${immutable_not_set[*]}")"
+    immutable_details="not_immutable=$(IFS=', '; echo "${immutable_not_set[*]}")"
+    immutable_remediation='Lock files: sudo chattr +i <filepath>'
+  else
+    immutable_details="verified=$(IFS=', '; for f in "${immutable_files[@]}"; do basename "$f"; done)"
+  fi
+fi
+
+add_check "$(make_check_json 'os-hardening' 'Immutable Configs' "$immutable_status" "$immutable_message" "$immutable_details" "$immutable_remediation")"
+update_overall "$immutable_status"
 
 final_json=$(node -e "
   const out = {
