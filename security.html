@@ -475,7 +475,9 @@ tbody tr.expandable-row { cursor: pointer; }
     refs.decisionsTodaySub.textContent = `tool calls evaluated · latest ${rel(s.latest_timestamp)}`;
     refs.blockedValue.textContent = String(s.blocked || 0);
     refs.gatedValue.textContent = String(s.confirmed || 0);
-    refs.hookModeValue.textContent = String(s.hook_mode || 'unknown');
+    const modeStr = String(s.hook_mode || 'unknown');
+    refs.hookModeValue.textContent = modeStr;
+    refs.hookModeValue.style.fontSize = modeStr.length > 3 ? '20px' : '28px';
     refs.blockedValue.style.color = Number(s.blocked || 0) > 0 ? '#ef4444' : '#f1f5f9';
     refs.gatedValue.style.color = Number(s.confirmed || 0) > 0 ? '#f59e0b' : '#f1f5f9';
   }
