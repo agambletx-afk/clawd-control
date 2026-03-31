@@ -2460,7 +2460,7 @@
         const fileStatus = String(file.status || 'info').toLowerCase();
         const sizeChars = Number(file.size_chars || 0);
         const estFileTokens = formatApproxTokens(file.est_tokens);
-        const target = Number.isFinite(Number(file.target_tokens))
+        const target = (file.target_tokens !== null && file.target_tokens !== undefined && Number.isFinite(Number(file.target_tokens)) && Number(file.target_tokens) > 0)
           ? formatApproxTokens(file.target_tokens)
           : '-';
         return `<tr>
