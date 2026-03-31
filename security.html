@@ -407,7 +407,7 @@ tbody tr.expandable-row { cursor: pointer; }
       const clickedClass = actionType === 'expand' ? 'expandable-row' : '';
       rows.push(`<tr class="${clickedClass}" data-row-id="${esc(rowId)}" data-status="${esc(check.status)}" data-layer="${esc(check.layer || '')}">
         <td>${statusDot(check.status)}</td>
-        <td><span class="layer-pill mono">${esc(check.layer || '—')}</span></td>
+        <td><span class="layer-pill mono">${esc(LAYER_TAGS[check.layer] || check.layer || '—')}</span></td>
         <td>${esc(name)}</td>
         <td class="text-secondary" style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(check.message || '')}">${esc(check.message || '')}</td>
         <td class="mono" style="color:${ageColor(check.checked_at || state.generatedAt)}">${esc(rel(check.checked_at || state.generatedAt))}</td>
