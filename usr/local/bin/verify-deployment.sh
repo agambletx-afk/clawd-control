@@ -640,6 +640,8 @@ cron_entry_exists() {
   local pattern="$1"
   crontab -l 2>/dev/null | grep -q "$pattern" && return 0
   grep -rq "$pattern" /etc/cron.d/openclaw* 2>/dev/null && return 0
+  systemctl list-timers --all --no-pager 2>/dev/null | grep -q "$pattern" && return 0
+  ls /etc/systemd/system/*${pattern}* 2>/dev/null | grep -q . && return 0
   return 1
 }
 
@@ -681,7 +683,7 @@ check_cron_with_output() {
 # Tier 2 checks
 check_cron_security_health() { check_cron_with_output "check-security-health" "security-health" "/tmp/security-health-results.json" 30; }
 check_cron_system_health() { check_cron_with_output "check-system-health" "system-health\|health-status" "/home/openclaw/.openclaw/workspace/health-status.json" 10; }
-check_cron_api_liveness() { check_cron_with_output "check-api-health" "api-liveness\|api-health" "/tmp/openclaw-api-liveness.json" 5; }
+check_cron_api_liveness() { check_cron_with_output "check-api-health" "api-liveness\|api-health\|jarvis-pulse" "/tmp/openclaw-api-liveness.json" 5; }
 check_cron_version_check() {
   if ! cron_entry_exists "check-openclaw-version\.sh"; then CHECK_MSG="cron entry missing for version check"; return 1; fi
   local output="/tmp/security-version-cache.json" mtime now age max_age
