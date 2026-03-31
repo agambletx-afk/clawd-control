@@ -924,6 +924,7 @@
       font-weight: 600;
     }
     .ops-context-dot {
+      display: inline-block;
       width: 8px;
       height: 8px;
       border-radius: 999px;
@@ -1467,6 +1468,7 @@
             <button id="contextBudgetToggleBtn" class="icon-btn" aria-label="Toggle context budget details" aria-expanded="false"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
           </div>
         </div>
+        <div id="contextBudgetSummary" style="font-size:12px; color:var(--text-secondary); font-family:var(--font-mono); margin-bottom:4px;"></div>
         <div id="contextBudgetBody" class="collapsible-body collapsed">
           <div id="contextBudgetHeadline" class="ops-context-headline"></div>
           <table class="ops-table ops-context-table">
@@ -2406,6 +2408,18 @@
       return '-';
     }
 
+    function renderContextBudgetSummary() {
+      const el = $('contextBudgetSummary');
+      if (!el) return;
+      const payload = state.contextBudget.data;
+      if (!payload || state.contextBudget.expanded) { el.innerHTML = ''; return; }
+      const status = String(payload.status || 'info');
+      const tokens = formatApproxTokens(payload.est_total_tokens);
+      const fileCount = Number(payload.file_count || 0);
+      const overCount = (payload.files || []).filter(f => f.status === 'amber' || f.status === 'red').length;
+      const overText = overCount > 0 ? ' · ' + overCount + ' over budget' : '';
+      el.innerHTML = '<span class="ops-context-dot ' + contextDotClass(status) + '"></span> ' + tokens + ' tokens injected · ' + fileCount + ' files' + overText;
+    }
     function renderContextBudget() {
       const headline = $('contextBudgetHeadline');
       const rows = $('contextBudgetRows');
@@ -2483,6 +2497,7 @@
         state.contextBudget.loading = false;
         state.contextBudget.loaded = true;
         renderContextBudget();
+        renderContextBudgetSummary();
       }
     }
 
@@ -3696,10 +3711,20 @@
         state.contextBudget.expanded = !state.contextBudget.expanded;
         localStorage.setItem('ops_context_budget_open', state.contextBudget.expanded ? 'true' : 'false');
         applyCollapsibleState();
+        renderContextBudgetSummary();
       };
       const contextBudgetRefreshBtn = $('contextBudgetRefreshBtn');
       if (contextBudgetRefreshBtn) contextBudgetRefreshBtn.onclick = () => {
-        loadContextBudget(true).catch((error) => toast(error.message));
+        contextBudgetRefreshBtn.textContent = 'Refreshing...';
+        contextBudgetRefreshBtn.disabled = true;
+        loadContextBudget(true).then(() => {
+          contextBudgetRefreshBtn.textContent = 'Refresh';
+          contextBudgetRefreshBtn.disabled = false;
+        }).catch((error) => {
+          contextBudgetRefreshBtn.textContent = 'Refresh';
+          contextBudgetRefreshBtn.disabled = false;
+          toast(error.message);
+        });
       };
       $('gatewayEventsHeader').onclick = () => {
         state.gatewayEventsOpen = !state.gatewayEventsOpen;
