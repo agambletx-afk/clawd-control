@@ -6,7 +6,7 @@ import { getOpsDb } from './ops-log-db.mjs';
 
 const DB_PATH = join(new URL('.', import.meta.url).pathname, 'logs.db');
 const SECURITY_HOOK_LOG_PATH = '/home/openclaw/.openclaw/logs/security-hook.log';
-const WATCHER_DB_PATH = '/home/openclaw/.openclaw/workspace/watcher.db';
+const WATCHER_DB_PATH = '/home/openclaw/clawd-control/watcher.db';
 const CRON_HEALTH_URL = 'http://127.0.0.1:3100/api/cron/health';
 const KNOWN_SOURCES = ['task_audit', 'ops_log', 'security_hook', 'cron_health', 'watcher'];
 
