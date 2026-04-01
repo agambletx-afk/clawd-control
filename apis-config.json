@@ -85,18 +85,16 @@
         "Full-Auto Mode"
       ],
       "health_check": {
-        "method": "GET",
-        "url": "https://api.openai.com/v1/models",
-        "headers": {
-          "Authorization": "Bearer ${OPENAI_API_KEY}"
-        },
+        "method": "JWT_CHECK",
+        "token_file": "/home/openclaw/.codex/auth.json",
+        "token_path": "tokens.access_token",
         "timeout_ms": 5000,
         "expected_status": 200
       },
       "api_key": {
-        "env_var": "OPENAI_API_KEY",
-        "last_rotated": null,
-        "rotation_warning_days": 90
+        "env_var": null,
+        "source": "codex_oauth",
+        "oauth_file": "/home/openclaw/.codex/auth.json"
       }
     },
     {
