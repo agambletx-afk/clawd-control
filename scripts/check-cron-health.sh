@@ -3,6 +3,19 @@ set -euo pipefail
 
 CONFIG_FILE="/etc/jarvis/watcher.json"
 STATUS_FILE="/home/openclaw/.openclaw/workspace/watcher-status.json"
+
+# Auto-discover unmonitored crons (idempotent, flock-protected)
+if [[ -x /usr/local/bin/watcher-auto-discover.sh ]]; then
+  /usr/local/bin/watcher-auto-discover.sh 2>&1 | while IFS= read -r line; do
+    echo "$line"
+  done
+fi
+
+# Reload/verify config after discovery so newly added entries are evaluated this cycle
+if [[ ! -r "$CONFIG_FILE" ]]; then
+  echo "Missing config: $CONFIG_FILE" >&2
+  exit 1
+fi
 SYSLOG_FILE="/var/log/syslog"
 TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-}"
 TELEGRAM_CHAT_ID="${TELEGRAM_CHAT_ID:-}"
