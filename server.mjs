@@ -201,6 +201,63 @@ function writeOpenClawConfig(config) {
   renameSync(tmpPath, OPENCLAW_CONFIG_PATH);
 }
 
+function writeOpenClawConfigWithImmutableFallback(config) {
+  try {
+    execSync(`chattr -i ${OPENCLAW_CONFIG_PATH}`);
+  } catch {
+    // Non-root or missing chattr; continue and try direct write.
+  }
+  writeOpenClawConfig(config);
+  try {
+    execSync(`chattr +i ${OPENCLAW_CONFIG_PATH}`);
+  } catch {
+    // Non-root or missing chattr; leave file mutable if we cannot re-apply.
+  }
+}
+
+function buildCortexWorkloadsPayload() {
+  const config = readOpenClawConfig();
+  if (!config) return null;
+  const defaults = config.agents?.defaults || {};
+  const cortexConfig = readCortexConfig();
+  const ladder = Array.isArray(cortexConfig?.ladder) ? cortexConfig.ladder : [];
+  const catalog = ladder
+    .filter((entry) => entry && typeof entry === 'object')
+    .map((entry) => ({
+      model: entry.model,
+      provider: entry.model?.split('/')[0] || 'unknown',
+      enabled: entry.enabled !== false,
+      tier: entry.tier || entry.costTier || null,
+    }));
+  return {
+    primary: {
+      model: defaults.model?.primary || null,
+      source: 'agents.defaults.model.primary',
+      status: defaults.model?.primary ? 'pinned' : 'none',
+    },
+    fallbacks: {
+      models: Array.isArray(defaults.model?.fallbacks) ? defaults.model.fallbacks : [],
+      source: 'agents.defaults.model.fallbacks',
+    },
+    heartbeat: {
+      model: defaults.heartbeat?.model || '',
+      every: defaults.heartbeat?.every || '0m',
+      activeHours: defaults.heartbeat?.activeHours || null,
+      status: defaults.heartbeat?.model ? 'pinned' : 'routed',
+    },
+    compaction: {
+      model: defaults.compaction?.model || '',
+      mode: defaults.compaction?.mode || config.compaction?.mode || null,
+      status: defaults.compaction?.model ? 'pinned' : 'inherits_primary',
+    },
+    cron: {
+      model: null,
+      status: 'inherits_primary',
+    },
+    catalog,
+  };
+}
+
 function getByPath(obj, path) {
   return path.reduce((acc, key) => (acc && typeof acc === 'object') ? acc[key] : undefined, obj);
 }
@@ -8770,6 +8827,102 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+
+  if (path === '/api/cortex/workloads' && req.method === 'GET') {
+    try {
+      const result = buildCortexWorkloadsPayload();
+      if (!result) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'openclaw.json not found' }));
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+    } catch (e) {
+      console.error('[API] /api/cortex/workloads error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Internal server error' }));
+    }
+    return;
+  }
+
+  if (path === '/api/cortex/workloads/heartbeat' && req.method === 'POST') {
+    readJsonBody(req).then((body) => {
+      try {
+        if (!body || typeof body.model !== 'string') {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'model (string) is required' }));
+          return;
+        }
+        const config = readOpenClawConfig();
+        if (!config) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'openclaw.json not found' }));
+          return;
+        }
+        if (!config.agents) config.agents = {};
+        if (!config.agents.defaults) config.agents.defaults = {};
+        if (!config.agents.defaults.heartbeat) config.agents.defaults.heartbeat = {};
+        config.agents.defaults.heartbeat.model = String(body.model || '');
+        writeOpenClawConfigWithImmutableFallback(config);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          ok: true,
+          model: config.agents.defaults.heartbeat.model,
+          status: config.agents.defaults.heartbeat.model ? 'pinned' : 'routed',
+          message: 'Heartbeat model saved.',
+        }));
+      } catch (e) {
+        console.error('[API] /api/cortex/workloads/heartbeat error:', e.message);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Failed to update heartbeat model' }));
+      }
+    }).catch((e) => {
+      const code = e.message === 'Payload too large' ? 413 : 400;
+      res.writeHead(code, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    });
+    return;
+  }
+
+  if (path === '/api/cortex/workloads/compaction' && req.method === 'POST') {
+    readJsonBody(req).then((body) => {
+      try {
+        if (!body || typeof body.model !== 'string') {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'model (string) is required' }));
+          return;
+        }
+        const config = readOpenClawConfig();
+        if (!config) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'openclaw.json not found' }));
+          return;
+        }
+        if (!config.agents) config.agents = {};
+        if (!config.agents.defaults) config.agents.defaults = {};
+        if (!config.agents.defaults.compaction) config.agents.defaults.compaction = {};
+        config.agents.defaults.compaction.model = String(body.model || '');
+        writeOpenClawConfigWithImmutableFallback(config);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          ok: true,
+          model: config.agents.defaults.compaction.model,
+          status: config.agents.defaults.compaction.model ? 'pinned' : 'inherits_primary',
+          message: 'Compaction model saved.',
+        }));
+      } catch (e) {
+        console.error('[API] /api/cortex/workloads/compaction error:', e.message);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Failed to update compaction model' }));
+      }
+    }).catch((e) => {
+      const code = e.message === 'Payload too large' ? 413 : 400;
+      res.writeHead(code, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    });
+    return;
+  }
 
   if (path === '/api/workload-routing' && req.method === 'GET') {
     try {
