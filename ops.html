@@ -2291,18 +2291,15 @@
 
 
     function cronCategory(job) {
-      const id = String(job.name || job.id || '').toLowerCase();
-      const securityIds = ['security-health','security-hook-alert','version-check'];
-      const monitoringIds = ['watcher','watchdog','system-health','cortex-sentinel','cost-sentinel','jarvis-ops-sampler'];
-      const memoryIds = ['memory-ingest','memory-prune','memory-root'];
-      const dataIds = ['api-health','cli-usage-tracker','proxy-sentinel','gemini-rate-tracker'];
-      const operationsIds = ['claude-token-refresh','bootstrap-audit','openclaw-orphan-reaper','session-ops'];
-      if (securityIds.some(s => id.includes(s))) return 'Security';
-      if (monitoringIds.some(s => id.includes(s))) return 'Monitoring';
-      if (memoryIds.some(s => id.includes(s))) return 'Memory';
-      if (dataIds.some(s => id.includes(s))) return 'Data';
-      if (operationsIds.some(s => id.includes(s))) return 'Operations';
+      const txt = String(job.name || '').toLowerCase() + ' ' + String(job.command || '').toLowerCase() + ' ' + String(job.id || '').toLowerCase();
       if (job._isGateway || job.source === 'gateway') return 'Agent';
+      if (/security|hook.alert|run-security/.test(txt)) return 'Security';
+      if (/version.check|openclaw.version/.test(txt)) return 'Security';
+      if (/watcher|watchdog|system.health|health-status/.test(txt) && !/api-health/.test(txt)) return 'Monitoring';
+      if (/cortex.sentinel|cost.sentinel|ops.sampler/.test(txt)) return 'Monitoring';
+      if (/memory|graph-ingest|graph-prune|graph-generate|decay.prun/.test(txt)) return 'Memory';
+      if (/api.health|cli.usage|proxy.sentinel|rate.limit|gemini.rate/.test(txt)) return 'Data';
+      if (/claude.*token|oauth|bootstrap.audit|orphan.reap|session-ops/.test(txt)) return 'Operations';
       return 'Operations';
     }
     const CATEGORY_ORDER = ['Security','Monitoring','Memory','Data','Operations','Agent'];
