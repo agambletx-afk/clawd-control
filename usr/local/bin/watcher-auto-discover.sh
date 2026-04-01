@@ -7,6 +7,9 @@ WRAPPER_DIR="/usr/local/bin"
 LOCK_FILE="/tmp/watcher-discover.lock"
 DRY_RUN=0
 
+# Timers monitored via Monitoring Layers (not WATCHER) - exclude from discovery
+EXCLUDED_TIMERS="jarvis-pulse jarvis-sweep jarvis-audit"
+
 if [[ "${1:-}" == "--dry-run" ]]; then
   DRY_RUN=1
 elif [[ $# -gt 0 ]]; then
@@ -433,6 +436,9 @@ main() {
     [[ -n "$unit" ]] || continue
     local id description cadence
     id="${unit%.timer}"
+    if [[ " $EXCLUDED_TIMERS " == *" $id "* ]]; then
+      continue
+    fi
     description="$(systemctl show "$unit" -p Description --value 2>/dev/null || true)"
     [[ -z "$description" ]] && description="$id"
 
@@ -445,7 +451,7 @@ main() {
     fi
 
     discovered+=("systemd|$id|$description||$cadence||$unit|")
-  done < <(systemctl list-timers --no-legend --all 2>/dev/null | awk '{print $NF}' | grep -E '^(jarvis-|openclaw-).*\.timer$' || true)
+  done < <(systemctl list-timers --no-legend --all 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i ~ /\.timer$/) print $i}' | grep -E '^(jarvis-|openclaw-).*\.timer$' || true)
 
   local new_entries_json='[]'
   local dry_count=0
