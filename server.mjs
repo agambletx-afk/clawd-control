@@ -1224,7 +1224,7 @@ function parseCronEntries() {
   const jobs = [];
   const cronDir = '/etc/cron.d';
   try {
-    const files = readdirSync(cronDir, { withFileTypes: true }).filter((d) => d.isFile());
+    const files = readdirSync(cronDir, { withFileTypes: true }).filter((d) => d.isFile() && !d.name.includes('.pre-heartbeat'));
     for (const file of files) {
       const fullPath = join(cronDir, file.name);
       const lines = readFileSync(fullPath, 'utf8').split('\n');
