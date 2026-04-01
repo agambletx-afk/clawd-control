@@ -2212,9 +2212,9 @@
 
     function historyDotColor(run) {
       const status = String(run?.status || '').toLowerCase();
-      if (Number(run?.exit_code) === 0 || ['healthy', 'ok', 'success', 'pass'].includes(status)) return 'var(--accent-green)';
-      if ((run?.exit_code != null && Number(run.exit_code) !== 0) || ['failed', 'error', 'erroring', 'unhealthy'].includes(status)) return 'var(--accent-red)';
-      return 'var(--text-tertiary)';
+      if (Number(run?.exit_code) === 0 || ['healthy', 'ok', 'success', 'pass'].includes(status)) return '#22c55e';
+      if ((run?.exit_code != null && Number(run.exit_code) !== 0) || ['failed', 'error', 'erroring', 'unhealthy'].includes(status)) return '#ef4444';
+      return '#6b7280';
     }
 
     function cronHistoryNodeId(cronName) {
@@ -2240,12 +2240,13 @@
       }
       node.style.fontFamily = 'var(--font-mono)';
       node.style.fontVariantNumeric = 'tabular-nums';
+      if (!runs.length) { node.innerHTML = '<span class="muted">No run history available.</span>'; return; }
       node.innerHTML = runs.map((run) => {
         const timestamp = run.started_at || run.finished_at || run.last_run || '';
         const duration = run.duration_ms != null ? `${run.duration_ms}ms` : 'unknown duration';
         const exitCode = run.exit_code != null ? run.exit_code : '?';
         const title = `Exit ${exitCode} · ${duration} · ${timestamp || 'unknown time'}`;
-        return `<span title="${esc(title)}" style="width: 10px; height: 10px; border-radius: 50%; background: ${historyDotColor(run)}; display: inline-block; cursor: help;"></span>`;
+        return `<span title="${esc(title)}" style="width: 12px; height: 12px; min-width: 12px; min-height: 12px; border-radius: 50%; background: ${historyDotColor(run)}; display: inline-block; cursor: help; border: 1px solid rgba(255,255,255,0.2);"></span>`;
       }).join('');
     }
 
@@ -2277,7 +2278,7 @@
       state.jobHistoryLoading[cronName] = true;
       renderJobHistoryContent(cronName);
       try {
-        const jobId = watcherId || watcherMatch.id || cronName;
+        const jobId = watcherId || watcherMatch?.id || cronName;
         const data = await api(`/api/watcher/history/${encodeURIComponent(jobId)}?limit=5`);
         const runs = (Array.isArray(data?.runs) ? data.runs : []).slice(0, 5);
         state.jobHistory[cronName] = { runs };
