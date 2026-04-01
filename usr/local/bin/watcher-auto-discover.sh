@@ -81,9 +81,22 @@ strip_env_prefix() {
   printf '%s\t%s\n' "$prefix" "$remaining"
 }
 
+strip_redirections() {
+  local cmd="$1"
+  # Aggressively strip all output redirections (multiple passes)
+  cmd="$(echo "$cmd" | sed -E "s/[[:space:]]+2>&1//g")"
+  cmd="$(echo "$cmd" | sed -E "s/[[:space:]]+2>[[:space:]]*[^[:space:]]+//g")"
+  cmd="$(echo "$cmd" | sed -E "s/[[:space:]]+>>[[:space:]]*[^[:space:]]+//g")"
+  cmd="$(echo "$cmd" | sed -E "s/[[:space:]]+>[[:space:]]*[^[:space:]]+//g")"
+  # Trim trailing whitespace
+  cmd="$(echo "$cmd" | sed -E "s/[[:space:]]+$//")"
+  printf '%s' "$cmd"
+}
+
 classify_command() {
   local id="$1"
   local raw="$2"
+  raw="$(strip_redirections "$raw")"
   local parsed prefix remaining
 
   if [[ "$id" == "watcher" ]]; then
@@ -96,29 +109,29 @@ classify_command() {
   remaining="${parsed#*$'\t'}"
 
   if contains_metachar "$remaining"; then
-    printf 'monitor_only\tshell metacharacters present\t%s\t\t%s\n' "$prefix" "$remaining"
+    printf 'monitor_only\tshell metacharacters present\t%s\t\t%s\n' "${prefix:-NONE}" "$remaining"
     return
   fi
 
   if [[ "$remaining" =~ (^|[[:space:]])(sh|bash)[[:space:]]+-c([[:space:]]|$) ]]; then
-    printf 'monitor_only\tshell indirection (sh -c/bash -c)\t%s\t\t%s\n' "$prefix" "$remaining"
+    printf 'monitor_only\tshell indirection (sh -c/bash -c)\t%s\t\t%s\n' "${prefix:-NONE}" "$remaining"
     return
   fi
 
   local first
   first="${remaining%%[[:space:]]*}"
   if [[ "$first" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
-    printf 'monitor_only\tinline env assignment\t%s\t\t%s\n' "$prefix" "$remaining"
+    printf 'monitor_only\tinline env assignment\t%s\t\t%s\n' "${prefix:-NONE}" "$remaining"
     return
   fi
 
   if [[ "$first" != /* ]]; then
-    printf 'monitor_only\texecutable path must be absolute\t%s\t\t%s\n' "$prefix" "$remaining"
+    printf 'monitor_only\texecutable path must be absolute\t%s\t\t%s\n' "${prefix:-NONE}" "$remaining"
     return
   fi
 
   if [[ ! -r "$first" || ! -x "$first" ]]; then
-    printf 'monitor_only\texecutable missing or not executable\t%s\t%s\t%s\n' "$prefix" "$first" "$remaining"
+    printf 'monitor_only\texecutable missing or not executable\t%s\t%s\t%s\n' "${prefix:-NONE}" "$first" "$remaining"
     return
   fi
 
@@ -127,7 +140,7 @@ classify_command() {
     args="${remaining#* }"
   fi
 
-  printf 'safe_to_wrap\tabsolute executable\t%s\t%s\t%s\n' "$prefix" "$first" "$args"
+  printf 'safe_to_wrap\tabsolute executable\t%s\t%s\t%s\n' "${prefix:-NONE}" "$first" "$args"
 }
 
 extract_output_file() {
@@ -174,7 +187,8 @@ id_in_config() {
   for existing in "${CONFIG_IDS[@]:-}"; do
     [[ "$existing" == "$id" ]] && return 0
     if [[ "$existing" == *"$id"* || "$id" == *"$existing"* ]]; then
-      log "WARNING dedupe-name-overlap id='$id' config_id='$existing' (not deduped)"
+      log "dedupe-fuzzy-match id='$id' config_id='$existing' (treating as monitored)"
+      return 0
     fi
   done
   return 1
@@ -326,7 +340,7 @@ build_monitor_entry() {
     --arg discovered_at "$discovered_at" \
     --arg method "$method" \
     --arg output_file "$output_file" \
-    --argjson unverifiable "$unverifiable" \
+    --argjson unverifiable "${unverifiable:-false}" \
     '{
       id: $id,
       description: $description,
@@ -395,6 +409,7 @@ main() {
   local cron_path
   for cron_path in "$CRON_DIR"/openclaw*; do
     [[ -f "$cron_path" ]] || continue
+    [[ "$cron_path" == *.pre-heartbeat* ]] && continue
     local cron_file id description
     cron_file="$(basename "$cron_path")"
     id="${cron_file#openclaw-}"
@@ -430,7 +445,7 @@ main() {
     fi
 
     discovered+=("systemd|$id|$description||$cadence||$unit|")
-  done < <(systemctl list-timers --no-legend --all 2>/dev/null | awk '{print $NF}' | rg '^(jarvis-|openclaw-).*\.timer$' || true)
+  done < <(systemctl list-timers --no-legend --all 2>/dev/null | awk '{print $NF}' | grep -E '^(jarvis-|openclaw-).*\.timer$' || true)
 
   local new_entries_json='[]'
   local dry_count=0
@@ -445,6 +460,7 @@ main() {
 
       local class reason prefix executable args
       IFS=$'\t' read -r class reason prefix executable args < <(classify_command "$id" "$raw_command")
+      [[ "$prefix" == "NONE" ]] && prefix=""
       log "$id: classified as $class - $reason"
 
       if (( DRY_RUN == 1 )); then
