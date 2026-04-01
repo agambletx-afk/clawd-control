@@ -1940,8 +1940,8 @@
       const _dC = normalizeOpsColor(st.disk);
       const _mC = normalizeOpsColor(st.memory);
       const sysHtml = '<div style="display:flex;gap:16px;align-items:baseline;">'
-        + '<div style="font-size:28px;font-weight:700;font-family:var(--font-mono);line-height:1;" class="' + _dC + '">' + esc(_dPct) + '</div>'
-        + '<div style="font-size:28px;font-weight:700;font-family:var(--font-mono);line-height:1;" class="' + _mC + '">' + esc(_ram) + '</div>'
+        + '<div style="font-size:22px;font-weight:700;font-family:var(--font-mono);line-height:1;" class="' + _dC + '">' + esc(_dPct) + '</div>'
+        + '<div style="font-size:22px;font-weight:700;font-family:var(--font-mono);line-height:1;" class="' + _mC + '">' + esc(_ram) + '</div>'
         + '</div>';
       root.innerHTML = root.innerHTML.replace('__CUSTOM_SYS__', sysHtml);
     }
