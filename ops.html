@@ -447,7 +447,7 @@
       flex: 0 0 auto;
     }
 
-    .ops-logs-health-card::before {
+    .ops-logs-health-card-before-disabled {
       display: none;
     }
     .ops-logs-health-card {
@@ -897,7 +897,6 @@
     .ops-logs-health-card {
       position: relative;
       border: 1px solid #363b4d;
-      border-left: 3px solid rgba(167, 139, 250, 0.45);
       border-radius: var(--radius-lg);
       background: #1e2535;
       padding: 8px 8px 8px 12px;
@@ -1333,7 +1332,7 @@
         <div class="ops-observability-group-label">Monitoring Stack</div>
         <div id="opsMonitoringLayersStale" style="display:none; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); color: #f59e0b; border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; font-size: 12px;"></div>
         <div id="opsMonitoringLayersCards" class="ops-monitoring-grid"></div>
-        <div class="ops-observability-group-label">Data Pipeline</div>
+        <div class="ops-observability-group-label">Log Sources</div>
         <div id="opsLogsHealthStale" class="ops-logs-stale" style="display:none;"></div>
         <div id="opsLogsHealthGrid" class="ops-logs-health-grid"></div>
       </section>
@@ -1910,15 +1909,13 @@
       root.innerHTML = [
         {
           label: 'SYSTEM RESOURCES',
-          value: useMemoryValue
-            ? (Number.isFinite(memoryRss) ? formatBytes(memoryRss) : 'N/A')
-            : (Number.isFinite(diskUsedPct) ? `${Math.round(diskUsedPct)}%` : 'N/A'),
+          value: '__CUSTOM_SYS__',
           valueClass: systemStatus,
-          subtitle: `Disk: ${Number.isFinite(diskUsedPct) ? `${Math.round(diskUsedPct)}%` : 'N/A'} (${Number.isFinite(diskFree) ? formatBytes(diskFree) : 'N/A'} free) · RAM: ${Number.isFinite(memoryRss) ? formatBytes(memoryRss) : 'N/A'} gw / ${Number.isFinite(sysAvail) ? formatBytes(sysAvail) : 'N/A'} avail`,
+          subtitle: '',
           attention: (systemStatus === 'amber' || systemStatus === 'red')
             ? (severityRank(diskStatus) >= severityRank(memoryStatus)
-              ? `disk ${diskStatus}`
-              : (memorySignal || `system ${memoryStatus}`))
+              ? 'disk ' + diskStatus
+              : (memorySignal || 'system ' + memoryStatus))
             : '',
           stale
         },
@@ -1938,6 +1935,17 @@
         },
         { ...cronCard(), stale }
       ].map(renderSummaryCard).join('');
+      const diskLine = Number.isFinite(diskUsedPct) ? Math.round(diskUsedPct) + '%' : 'N/A';
+      const diskFreeText = Number.isFinite(diskFree) ? formatBytes(diskFree) + ' free' : '';
+      const ramLine = Number.isFinite(memoryRss) ? formatBytes(memoryRss) + ' gw' : 'N/A';
+      const ramAvailText = Number.isFinite(sysAvail) ? formatBytes(sysAvail) + ' avail' : '';
+      const dColor = normalizeOpsColor(st.disk);
+      const mColor = normalizeOpsColor(st.memory);
+      const sysHtml = '<div style="display:flex;flex-direction:column;gap:2px;">'
+        + '<div style="font-size:22px;font-weight:700;font-family:var(--font-mono);line-height:1.2;" class="' + dColor + '">' + esc(diskLine) + ' <span style="font-size:12px;font-weight:400;color:var(--text-secondary);">disk</span>' + (diskFreeText ? ' <span style="font-size:11px;font-weight:400;color:var(--text-tertiary);">(' + esc(diskFreeText) + ')</span>' : '') + '</div>'
+        + '<div style="font-size:22px;font-weight:700;font-family:var(--font-mono);line-height:1.2;" class="' + mColor + '">' + esc(ramLine) + ' <span style="font-size:12px;font-weight:400;color:var(--text-secondary);">ram</span>' + (ramAvailText ? ' <span style="font-size:11px;font-weight:400;color:var(--text-tertiary);">(' + esc(ramAvailText) + ')</span>' : '') + '</div>'
+        + '</div>';
+      root.innerHTML = root.innerHTML.replace('__CUSTOM_SYS__', sysHtml);
     }
 
     function watcherStatusClass(status) {
@@ -3447,6 +3455,13 @@
       const grid = $('opsLogsHealthGrid');
       if (!grid) return;
       const sources = ['task_audit', 'ops_log', 'security_hook', 'cron_health', 'watcher'];
+      const sourceDesc = {
+        task_audit: 'Task state changes and transitions',
+        ops_log: 'Dashboard and system operations',
+        security_hook: 'Blocked commands and policy violations',
+        cron_health: 'Cron execution results from WATCHER',
+        watcher: 'WATCHER monitoring events'
+      };
       grid.innerHTML = sources.map((source) => {
         const item = state.opsLogs.health[source] || {};
         const lastIngest = item.last_ingest_at || null;
@@ -3464,6 +3479,7 @@
           <div class="ops-logs-health-value ops-summary-value">${Number(item.log_count || 0).toLocaleString()}</div>
           <div class="ops-logs-health-sub">${esc(lastIngest ? rel(lastIngest) : 'never')}</div>
           <div class="ops-summary-sub">${esc(source === 'watcher' ? 'events ingested' : 'log entries')}</div>
+          <div style="font-size:10px; color:var(--text-tertiary); margin-top:4px;">${esc(sourceDesc[source] || '')}</div>
         </div>`;
       }).join('');
       const stale = $('opsLogsHealthStale');
