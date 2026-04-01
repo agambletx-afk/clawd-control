@@ -2255,7 +2255,7 @@
       if (!job) return;
       const watcherMatch = getCronWatcherMatch(cronName);
       const isGateway = job._isGateway || job.source === 'gateway';
-      if (!watcherMatch) {
+      if (!watcherMatch && !watcherId) {
         state.jobHistory[cronName] = { unmonitored: true, runs: [] };
         renderJobHistoryContent(cronName);
         return;
