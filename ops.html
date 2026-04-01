@@ -1942,8 +1942,8 @@
       const dColor = normalizeOpsColor(st.disk);
       const mColor = normalizeOpsColor(st.memory);
       const sysHtml = '<div style="display:flex;flex-direction:column;gap:2px;">'
-        + '<div style="font-size:22px;font-weight:700;font-family:var(--font-mono);line-height:1.2;" class="' + dColor + '">' + esc(diskLine) + ' <span style="font-size:12px;font-weight:400;color:var(--text-secondary);">disk</span>' + (diskFreeText ? ' <span style="font-size:11px;font-weight:400;color:var(--text-tertiary);">(' + esc(diskFreeText) + ')</span>' : '') + '</div>'
-        + '<div style="font-size:22px;font-weight:700;font-family:var(--font-mono);line-height:1.2;" class="' + mColor + '">' + esc(ramLine) + ' <span style="font-size:12px;font-weight:400;color:var(--text-secondary);">ram</span>' + (ramAvailText ? ' <span style="font-size:11px;font-weight:400;color:var(--text-tertiary);">(' + esc(ramAvailText) + ')</span>' : '') + '</div>'
+        + '<div style="font-size:22px;font-weight:700;font-family:var(--font-mono);line-height:1.2;" class="' + dColor + '">' + esc(diskLine) + ' <span style="font-size:11px;font-weight:400;color:var(--text-tertiary);">disk · ' + esc(diskFreeText || '') + '</span>' + '</div>'
+        + '<div style="font-size:22px;font-weight:700;font-family:var(--font-mono);line-height:1.2;" class="' + mColor + '">' + esc(ramLine) + ' <span style="font-size:11px;font-weight:400;color:var(--text-tertiary);">ram · ' + esc(ramAvailText || '') + '</span>' + '</div>'
         + '</div>';
       root.innerHTML = root.innerHTML.replace('__CUSTOM_SYS__', sysHtml);
     }
@@ -3471,7 +3471,7 @@
         else if (!lastIngest) status = 'idle';
         else if (!isRecent) status = 'warn';
         else status = 'ok';
-        return `<div class="ops-logs-health-card ops-summary-card ops-ingestion-card">
+        return `<div class="ops-logs-health-card ops-ingestion-card">
           <div class="ops-logs-health-head">
             <div class="ops-logs-health-label">${esc(sourceLabel(source))}</div>
             <span class="ops-status-dot ${status}"></span>
