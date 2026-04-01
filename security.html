@@ -146,7 +146,7 @@ tbody tr.expandable-row { cursor: pointer; }
         <article class="stat-card" id="card-checks-passing"><div class="stat-label">Checks Passing</div><div class="stat-value mono" id="checksPassingValue">0/0</div><div class="stat-subtitle" id="checksPassingSub">of 0 automated checks</div></article>
         <article class="stat-card interactive" id="card-warnings"><div class="stat-label">Warnings</div><div class="stat-value mono" id="warningsValue">0</div><div class="stat-subtitle">checks need attention</div></article>
         <article class="stat-card interactive" id="card-failures"><div class="stat-label">Failures</div><div class="stat-value mono" id="failuresValue">0</div><div class="stat-subtitle">checks critically failed</div></article>
-        <article class="stat-card interactive" id="card-version" style="cursor:pointer"><div class="stat-label">Version</div><div class="stat-value mono" id="versionValue">—</div><div class="stat-subtitle" id="versionSub">checking...</div></article>
+        
       </div>
       <div class="table-wrap">
         <table id="defenseGridTable">
@@ -352,20 +352,7 @@ tbody tr.expandable-row { cursor: pointer; }
     refs.checksPassingSub.textContent = `of ${total} automated checks`;
     refs.warningsValue.textContent = String(yellow);
     refs.failuresValue.textContent = String(red);
-    const vCheck = state.checks.find(ch => ch.layer === 'version');
-    const vMeta = vCheck ? parseMeta(vCheck) : {};
-    const vCurrent = vMeta.current_version ? 'v' + vMeta.current_version : '—';
-    const vBehind = Number(vMeta.versions_behind || 0);
-    const vHasSec = Number(vMeta.total_security_fixes || 0) > 0;
-    refs.versionValue.textContent = vCurrent;
-    refs.versionValue.style.fontSize = vCurrent.length > 8 ? '20px' : '28px';
-    if (!vCheck || vCheck.status === 'green') {
-      refs.versionSub.textContent = 'Up to date';
-      refs.versionValue.style.color = '#f1f5f9';
-    } else {
-      refs.versionSub.textContent = vBehind + ' behind' + (vHasSec ? ' · security patches' : '');
-      refs.versionValue.style.color = vCheck.status === 'red' ? '#ef4444' : '#f59e0b';
-    }
+
     refs.warningsValue.style.color = yellow > 0 ? '#f59e0b' : '#f1f5f9';
     refs.failuresValue.style.color = red > 0 ? '#ef4444' : '#f1f5f9';
   }
@@ -666,12 +653,7 @@ tbody tr.expandable-row { cursor: pointer; }
     refs.cardFailures.addEventListener('mouseenter', () => refs.defenseGridTable.classList.add('highlight-failure'));
     refs.cardFailures.addEventListener('mouseleave', () => refs.defenseGridTable.classList.remove('highlight-failure'));
 
-    refs.cardVersion.addEventListener('click', () => {
-      const vCheck = state.checks.find(ch => ch.layer === 'version');
-      const meta = vCheck ? parseMeta(vCheck) : {};
-      const url = meta.release_notes_url || meta.release_url || 'https://github.com/openclaw/openclaw/releases';
-      window.open(url, '_blank', 'noopener');
-    });
+
 
     refs.defenseGridBody.addEventListener('click', async (event) => {
       const target = event.target;
@@ -772,9 +754,8 @@ tbody tr.expandable-row { cursor: pointer; }
     refs.checksPassingSub = document.getElementById('checksPassingSub');
     refs.warningsValue = document.getElementById('warningsValue');
     refs.failuresValue = document.getElementById('failuresValue');
-    refs.cardVersion = document.getElementById('card-version');
-    refs.versionValue = document.getElementById('versionValue');
-    refs.versionSub = document.getElementById('versionSub');
+    
+
     refs.defenseGridTable = document.getElementById('defenseGridTable');
     refs.defenseGridBody = document.getElementById('defenseGridBody');
     refs.historyToggleBtn = document.getElementById('historyToggleBtn');
