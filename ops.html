@@ -1269,7 +1269,7 @@
       <button class="sub-nav-btn active" data-view="health" role="tab" aria-selected="true">Health</button>
       <button class="sub-nav-btn" data-view="jobs" role="tab" aria-selected="false">Jobs</button>
       <button class="sub-nav-btn" data-view="recovery" role="tab" aria-selected="false">Recovery</button>
-      <button class="sub-nav-btn" data-view="checks" role="tab" aria-selected="false">Checks</button>
+      <button class="sub-nav-btn" data-view="checks" role="tab" aria-selected="false">Diagnostics</button>
       <button class="sub-nav-btn" data-view="logs" role="tab" aria-selected="false">Logs</button>
     </div>
 
@@ -1803,34 +1803,82 @@
       const root = $('infraHealthCards');
       if (!root) return;
       const payload = state.infraHealth.data;
+
+      const severityRank = (status) => {
+        if (status === 'red') return 3;
+        if (status === 'amber') return 2;
+        if (status === 'green') return 1;
+        return 0;
+      };
+
+      const cronCard = () => {
+        if (state.watcherHealthLoading && !state.watcherHealthLoaded) {
+          return {
+            label: 'CRON HEALTH',
+            value: '—',
+            valueClass: 'tertiary',
+            subtitle: 'Loading...'
+          };
+        }
+        const watcher = state.watcherHealth;
+        if (!watcher || !watcher.health) {
+          return {
+            label: 'CRON HEALTH',
+            value: '—',
+            valueClass: 'tertiary',
+            subtitle: 'unavailable'
+          };
+        }
+        const rows = getWatcherResults();
+        if (!rows.length) {
+          return {
+            label: 'CRON HEALTH',
+            value: '0/0',
+            valueClass: 'tertiary',
+            subtitle: 'crons healthy'
+          };
+        }
+        const total = rows.length;
+        let healthy = 0;
+        let hasRed = false;
+        let hasAmber = false;
+        rows.forEach((row) => {
+          const status = String(row?.status || '').toLowerCase();
+          if (status === 'healthy' || status === 'ok') healthy += 1;
+          if (status === 'failed' || status === 'erroring') hasRed = true;
+          else if (status === 'stale' || status === 'disabled' || status === 'unmonitored' || !status) hasAmber = true;
+        });
+        return {
+          label: 'CRON HEALTH',
+          value: `${healthy}/${total}`,
+          valueClass: hasRed ? 'red' : (hasAmber || healthy < total ? 'amber' : 'green'),
+          subtitle: 'crons healthy'
+        };
+      };
+
       if (!payload || state.infraHealth.loading) {
         root.innerHTML = [
-          { label: 'DISK USAGE' },
-          { label: 'GATEWAY MEMORY' },
+          { label: 'SYSTEM RESOURCES' },
           { label: 'GATEWAY LATENCY' },
-          { label: 'GATEWAY ERRORS' }
+          { label: 'GATEWAY ERRORS' },
+          cronCard()
         ].map((card) => renderSummaryCard({
           label: card.label,
-          value: '—',
-          valueClass: 'tertiary',
-          subtitle: 'Loading...'
+          value: card.value || '—',
+          valueClass: card.valueClass || 'tertiary',
+          subtitle: card.subtitle || 'Loading...'
         })).join('');
         return;
       }
+
       const stale = Boolean(payload.stale);
       if (payload.available === false) {
-        root.innerHTML = [
-          { label: 'DISK USAGE' },
-          { label: 'GATEWAY MEMORY' },
-          { label: 'GATEWAY LATENCY' },
-          { label: 'GATEWAY ERRORS' }
-        ].map((card) => renderSummaryCard({
-          label: card.label,
-          value: 'N/A',
-          valueClass: 'tertiary',
-          subtitle: 'sampler unavailable',
-          stale
-        })).join('');
+        const unavailableCards = [
+          { label: 'SYSTEM RESOURCES', value: 'N/A' },
+          { label: 'GATEWAY LATENCY', value: 'N/A' },
+          { label: 'GATEWAY ERRORS', value: 'N/A' }
+        ].map((card) => ({ ...card, valueClass: 'tertiary', subtitle: 'sampler unavailable', stale }));
+        root.innerHTML = [...unavailableCards, cronCard()].map(renderSummaryCard).join('');
         return;
       }
 
@@ -1840,31 +1888,30 @@
       const st = payload.status || {};
       const diskUsedPct = Number(disk.used_pct);
       const diskFree = Number(disk.free_bytes);
-      const diskTotal = Number(disk.total_bytes);
       const memoryRss = Number(gw.rss_bytes);
       const sysAvail = Number(sysMem.available_bytes);
       const latencyP95 = Number(payload.latency_p95_ms);
       const incidents = Number(payload.incidents_1h);
+      const diskStatus = normalizeOpsColor(st.disk);
       const memoryStatus = normalizeOpsColor(st.memory);
       const memorySignal = payload.status?.memory_signal || '';
       const latencyMissing = !Number.isFinite(latencyP95) || latencyP95 < 0;
+      const systemStatus = severityRank(memoryStatus) > severityRank(diskStatus) ? memoryStatus : diskStatus;
+      const useMemoryValue = severityRank(memoryStatus) > severityRank(diskStatus);
 
       root.innerHTML = [
         {
-          label: 'DISK USAGE',
-          value: Number.isFinite(diskUsedPct) ? `${Math.round(diskUsedPct)}%` : 'N/A',
-          valueClass: normalizeOpsColor(st.disk),
-          subtitle: (Number.isFinite(diskFree) && Number.isFinite(diskTotal))
-            ? `${formatBytes(diskFree)} free of ${formatBytes(diskTotal)}`
-            : 'space unavailable',
-          stale
-        },
-        {
-          label: 'GATEWAY MEMORY',
-          value: Number.isFinite(memoryRss) ? formatBytes(memoryRss) : 'N/A',
-          valueClass: memoryStatus,
-          subtitle: Number.isFinite(sysAvail) ? `${formatBytes(sysAvail)} system available` : 'system memory unavailable',
-          attention: (memoryStatus === 'amber' || memoryStatus === 'red') && memorySignal ? memorySignal : '',
+          label: 'SYSTEM RESOURCES',
+          value: useMemoryValue
+            ? (Number.isFinite(memoryRss) ? formatBytes(memoryRss) : 'N/A')
+            : (Number.isFinite(diskUsedPct) ? `${Math.round(diskUsedPct)}%` : 'N/A'),
+          valueClass: systemStatus,
+          subtitle: `Disk: ${Number.isFinite(diskUsedPct) ? `${Math.round(diskUsedPct)}%` : 'N/A'} (${Number.isFinite(diskFree) ? formatBytes(diskFree) : 'N/A'} free) · RAM: ${Number.isFinite(memoryRss) ? formatBytes(memoryRss) : 'N/A'} gw / ${Number.isFinite(sysAvail) ? formatBytes(sysAvail) : 'N/A'} avail`,
+          attention: (systemStatus === 'amber' || systemStatus === 'red')
+            ? (severityRank(diskStatus) >= severityRank(memoryStatus)
+              ? `disk ${diskStatus}`
+              : (memorySignal || `system ${memoryStatus}`))
+            : '',
           stale
         },
         {
@@ -1880,7 +1927,8 @@
           valueClass: normalizeOpsColor(st.errors, Number(incidents) >= 1 ? 'red' : 'green'),
           subtitle: 'incidents last 60 min',
           stale
-        }
+        },
+        { ...cronCard(), stale }
       ].map(renderSummaryCard).join('');
     }
 
@@ -2369,6 +2417,7 @@
       state.watcherHealthLoading = false;
       state.watcherHealthLoaded = true;
       renderCronHealthCards();
+      renderInfraHealthCards();
       renderJobsStatusDots();
       renderJobsSummaryCards();
       if (state.opsView === 'health') {
@@ -3916,18 +3965,21 @@
       if (!meta || !sectionsRoot || !repairRoot) return;
       const sections = Array.isArray(data?.sections) ? data.sections : [];
       const findings = sections.reduce((acc, sec) => acc + (Array.isArray(sec.findings) ? sec.findings.length : 0), 0);
-      const stale = data?.generated_at && ((Date.now() - Date.parse(data.generated_at)) > (26 * 3600 * 1000));
+      const stale = data?.generated_at && ((Date.now() - Date.parse(data.generated_at)) > (24 * 3600 * 1000));
       meta.innerHTML = `<span class="pill" style="background: rgba(148, 163, 184, 0.16); border-color: rgba(148, 163, 184, 0.35); color: #94a3b8;">Last run <span style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">${esc(data?.generated_at ? rel(data.generated_at) : '—')}</span></span>${stale ? '<span class="pill" style="background: rgba(245, 158, 11, 0.16); border-color: rgba(245, 158, 11, 0.35); color: #f59e0b;">stale</span>' : ''}<span class="pill" style="background: rgba(148, 163, 184, 0.16); border-color: rgba(148, 163, 184, 0.35); color: #94a3b8; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">${findings} findings</span>`;
       if (!findings) { sectionsRoot.innerHTML = '<div style="color:#22c55e;">No doctor findings. System is clean.</div>'; }
       else {
         sectionsRoot.innerHTML = sections.map((section, index) => {
           const secKey = `s-${index}`;
-          const open = state.doctor.sectionsExpanded[secKey] !== false;
+          const open = state.doctor.sectionsExpanded[secKey] === true;
           const rows = (section.findings || []).map((finding) => {
             const muted = !!finding.suppressed;
             return `<div class="ops-doctor-finding" style="display: block; min-height: 80px; opacity: ${muted ? '0.45' : '1'};"><div style="color:#e2e8f0; font-size:12px; line-height:1.4;">${esc(finding.text || '')}</div><div style="margin-top:8px; display:flex; gap:6px; align-items:center; flex-wrap:wrap;">${muted ? `<span class="pill" title="${esc(finding.suppression?.reason || '')}" style="background: rgba(148, 163, 184, 0.16); border-color: rgba(148, 163, 184, 0.35); color: #94a3b8;">Expected</span><span style="color:#94a3b8;font-size:12px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">${esc(rel(finding.suppression?.suppressed_at))}</span><button class="btn btn-secondary" onclick="unsuppressDoctorFinding('${encodeURIComponent(finding.text || '')}')">Unmute</button>` : `<button class="btn btn-secondary" onclick="suppressDoctorFinding('${encodeURIComponent(finding.text || '')}')">Mute</button>`}</div></div>`;
           }).join('');
-          return `<div style="padding: 8px 0; border-top: ${index === 0 ? 'none' : '1px solid #363b4d'};"><div style="display:flex; justify-content:space-between; align-items:center;"><strong style="color:#e2e8f0;">${esc(section.name || 'General')}</strong><button class="icon-btn" onclick="toggleDoctorSection('${secKey}')" aria-expanded="${open ? 'true' : 'false'}"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button></div><div style="display:${open ? 'block' : 'none'}; margin-top:8px;">${rows}</div></div>`;
+          const findingCount = Array.isArray(section.findings) ? section.findings.length : 0;
+          const sectionDot = findingCount > 0 ? '#f59e0b' : '#22c55e';
+          const findingLabel = `${findingCount} finding${findingCount === 1 ? '' : 's'}`;
+          return `<div style="padding: 8px 0; border-top: ${index === 0 ? 'none' : '1px solid #363b4d'};"><div style="display:flex; justify-content:space-between; align-items:center;"><div style="display:flex; align-items:center; gap:8px;"><span style="display:inline-block; width:8px; height:8px; border-radius:999px; background:${sectionDot};"></span><strong style="color:#e2e8f0;">${esc(section.name || 'General')} (${findingLabel})</strong></div><button class="icon-btn" onclick="toggleDoctorSection('${secKey}')" aria-expanded="${open ? 'true' : 'false'}"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button></div><div style="display:${open ? 'block' : 'none'}; margin-top:8px;">${rows}</div></div>`;
         }).join('');
       }
       if (state.doctor.repairPrepared) {
