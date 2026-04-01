@@ -2316,22 +2316,35 @@
       const expansion = document.createElement('tr');
       expansion.className = 'job-expansion';
       expansion.style.background = 'var(--bg-elevated)';
-      const lastRun = rel(job.last_run);
+      const watcherMatch = getCronWatcherMatch(expandedName);
+      const lastRun = watcherMatch?.finished_at || watcherMatch?.last_seen || job.last_run;
+      const lastRunRel = lastRun ? rel(lastRun) : 'Unknown';
+      const duration = watcherMatch?.duration_ms != null ? watcherMatch.duration_ms + 'ms' : '—';
+      const exitCode = watcherMatch?.exit_code != null ? String(watcherMatch.exit_code) : '—';
+      const detection = watcherMatch?.detection_method || watcherMatch?.check_method || '—';
       const historyId = cronHistoryNodeId(expandedName);
       expansion.innerHTML = `
         <td colspan="6" style="padding: 12px 16px; border-top: 1px solid var(--border-subtle); overflow-wrap: anywhere;">
-          <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; font-size: 12px;">
+          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; font-size: 12px;">
             <div>
-              <div style="color: var(--text-tertiary); text-transform: uppercase; font-size: 10px; margin-bottom: 4px;">Command</div>
-              <div style="font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-secondary); word-break: break-all;">${esc(job.command || '—')}</div>
+              <div style="color: var(--text-tertiary); text-transform: uppercase; font-size: 10px; margin-bottom: 4px;">Last Run</div>
+              <div style="font-family: var(--font-mono); color: var(--text-secondary);">${esc(lastRunRel)}</div>
             </div>
             <div>
-              <div style="color: var(--text-tertiary); text-transform: uppercase; font-size: 10px; margin-bottom: 4px;">Last run</div>
-              <div style="font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-secondary);">${esc(lastRun)}</div>
+              <div style="color: var(--text-tertiary); text-transform: uppercase; font-size: 10px; margin-bottom: 4px;">Duration</div>
+              <div style="font-family: var(--font-mono); color: var(--text-secondary);">${esc(duration)}</div>
+            </div>
+            <div>
+              <div style="color: var(--text-tertiary); text-transform: uppercase; font-size: 10px; margin-bottom: 4px;">Exit Code</div>
+              <div style="font-family: var(--font-mono); color: var(--text-secondary);">${esc(exitCode)}</div>
+            </div>
+            <div>
+              <div style="color: var(--text-tertiary); text-transform: uppercase; font-size: 10px; margin-bottom: 4px;">Detection</div>
+              <div style="font-family: var(--font-mono); color: var(--text-secondary);">${esc(detection)}</div>
             </div>
           </div>
           <div style="margin-top: 10px; min-width: 0;">
-            <div style="color: var(--text-tertiary); text-transform: uppercase; font-size: 10px; margin-bottom: 6px;">Recent runs</div>
+            <div style="color: var(--text-tertiary); text-transform: uppercase; font-size: 10px; margin-bottom: 6px;">Recent Runs</div>
             <div id="${historyId}" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; min-width: 0;">Loading...</div>
           </div>
         </td>
