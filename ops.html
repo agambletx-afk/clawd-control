@@ -1935,15 +1935,13 @@
         },
         { ...cronCard(), stale }
       ].map(renderSummaryCard).join('');
-      const diskLine = Number.isFinite(diskUsedPct) ? Math.round(diskUsedPct) + '%' : 'N/A';
-      
-      
-      
-      const dColor = normalizeOpsColor(st.disk);
-      const mColor = normalizeOpsColor(st.memory);
-      const sysHtml = '<div style="display:flex;flex-direction:column;gap:2px;">'
-        + '<div style="font-size:22px;font-weight:700;font-family:var(--font-mono);line-height:1.2;" class="' + dColor + '">' + esc(diskLine) + ' <span style="font-size:11px;font-weight:400;color:var(--text-tertiary);">disk · ' + esc(diskFreeText || '') + '</span>' + '</div>'
-        + '<div style="font-size:22px;font-weight:700;font-family:var(--font-mono);line-height:1.2;" class="' + mColor + '">' + esc(ramLine) + ' <span style="font-size:11px;font-weight:400;color:var(--text-tertiary);">ram · ' + esc(ramAvailText || '') + '</span>' + '</div>'
+      const _dPct = Number.isFinite(diskUsedPct) ? Math.round(diskUsedPct) + '%' : 'N/A';
+      const _ram = Number.isFinite(memoryRss) ? formatBytes(memoryRss) : 'N/A';
+      const _dC = normalizeOpsColor(st.disk);
+      const _mC = normalizeOpsColor(st.memory);
+      const sysHtml = '<div style="display:flex;gap:16px;align-items:baseline;">'
+        + '<div style="font-size:28px;font-weight:700;font-family:var(--font-mono);line-height:1;" class="' + _dC + '">' + esc(_dPct) + '</div>'
+        + '<div style="font-size:28px;font-weight:700;font-family:var(--font-mono);line-height:1;" class="' + _mC + '">' + esc(_ram) + '</div>'
         + '</div>';
       root.innerHTML = root.innerHTML.replace('__CUSTOM_SYS__', sysHtml);
     }
