@@ -2249,7 +2249,7 @@
       }).join('');
     }
 
-    async function ensureJobHistoryLoaded(cronName) {
+    async function ensureJobHistoryLoaded(cronName, watcherId) {
       if (!cronName || state.jobHistory[cronName] || state.jobHistoryLoading[cronName]) return;
       const job = getCronByName(cronName);
       if (!job) return;
@@ -2277,7 +2277,7 @@
       state.jobHistoryLoading[cronName] = true;
       renderJobHistoryContent(cronName);
       try {
-        const jobId = watcherMatch.id || cronName;
+        const jobId = watcherId || watcherMatch.id || cronName;
         const data = await api(`/api/watcher/history/${encodeURIComponent(jobId)}?limit=5`);
         const runs = (Array.isArray(data?.runs) ? data.runs : []).slice(0, 5);
         state.jobHistory[cronName] = { runs };
@@ -2351,7 +2351,7 @@
       `;
       row.insertAdjacentElement('afterend', expansion);
       renderJobHistoryContent(expandedName);
-      ensureJobHistoryLoaded(expandedName);
+      ensureJobHistoryLoaded(expandedName, watcherMatch?.id || null);
     }
 
     function renderJobsSummaryCards() {
