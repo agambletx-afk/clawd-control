@@ -953,6 +953,14 @@
       color: var(--text-tertiary);
       font-weight: 600;
     }
+    .ops-observability-group-label {
+      margin: 14px 0 8px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-tertiary);
+      font-weight: 600;
+    }
     .ops-context-workspace-row {
       display: flex;
       align-items: center;
@@ -1285,17 +1293,7 @@
         <div id="infraHealthCards" class="ops-summary-grid infra-health-grid"></div>
       </section>
 
-      <section class="panel" style="background: #161b26; border: 1px solid rgba(167, 139, 250, 0.20); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
-        <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-          <div>
-            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: #e2e8f0; margin: 0;"><span class="ops-domain-capsule"></span>Monitoring Layers</h2>
-            <p class="panel-sub" style="font-size: 12px; color: #94a3b8; margin: 2px 0 0 0;">Independent health check layers. If these are stale, other data may be unreliable.</p>
-          </div>
-        </div>
-        <div id="opsMonitoringLayersStale" style="display:none; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); color: #f59e0b; border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; font-size: 12px;"></div>
-        <div id="opsMonitoringLayersCards" class="ops-monitoring-grid"></div>
-      </section>
+      
 
       <section class="panel" style="background: #161b26; border: 1px solid #363b4d; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
@@ -1310,13 +1308,34 @@
 
       <section class="panel" style="background: #161b26; border: 1px solid #363b4d; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
         <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/><path d="M3.22 12H9.5l.5-1 2 4.5 2-7 1.5 3.5h5.27"/></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>
           <div>
-            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;"><span class="ops-domain-capsule"></span>Cron Health</h2>
-            <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Status of all monitored crons. Sorted by severity.</p>
+            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;"><span class="ops-domain-capsule"></span>External Dependencies</h2>
+            <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Live status of external API endpoints and service dependencies.</p>
           </div>
         </div>
-        <div id="cronHealthCards" class="cron-health-grid"></div>
+        <div id="serviceHealthStats" class="service-health-stats" style="margin-bottom: 12px;"></div>
+        <div id="serviceHealthGrid" class="service-health-grid"></div>
+      </section>
+
+      
+
+      
+
+      <section class="panel" style="background: #161b26; border: 1px solid rgba(167, 139, 250, 0.20); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
+        <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+          <div>
+            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: #e2e8f0; margin: 0;"><span class="ops-domain-capsule"></span>Observability Health</h2>
+            <p class="panel-sub" style="font-size: 12px; color: #94a3b8; margin: 2px 0 0 0;">Health of monitoring stack and data pipelines.</p>
+          </div>
+        </div>
+        <div class="ops-observability-group-label">Monitoring Stack</div>
+        <div id="opsMonitoringLayersStale" style="display:none; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); color: #f59e0b; border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; font-size: 12px;"></div>
+        <div id="opsMonitoringLayersCards" class="ops-monitoring-grid"></div>
+        <div class="ops-observability-group-label">Data Pipeline</div>
+        <div id="opsLogsHealthStale" class="ops-logs-stale" style="display:none;"></div>
+        <div id="opsLogsHealthGrid" class="ops-logs-health-grid"></div>
       </section>
 
       <section class="panel" style="background: #161b26; border: 1px solid #363b4d; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
@@ -1456,6 +1475,22 @@
         <div id="opsDoctorSections"></div>
       </section>
 
+      <section class="panel" style="background: #161b26; border: 1px solid #363b4d; border-radius: 12px; padding: 16px 20px;" aria-label="Deployment verification results">
+        <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
+          <div>
+            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;"><span class="ops-domain-capsule"></span>Deployment Verification</h2>
+            <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Confirms the running build matches expected state.</p>
+          </div>
+          <div style="margin-left:auto; display:flex; gap:4px; align-items:center;">
+            <button id="verificationRunBtn" class="btn btn-secondary">Run Verification</button>
+            <button id="verificationToggleBtn" class="btn verification-toggle" aria-label="Toggle verification details" aria-expanded="false"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+          </div>
+        </div>
+        <div id="verificationSummary"></div>
+        <div id="verificationDetails" class="verification-details"></div>
+      </section>
+
       <section class="panel" style="background: #161b26; border: 1px solid #363b4d; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
         <div class="panel-header" style="display:flex; align-items:center; gap:8px; margin-bottom: 12px;">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/><path d="M9 6v12"/></svg>
@@ -1489,32 +1524,6 @@
         </div>
       </section>
 
-
-
-      <section class="panel" style="background: #161b26; border: 1px solid #363b4d; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
-        <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg>
-          <div>
-            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;"><span class="ops-domain-capsule"></span>Log Ingestion Health</h2>
-            <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Whether log sources are feeding data. Stale sources mean blind spots.</p>
-          </div>
-        </div>
-        <div id="opsLogsHealthStale" class="ops-logs-stale" style="display:none;"></div>
-        <div id="opsLogsHealthGrid" class="ops-logs-health-grid"></div>
-      </section>
-
-      <section class="panel" style="background: #161b26; border: 1px solid #363b4d; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
-        <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>
-          <div>
-            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;"><span class="ops-domain-capsule"></span>Service Health</h2>
-            <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Live status of API endpoints and local services.</p>
-          </div>
-        </div>
-        <div id="serviceHealthStats" class="service-health-stats" style="margin-bottom: 12px;"></div>
-        <div id="serviceHealthGrid" class="service-health-grid"></div>
-      </section>
-
       <section id="versionCheckBanner" class="version-check-banner" style="background: #161b26; border: 1px solid #363b4d;" aria-label="OpenClaw version check">
         <div class="version-check-main">
           <div>
@@ -1533,21 +1542,20 @@
         <div id="versionCheckDetails" class="version-check-details"></div>
       </section>
 
-      <section class="panel" style="background: #161b26; border: 1px solid #363b4d; border-radius: 12px; padding: 16px 20px;" aria-label="Deployment verification results">
-        <div class="panel-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
-          <div>
-            <h2 class="panel-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;"><span class="ops-domain-capsule"></span>Deployment Verification</h2>
-            <p class="panel-sub" style="font-size: 12px; color: var(--text-secondary); margin: 2px 0 0 0;">Confirms the running build matches expected state.</p>
-          </div>
-          <div style="margin-left:auto; display:flex; gap:4px; align-items:center;">
-            <button id="verificationRunBtn" class="btn btn-secondary">Run Verification</button>
-            <button id="verificationToggleBtn" class="btn verification-toggle" aria-label="Toggle verification details" aria-expanded="false"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
-          </div>
-        </div>
-        <div id="verificationSummary"></div>
-        <div id="verificationDetails" class="verification-details"></div>
-      </section>
+
+      
+
+      
+
+
+
+      
+
+      
+
+      
+
+      
 
 
     </div>
@@ -3162,22 +3170,28 @@
       }
 
       const rows = getServiceHealthRows();
-      if (!rows.length) {
+      const externalRows = rows.filter((service = {}) => {
+        const serviceId = String(service.id || "").toLowerCase();
+        if (String(service.provider || "") === "Local") return false;
+        if (serviceId === "openclaw" || serviceId === "clawd_control" || serviceId === "clawd-control") return false;
+        return true;
+      });
+      if (!externalRows.length) {
         root.innerHTML = '<div style="color: var(--text-secondary); text-align: center; padding: 20px;">No services configured.</div>';
         return;
       }
 
       const now = Date.now();
       const staleThresholdMs = 5 * 60 * 1000;
-      const healthy = rows.filter((row) => row?.status === 'healthy').length;
-      const degraded = rows.filter((row) => row?.status === 'degraded').length;
-      const down = rows.filter((row) => row?.status === 'down').length;
-      const staleCount = rows.filter((row) => {
+      const healthy = externalRows.filter((row) => row?.status === 'healthy').length;
+      const degraded = externalRows.filter((row) => row?.status === 'degraded').length;
+      const down = externalRows.filter((row) => row?.status === 'down').length;
+      const staleCount = externalRows.filter((row) => {
         const checkedAt = row?.checked_at || row?.last_check || null;
         const checkedMs = checkedAt ? Date.parse(checkedAt) : NaN;
         return !Number.isFinite(checkedMs) || ((now - checkedMs) > staleThresholdMs);
       }).length;
-      const total = rows.length;
+      const total = externalRows.length;
       const itemStyle = 'display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);';
       const numStyle = 'font-family: var(--font-mono); font-variant-numeric: tabular-nums;';
 
@@ -3219,12 +3233,18 @@
       }
 
       const rows = getServiceHealthRows();
-      if (!rows.length) {
+      const externalRows = rows.filter((service = {}) => {
+        const serviceId = String(service.id || "").toLowerCase();
+        if (String(service.provider || "") === "Local") return false;
+        if (serviceId === "openclaw" || serviceId === "clawd_control" || serviceId === "clawd-control") return false;
+        return true;
+      });
+      if (!externalRows.length) {
         root.innerHTML = '<div style="color: var(--text-secondary); text-align: center; padding: 20px;">No services configured.</div>';
         return;
       }
 
-      const sorted = [...rows].sort((a, b) => {
+      const sorted = [...externalRows].sort((a, b) => {
         const statusDelta = serviceHealthStatusRank(String(a?.status || '').toLowerCase()) - serviceHealthStatusRank(String(b?.status || '').toLowerCase());
         if (statusDelta !== 0) return statusDelta;
         return String(a?.name || '').localeCompare(String(b?.name || ''));
@@ -3258,7 +3278,7 @@
     }
 
     async function loadServiceHealth(force = false) {
-      if (!force && state.opsView !== 'checks') return;
+      if (!force && state.opsView !== 'health') return;
       const statsEl = $('serviceHealthStats');
       const gridEl = $('serviceHealthGrid');
       if (!statsEl || !gridEl) return;
@@ -3340,13 +3360,14 @@
         ensureOpsLogsLoaded();
       }
       if (view === 'checks') {
-        loadServiceHealth(true).catch(() => {});
         loadVersionCheck().catch(() => {});
-        loadOpsLogsHealth().catch(() => {});
         loadContextBudget(true).catch(() => {});
       }
       if (view === 'health') {
         loadInfraHealth(true).catch(() => {});
+        loadServiceHealth(true).catch(() => {});
+        loadMonitoringLayers().catch(() => {});
+        loadOpsLogsHealth().catch(() => {});
       }
       setTimeout(renderLucideIcons, 50);
       setTimeout(renderLucideIcons, 150);
@@ -3806,7 +3827,7 @@
       };
 
       try {
-        await Promise.all([loadServices(), loadVersionCheck(), loadVerification(), loadCrons(), loadBackups(), loadGatewayEvents(), loadWatcherHealth(), loadInfraHealth(true), loadServiceHealth(true), loadMonitoringLayers(), loadKillSwitches(), loadDoctorPanel()]);
+        await Promise.all([loadServices(), loadVersionCheck(), loadVerification(), loadCrons(), loadBackups(), loadGatewayEvents(), loadWatcherHealth(), loadInfraHealth(true), loadServiceHealth(true), loadMonitoringLayers(), loadOpsLogsHealth(), loadKillSwitches(), loadDoctorPanel()]);
         applyCollapsibleState();
         if (window.__opsServicesRefreshTimer) clearInterval(window.__opsServicesRefreshTimer);
         window.__opsServicesRefreshTimer = setInterval(() => {
@@ -3821,6 +3842,7 @@
         if (window.__opsSelfHealingRefreshTimer) clearInterval(window.__opsSelfHealingRefreshTimer);
         window.__opsSelfHealingRefreshTimer = setInterval(() => {
           loadMonitoringLayers().catch(() => {});
+          loadOpsLogsHealth().catch(() => {});
           loadKillSwitches().catch(() => {});
         }, 30000);
         if (window.__opsRecoveryLogRefreshTimer) clearInterval(window.__opsRecoveryLogRefreshTimer);
