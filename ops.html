@@ -2244,8 +2244,8 @@
       node.innerHTML = runs.map((run) => {
         const timestamp = run.started_at || run.finished_at || run.last_run || '';
         const duration = run.duration_ms != null ? `${run.duration_ms}ms` : 'unknown duration';
-        const exitCode = run.exit_code != null ? run.exit_code : '?';
-        const title = `Exit ${exitCode} · ${duration} · ${timestamp || 'unknown time'}`;
+        const exitCode = run.exit_code != null ? 'Exit ' + run.exit_code : (run.status || 'unknown');
+        const title = `${exitCode} · ${duration} · ${timestamp || 'unknown time'}`;
         return `<span title="${esc(title)}" style="width: 12px; height: 12px; min-width: 12px; min-height: 12px; border-radius: 50%; background: ${historyDotColor(run)}; display: inline-block; cursor: help; border: 1px solid rgba(255,255,255,0.2);"></span>`;
       }).join('');
     }
