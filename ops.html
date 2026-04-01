@@ -1911,7 +1911,7 @@
           label: 'SYSTEM RESOURCES',
           value: '__CUSTOM_SYS__',
           valueClass: systemStatus,
-          subtitle: '',
+          subtitle: (Number.isFinite(diskFree) ? formatBytes(diskFree) + ' free' : '') + (Number.isFinite(sysAvail) ? ' · ' + formatBytes(sysAvail) + ' system avail' : ''),
           attention: (systemStatus === 'amber' || systemStatus === 'red')
             ? (severityRank(diskStatus) >= severityRank(memoryStatus)
               ? 'disk ' + diskStatus
@@ -1936,9 +1936,9 @@
         { ...cronCard(), stale }
       ].map(renderSummaryCard).join('');
       const diskLine = Number.isFinite(diskUsedPct) ? Math.round(diskUsedPct) + '%' : 'N/A';
-      const diskFreeText = Number.isFinite(diskFree) ? formatBytes(diskFree) + ' free' : '';
-      const ramLine = Number.isFinite(memoryRss) ? formatBytes(memoryRss) + ' gw' : 'N/A';
-      const ramAvailText = Number.isFinite(sysAvail) ? formatBytes(sysAvail) + ' avail' : '';
+      
+      
+      
       const dColor = normalizeOpsColor(st.disk);
       const mColor = normalizeOpsColor(st.memory);
       const sysHtml = '<div style="display:flex;flex-direction:column;gap:2px;">'
@@ -3190,7 +3190,7 @@
       }
 
       const now = Date.now();
-      const staleThresholdMs = 5 * 60 * 1000;
+      const staleThresholdMs = 10 * 60 * 1000;
       const healthy = externalRows.filter((row) => row?.status === 'healthy').length;
       const degraded = externalRows.filter((row) => row?.status === 'degraded').length;
       const down = externalRows.filter((row) => row?.status === 'down').length;
@@ -3266,7 +3266,7 @@
         const response = Number.isFinite(Number(service.response_ms))
           ? `${Number(service.response_ms)}ms`
           : '—';
-        const stale = checkedAt && Number.isFinite(Date.parse(checkedAt)) && ((Date.now() - Date.parse(checkedAt)) > 5 * 60 * 1000);
+        const stale = checkedAt && Number.isFinite(Date.parse(checkedAt)) && ((Date.now() - Date.parse(checkedAt)) > 10 * 60 * 1000);
         const staleText = stale ? '<span style="color: var(--text-tertiary);">(stale)</span>' : '';
         return `<article class="service-health-card" style="background: #1e2535; border: 1px solid #363b4d; border-radius: 12px; padding: 8px 12px; ">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; gap: 8px;">
@@ -3420,8 +3420,8 @@
         task_audit: 'Task Audit',
         ops_log: 'Ops Log',
         security_hook: 'Security Hook',
-        cron_health: 'Cron Health',
-        watcher: 'Watcher'
+        cron_health: 'Cron Logs',
+        watcher: 'WATCHER Logs'
       };
       return map[source] || source;
     }
@@ -3459,13 +3459,13 @@
         task_audit: 'Task state changes and transitions',
         ops_log: 'Dashboard and system operations',
         security_hook: 'Blocked commands and policy violations',
-        cron_health: 'Cron execution results from WATCHER',
-        watcher: 'WATCHER monitoring events'
+        cron_health: 'Cron pass/fail results from monitoring',
+        watcher: 'WATCHER config changes and events'
       };
       grid.innerHTML = sources.map((source) => {
         const item = state.opsLogs.health[source] || {};
         const lastIngest = item.last_ingest_at || null;
-        const isRecent = lastIngest && (Date.now() - Date.parse(lastIngest) <= 5 * 60 * 1000);
+        const isRecent = lastIngest && (Date.now() - Date.parse(lastIngest) <= 10 * 60 * 1000);
         let status = 'idle';
         if (item.error_state) status = 'bad';
         else if (!lastIngest) status = 'idle';
