@@ -297,7 +297,7 @@ export class ChatGatewayClient {
     if (process.env.CC_GATEWAY_TOKEN) return process.env.CC_GATEWAY_TOKEN;
     if (!this.configPath || !existsSync(this.configPath)) return null;
     const config = safeParseJson(readFileSync(this.configPath, 'utf8'));
-    return config?.agents?.[0]?.token || null;
+    return config?.gateway?.auth?.token || config?.agents?.[0]?.token || null;
   }
 
   _nextId() {
