@@ -2593,10 +2593,22 @@
       }
     }
 
-    function getVersionCheckView(data = {}) {
+    function filterStableReleases(data) {
+      return (Array.isArray(data.releases_between) ? data.releases_between : [])
+        .filter((r) => {
+          const v = r.version || '';
+          const hyphenIdx = v.search(/-/);
+          if (hyphenIdx === -1) return true;
+          const suffix = v.slice(hyphenIdx + 1);
+          return /^\d+$/.test(suffix);
+        });
+    }
+
+    function getVersionCheckView(data = {}, filteredCount) {
       const status = data.status || 'check_failed';
       const installed = data.current_version || data.installed_version || 'unknown';
       const latest = data.latest_version || 'unknown';
+      const behind = typeof filteredCount === 'number' ? filteredCount : (data.versions_behind || '?');
 
       if (status === 'up_to_date') {
         return {
@@ -2609,18 +2621,18 @@
         if (data.has_security_patch) {
           return {
             color: 'version-red',
-            message: `${installed} → ${latest} (${data.versions_behind || '?'} behind) security update available`
+            message: `${installed} → ${latest} (${behind} behind) security update available`
           };
         }
         if (data.has_breaking_changes) {
           return {
             color: 'version-yellow',
-            message: `${installed} → ${latest} (${data.versions_behind || '?'} behind) includes breaking changes`
+            message: `${installed} → ${latest} (${behind} behind) includes breaking changes`
           };
         }
         return {
           color: 'version-yellow',
-          message: `${installed} → ${latest} (${data.versions_behind || '?'} behind)`
+          message: `${installed} → ${latest} (${behind} behind)`
         };
       }
 
@@ -2631,14 +2643,12 @@
     }
 
     function renderVersionCheck(data = {}) {
-      const view = getVersionCheckView(data);
+      const releases = filterStableReleases(data);
+      const view = getVersionCheckView(data, releases.length);
       $('versionCheckSummary').innerHTML = `
         <span class="version-check-dot ${view.color}"></span>
         <span>${esc(view.message)}</span>
       `;
-
-      const releases = (Array.isArray(data.releases_between) ? data.releases_between : [])
-        .filter((r) => !/(?:alpha|beta|rc|-pre)/i.test(r.version || ''));
       const detailRows = releases.map((release) => {
         const flags = [release.has_security ? 'security' : '', release.has_breaking ? 'breaking' : ''].filter(Boolean).join(', ');
         return `
@@ -2930,9 +2940,9 @@
         const toggleButton = isGateway
           ? ` <button class="btn btn-secondary" onclick="toggleGatewayCron('${encodeURIComponent(gwId)}', ${isEnabled ? 'true' : 'false'}, this)">${isEnabled ? 'Disable' : 'Enable'}</button>`
           : '';
-        const runBtn = !isGateway
-          ? `<button class="btn btn-secondary" data-cron-name="${esc(job.name)}" onclick="triggerCron(this.dataset.cronName, this)">Run Now</button>`
-          : '';
+        const runBtn = isGateway
+          ? `<button class="btn btn-secondary" data-cron-name="${esc(gwId)}" onclick="triggerGatewayCron(this.dataset.cronName, this)">Run Now</button>`
+          : `<button class="btn btn-secondary" data-cron-name="${esc(job.name)}" onclick="triggerCron(this.dataset.cronName, this)">Run Now</button>`;
         const cat = cronCategory(job);
         const catHeader = cat !== lastCategory
           ? `<tr class="category-header"><td colspan="6" style="padding:10px 8px 4px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-tertiary);border-bottom:1px solid var(--border-subtle);">${esc(cat)}</td></tr>`
@@ -2969,6 +2979,21 @@
       try {
         const data = await api(`/api/ops/crons/${encodeURIComponent(name)}/trigger`, { method: 'POST' });
         toast(`Exit ${data.exit_code}: ${data.output.slice(0, 120)}`);
+      } catch (error) {
+        toast(error.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Run Now';
+      }
+    }
+
+    // Execute a gateway cron job immediately.
+    async function triggerGatewayCron(jobId, btn) {
+      btn.disabled = true;
+      btn.textContent = 'Running...';
+      try {
+        const data = await api(`/api/ops/crons/gateway/${encodeURIComponent(jobId)}/trigger`, { method: 'POST' });
+        toast(`Exit ${data.exit_code}: ${(data.output || '').slice(0, 120)}`);
       } catch (error) {
         toast(error.message);
       } finally {

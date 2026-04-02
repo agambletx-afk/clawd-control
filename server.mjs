@@ -4982,6 +4982,44 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (path.startsWith('/api/ops/crons/gateway/') && path.endsWith('/trigger') && req.method === 'POST') {
+    const rawId = path.slice('/api/ops/crons/gateway/'.length, path.length - '/trigger'.length);
+    const jobId = decodeURIComponent(rawId);
+    if (!jobId || /[;&|`$]/.test(jobId)) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid gateway job ID' }));
+      return;
+    }
+
+    // Verify the job exists in gateway cron jobs
+    let jobExists = false;
+    try {
+      const payload = JSON.parse(readFileSync(CRON_JOBS_PATH, 'utf8'));
+      const jobs = Array.isArray(payload?.jobs) ? payload.jobs : [];
+      jobExists = jobs.some((j) => j?.id === jobId);
+    } catch {}
+
+    if (!jobExists) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: `Gateway cron job not found: ${jobId}` }));
+      return;
+    }
+
+    const started = Date.now();
+    const result = spawnSync('sudo', ['-u', 'openclaw', 'openclaw', 'cron', 'run', jobId, '--force'], {
+      encoding: 'utf8',
+      timeout: 120000,
+      shell: false,
+    });
+    const duration = Date.now() - started;
+    const output = truncateOutput((result.stdout || '') + (result.stderr || ''));
+    const status = result.status === 0 ? 'success' : 'failed';
+    logAction({ category: 'cron', action: 'trigger-gateway', target: jobId, status, detail: output, duration_ms: duration });
+    res.writeHead(result.status === 0 ? 200 : 500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ name: jobId, exit_code: result.status ?? 1, output, duration_ms: duration }));
+    return;
+  }
+
   if (path === '/api/ops/backups' && req.method === 'POST') {
     try {
       const snapshot = createSnapshot();
@@ -5584,17 +5622,33 @@ const server = createServer(async (req, res) => {
     }
 
     try {
-      execFileSync(VERIFY_SCRIPT_PATH, args, { timeout: 120000, stdio: ['ignore', 'pipe', 'pipe'] });
-      const payload = getVerificationEnvelope();
+      const proc = spawnSync(VERIFY_SCRIPT_PATH, args, { encoding: 'utf8', timeout: 120000, stdio: ['ignore', 'pipe', 'pipe'] });
       const duration = Date.now() - started;
+
+      // The script writes JSON results to VERIFY_RESULTS_PATH even on non-zero exit
+      // (non-zero typically means some checks failed, which is a valid result)
+      let payload;
+      try {
+        payload = getVerificationEnvelope();
+      } catch {
+        // Results file missing or unparseable — treat as a real failure
+        const errorDetail = truncateOutput((proc.stderr || '') + (proc.stdout || '') || `Exit code ${proc.status}`);
+        logAction({ category: 'verification', action: 'run', target: 'verify-deployment.sh', status: 'failed', detail: errorDetail, duration_ms: duration });
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: `Verification failed: ${errorDetail}` }));
+        verificationRunning = false;
+        return;
+      }
+
       const summary = payload?.results?.summary || {};
       const detail = `pass=${summary.pass ?? 0}, fail=${summary.fail ?? 0}, warn=${summary.warn ?? 0}, skip=${summary.skip ?? 0}, total=${summary.total ?? 0}`;
+      const logStatus = (summary.fail ?? 0) > 0 ? 'completed_with_failures' : 'success';
 
       logAction({
         category: 'verification',
         action: 'run',
         target: 'verify-deployment.sh',
-        status: 'success',
+        status: logStatus,
         detail,
         duration_ms: duration,
       });
@@ -6207,7 +6261,13 @@ const server = createServer(async (req, res) => {
         }
 
         if (layer === 'reasoning') {
-          execSync('/usr/local/bin/reset-integrity-baseline.sh', { encoding: 'utf8', timeout: 10000 });
+          let scriptOutput = '';
+          try {
+            scriptOutput = execSync('/usr/local/bin/reset-integrity-baseline.sh', { encoding: 'utf8', timeout: 30000 });
+          } catch (scriptErr) {
+            // Script may exit non-zero but still perform the reset
+            scriptOutput = (scriptErr.stdout || '') + (scriptErr.stderr || '');
+          }
           logAction({
             category: 'security',
             action: 'security-acknowledge',
@@ -6216,7 +6276,7 @@ const server = createServer(async (req, res) => {
             detail: `Acknowledged ${layer}: ${note}`,
           });
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: true, message: 'Integrity manifest updated (7 files)' }));
+          res.end(JSON.stringify({ success: true, message: 'Integrity manifest updated' }));
           return;
         }
 
