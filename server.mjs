@@ -1186,7 +1186,11 @@ function getAutomationUsageSummary() {
   if (heartbeatSession) {
     const summary = heartbeatSession?.summary || heartbeatSession?.usage || heartbeatSession;
     const fallbackHeartbeatTotal = Number(sessionTokenMap.get('agent:main:main:heartbeat') || sessionTokenMap.get('heartbeat') || 0);
-    const totalTokens = Number(summary?.totalTokens ?? summary?.total_tokens ?? summary?.tokens ?? fallbackHeartbeatTotal ?? 0);
+    const hbInput = Number(summary?.inputTokens ?? summary?.input_tokens ?? 0);
+    const hbOutput = Number(summary?.outputTokens ?? summary?.output_tokens ?? 0);
+    const hbCacheRead = Number(summary?.cacheReadTokens ?? summary?.cache_read_tokens ?? 0);
+    const hbComputedTotal = hbInput + hbOutput + hbCacheRead;
+    const totalTokens = Number(summary?.totalTokens ?? summary?.total_tokens ?? summary?.tokens ?? 0) || hbComputedTotal || fallbackHeartbeatTotal;
     const runCount = Number(summary?.runs_24h ?? summary?.run_count_24h ?? summary?.runCount24h ?? 0);
     const hasPerRun = Number.isFinite(runCount) && runCount > 0;
     const safeTotal = Number.isFinite(totalTokens) && totalTokens > 0 ? Math.round(totalTokens) : 0;
