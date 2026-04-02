@@ -392,7 +392,7 @@
       const val = (maxY/4)*i;
       const yy = y(val);
       ctx.beginPath(); ctx.moveTo(p.l,yy); ctx.lineTo(w-p.r,yy); ctx.stroke();
-      ctx.fillStyle = '#94a3b8'; ctx.font = '12px Inter'; ctx.fillText(fmtToken(val), 8, yy+4);
+      ctx.fillStyle = '#cbd5e1'; ctx.font = '12px Inter'; ctx.fillText(fmtToken(val), 8, yy+4);
     }
 
     const drawLine = (arr,color,dash=[]) => {
@@ -417,7 +417,7 @@
       }
     });
 
-    ctx.fillStyle = '#cbd5e1'; ctx.font = '12px Inter';
+    ctx.fillStyle = '#e2e8f0'; ctx.font = '13px Inter';
     points.forEach((pt,i)=>{
       if (points.length > 5 && (i % 2 === 1)) return;
       ctx.fillText(fmtDay(pt.date), x(i)-16, h-10);
