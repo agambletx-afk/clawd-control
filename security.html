@@ -224,16 +224,17 @@ tbody tr.expandable-row { cursor: pointer; }
     </section>
 
     <section class="panel">
-      <button class="collapsible-toggle" id="configDriftToggleBtn">
-        <div class="panel-header" style="margin-bottom:0">
-          <div class="panel-title-wrap">
-            <svg class="panel-icon" viewBox="0 0 24 24"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><path d="M11 18H8a2 2 0 0 1-2-2V9"/></svg>
-            <span class="domain-capsule"></span>
-            <div><p class="panel-title">Config Drift</p><p class="panel-subtitle">Changes to openclaw.json since last accepted baseline.</p></div>
-          </div>
-          <svg class="collapsible-chevron" id="configDriftChevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+      <div class="panel-header">
+        <div class="panel-title-wrap">
+          <svg class="panel-icon" viewBox="0 0 24 24"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><path d="M11 18H8a2 2 0 0 1-2-2V9"/></svg>
+          <span class="domain-capsule"></span>
+          <div><p class="panel-title">Config Drift</p><p class="panel-subtitle">Changes to openclaw.json since last accepted baseline.</p></div>
         </div>
-      </button>
+      </div>
+      <div class="history-summary-box" id="configDriftToggleBtn">
+        <span id="configDriftSummary" class="mono">Baseline current</span>
+        <svg class="collapsible-chevron" id="configDriftChevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
       <div class="collapsible-content" id="configDriftContent"></div>
     </section>
 
@@ -514,8 +515,10 @@ tbody tr.expandable-row { cursor: pointer; }
 
   function renderConfigDriftPanel(configDriftCheck) {
     const root = refs.configDriftContent;
+    const summaryEl = refs.configDriftSummary || document.getElementById('configDriftSummary');
     if (!configDriftCheck || configDriftCheck.status === 'green') {
       root.innerHTML = '<p class="text-secondary" style="font-size:12px">No config drift detected.</p>';
+      if (summaryEl) summaryEl.textContent = 'Baseline current';
       return;
     }
     const meta = parseMeta(configDriftCheck);
@@ -523,6 +526,8 @@ tbody tr.expandable-row { cursor: pointer; }
     const nonCritical = Array.isArray(meta.non_critical_changes) ? meta.non_critical_changes : [];
     const inferredCritical = [...critical, ...nonCritical].filter((k) => detectCritical(String(k)));
     const hasCritical = critical.length > 0 || inferredCritical.length > 0;
+    const totalDrifted = critical.length + nonCritical.length;
+    if (summaryEl) summaryEl.textContent = totalDrifted + ' drifted key' + (totalDrifted !== 1 ? 's' : '') + (hasCritical ? ' (critical)' : '');
 
     const changesHtml = [
       ...critical.map((k) => `<div class="change-row critical"><strong>Critical</strong> · <span class="mono">${esc(k)}</span></div>`),
@@ -715,12 +720,29 @@ tbody tr.expandable-row { cursor: pointer; }
       const open = refs.configDriftContent.classList.toggle('open');
       document.getElementById('configDriftChevron').style.transform = open ? 'rotate(180deg)' : '';
     });
+    refs.configDriftSummary = document.getElementById('configDriftSummary');
 
     
 
     refs.acknowledgeBtn.addEventListener('click', async () => {
-      await api('/api/security/acknowledge', { method: 'POST' });
-      await triggerRecheck();
+      const btn = refs.acknowledgeBtn;
+      const origText = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Acknowledging...';
+      try {
+        await api('/api/security/acknowledge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ layer: 'reasoning', note: 'Acknowledged from dashboard' }),
+        });
+        btn.textContent = 'Acknowledged';
+        await triggerRecheck();
+      } catch (e) {
+        btn.textContent = origText;
+        alert('Acknowledge failed: ' + (e.message || 'Unknown error'));
+      } finally {
+        btn.disabled = false;
+      }
     });
 
     refs.decisionFilters.addEventListener('click', async (event) => {
