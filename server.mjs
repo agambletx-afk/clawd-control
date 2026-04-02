@@ -1221,6 +1221,98 @@ function getAutomationUsageSummary() {
   };
 }
 
+function deriveUsageSessionKind(sessionKey) {
+  const key = String(sessionKey || '');
+  if (/:heartbeat$/.test(key)) return 'heartbeat';
+  if (/:cron:/.test(key)) return 'cron';
+  if (/:main$/.test(key)) return 'main';
+  return 'other';
+}
+
+function buildModelCatalog() {
+  const config = readOpenClawConfig();
+  const defaultsModels = config?.agents?.defaults?.models;
+  const catalog = new Map();
+  if (Array.isArray(defaultsModels)) {
+    for (const entry of defaultsModels) {
+      if (typeof entry === 'string') {
+        catalog.set(normalizeModelName(entry), { id: entry, missing: false, contextMax: null });
+        continue;
+      }
+      if (!entry || typeof entry !== 'object') continue;
+      const id = String(entry.id || entry.model || entry.name || '').trim();
+      if (!id) continue;
+      const norm = normalizeModelName(id);
+      const missing = entry.missing === true || entry.status === 'missing' || entry.available === false;
+      const contextMax = Number(entry.context_max ?? entry.contextMax ?? entry.max_context ?? entry.maxContext ?? entry.max_tokens ?? entry.maxTokens);
+      catalog.set(norm, { id, missing, contextMax: Number.isFinite(contextMax) && contextMax > 0 ? contextMax : null });
+    }
+  } else if (defaultsModels && typeof defaultsModels === 'object') {
+    for (const [id, entry] of Object.entries(defaultsModels)) {
+      if (!id) continue;
+      const norm = normalizeModelName(id);
+      const missing = entry?.missing === true || entry?.status === 'missing' || entry?.available === false;
+      const contextMax = Number(entry?.context_max ?? entry?.contextMax ?? entry?.max_context ?? entry?.maxContext ?? entry?.max_tokens ?? entry?.maxTokens);
+      catalog.set(norm, { id, missing, contextMax: Number.isFinite(contextMax) && contextMax > 0 ? contextMax : null });
+    }
+  }
+  return catalog;
+}
+
+function getUsageSessionsSummary() {
+  const deprecatedModels = new Set(['gpt-5.3-codex', 'sonnet-4-5']);
+  const modelCatalog = buildModelCatalog();
+  const payload = readJsonSafe(SESSIONS_METADATA_PATH, {});
+  const sessionsObj = (payload && typeof payload === 'object')
+    ? (payload.sessions && typeof payload.sessions === 'object' ? payload.sessions : payload)
+    : {};
+
+  const sessions = Object.entries(sessionsObj).map(([key, value]) => {
+    const summary = value?.summary || value?.usage || value || {};
+    const modelRaw = String(summary?.model || value?.model || '').trim();
+    const model = normalizeModelName(modelRaw || 'unknown');
+    const modelEntry = modelCatalog.get(model);
+    let modelStatus = 'healthy';
+    if (deprecatedModels.has(model)) modelStatus = 'deprecated';
+    else if (!modelEntry) modelStatus = 'unresolved';
+    else if (modelEntry.missing) modelStatus = 'missing';
+
+    const totalTokens = Number(summary?.totalTokens ?? summary?.total_tokens ?? summary?.tokens ?? summary?.token_total ?? 0);
+    const contextTokens = Number(summary?.contextTokens ?? summary?.context_tokens ?? summary?.context ?? 0);
+    const contextMax = modelEntry?.contextMax ?? null;
+    const contextUtilization = Number.isFinite(contextMax) && contextMax > 0
+      ? Number((Math.max(0, contextTokens) / contextMax).toFixed(4))
+      : null;
+
+    return {
+      key,
+      kind: deriveUsageSessionKind(key),
+      model,
+      model_status: modelStatus,
+      total_tokens: Number.isFinite(totalTokens) ? Math.max(0, Math.round(totalTokens)) : 0,
+      context_tokens: Number.isFinite(contextTokens) ? Math.max(0, Math.round(contextTokens)) : 0,
+      context_max: contextMax,
+      context_utilization: contextUtilization,
+      message_count: Number(summary?.messageCount ?? summary?.message_count ?? summary?.messages ?? 0) || 0,
+      updated_at: Number(value?.updatedAt ?? summary?.updatedAt ?? summary?.updated_at ?? 0) || 0,
+      growth_delta_24h: null,
+    };
+  }).sort((a, b) => b.total_tokens - a.total_tokens);
+
+  const totalTokensAll = sessions.reduce((sum, s) => sum + Number(s.total_tokens || 0), 0);
+  const top3Tokens = sessions.slice(0, 3).reduce((sum, s) => sum + Number(s.total_tokens || 0), 0);
+  const top3Pct = totalTokensAll > 0 ? (top3Tokens / totalTokensAll) * 100 : 0;
+
+  return {
+    sessions,
+    totals: {
+      total_tokens_all: totalTokensAll,
+      top3_tokens: top3Tokens,
+      top3_pct: Number(top3Pct.toFixed(1)),
+    },
+  };
+}
+
 function calculateApiKeyStatus(service, envMap) {
   const apiKey = service.api_key;
   if (!apiKey) {
@@ -4382,6 +4474,19 @@ const server = createServer(async (req, res) => {
       console.error('[API] /api/usage/automation error:', e.message);
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Failed to load automation usage data' }));
+    }
+    return;
+  }
+
+  if (path === '/api/usage/sessions' && req.method === 'GET') {
+    try {
+      const payload = getUsageSessionsSummary();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(payload));
+    } catch (e) {
+      console.error('[API] /api/usage/sessions error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to load usage sessions data' }));
     }
     return;
   }
