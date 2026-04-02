@@ -319,7 +319,7 @@ export class ChatGatewayClient {
     this.reconnectTimer = setTimeout(() => {
       this.connectPromise = null;
       this.start().catch(() => {});
-    }, 5000);
+    }, 300000); // 5 min backoff — WS device auth broken on 2026.3.24
   }
 
   _rejectPending(error) {
