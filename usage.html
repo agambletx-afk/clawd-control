@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Usage — Clawd Control</title>
+  <style>
+    :root {
+      --usage-domain: #14b8a6;
+      --usage-soft: rgba(20, 184, 166, 0.08);
+      --usage-border: rgba(20, 184, 166, 0.24);
+    }
+    .page-header { margin-bottom: 16px; }
+    .page-header h1 { font-size: 20px; font-weight: 700; text-shadow: 0 0 8px rgba(20,184,166,.45); }
+    .page-header .subtitle { font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
+    .section { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 16px; margin-bottom: 16px; }
+    .section-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
+    .section-title { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+    .section-subtitle { margin-top: 2px; font-size: 12px; color: var(--text-secondary); }
+    .stats-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; }
+    .stat-card { position: relative; border: 1px solid #363b4d; border-radius: 12px; background: #131722; padding: 12px; min-height: 102px; }
+    .stat-card::before { content: ''; position: absolute; left: 0; top: 0; height: 100%; width: 2px; border-radius: 12px 0 0 12px; background: linear-gradient(180deg,var(--usage-domain),transparent); }
+    .stat-card.low-emphasis { border-color: #2a3040; background: #11151d; padding: 9px 10px; min-height: 88px; }
+    .stat-card.low-emphasis::before { display: none; }
+    .stat-label { text-transform: uppercase; letter-spacing: .08em; font-size: 11px; color: #94a3b8; }
+    .stat-value { margin-top: 8px; font: 700 22px/1.2 var(--font-mono); color: #e2e8f0; }
+    .stat-sub { margin-top: 8px; font-size: 12px; color: #94a3b8; }
+    .value-amber { color: #f59e0b; }
+    .value-red { color: #ef4444; }
+
+    .range-pills { display: flex; gap: 6px; }
+    .range-pill { border: 1px solid var(--border); border-radius: 999px; padding: 4px 10px; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 12px; }
+    .range-pill.active { border-color: var(--usage-border); background: var(--usage-soft); color: #5eead4; }
+
+    .chart-wrap { border: 1px solid var(--border-subtle); border-radius: 12px; background: #0f131d; padding: 10px; }
+    .chart-canvas { width: 100%; height: 280px; display: block; }
+    .mini-stats { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 8px; margin-top: 10px; }
+    .mini-stat { border: 1px solid var(--border-subtle); border-radius: 10px; padding: 8px; background: #111623; }
+    .mini-label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: #94a3b8; }
+    .mini-value { margin-top: 5px; font: 600 14px var(--font-mono); color: #e2e8f0; }
+
+    .budget-header { margin-top: 14px; margin-bottom: 8px; }
+    .budget-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .budget-table th, .budget-table td { text-align: left; padding: 8px; border-bottom: 1px solid var(--border-subtle); }
+    .budget-table th { color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+    .mono { font-family: var(--font-mono); }
+    .kind-badge { display:inline-flex; align-items:center; font-size:10px; letter-spacing:.07em; text-transform:uppercase; border:1px solid #334155; color:#94a3b8; padding:2px 6px; border-radius:999px; margin-left:6px; }
+    .status-pill { border-radius:999px; padding:3px 8px; font-size:11px; border:1px solid #334155; color:#94a3b8; }
+    .status-pill.normal { color:#22c55e; border-color:rgba(34,197,94,.5); background:rgba(34,197,94,.12); }
+    .status-pill.warning { color:#f59e0b; border-color:rgba(245,158,11,.5); background:rgba(245,158,11,.12); }
+    .status-pill.critical { color:#ef4444; border-color:rgba(239,68,68,.5); background:rgba(239,68,68,.12); }
+    .status-pill.neutral { color:#94a3b8; }
+    .waste-row td { background: rgba(148,163,184,.05); }
+    .empty { color: #94a3b8; font-size: 12px; padding: 12px; }
+    @media (max-width: 1200px){ .stats-grid,.mini-stats { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+  </style>
+</head>
+<body>
+<main class="main">
+  <div class="page-header">
+    <h1>Usage</h1>
+    <p class="subtitle">Where tokens and money go.</p>
+  </div>
+
+  <section class="section" id="resourceSection">
+    <div class="section-header">
+      <div>
+        <div class="section-title">Resource Pressure</div>
+        <div class="section-subtitle">Provider limits, subscriptions, and proxy runway</div>
+      </div>
+    </div>
+    <div class="stats-grid" id="resourceGrid"></div>
+  </section>
+
+  <section class="section">
+    <div class="section-header">
+      <div>
+        <div class="section-title">Token Consumption</div>
+        <div class="section-subtitle">Input, output, and cache tokens over time</div>
+      </div>
+      <div class="range-pills" id="rangePills">
+        <button class="range-pill" data-range="1">24h</button>
+        <button class="range-pill" data-range="3">3d</button>
+        <button class="range-pill active" data-range="7">7d</button>
+      </div>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="tokenChart" class="chart-canvas" width="1200" height="280"></canvas>
+    </div>
+    <div class="mini-stats" id="periodStats"></div>
+
+    <div class="budget-header">
+      <div class="section-title">Automation Token Budget</div>
+      <div class="section-subtitle">Per-source token allocation and waste detection</div>
+    </div>
+    <div style="overflow:auto">
+      <table class="budget-table" id="budgetTable">
+        <thead><tr><th>Source</th><th>Runs (24h)</th><th>Tokens (24h)</th><th>Per-Run Avg</th><th>Expected</th><th>Status</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+<script src="/layout.js"></script>
+<script>
+(() => {
+  const state = { range: 7, tokens: null, cli: null, quota: null, proxy: null, proxyHistory: null, automation: null };
+  const $ = (id) => document.getElementById(id);
+  const fmtNum = (n) => Number(n || 0).toLocaleString();
+  const fmtToken = (n) => {
+    const v = Number(n || 0);
+    if (v >= 1_000_000) return `${(v/1_000_000).toFixed(1)}M`;
+    if (v >= 1_000) return `${(v/1_000).toFixed(1)}K`;
+    return `${Math.round(v)}`;
+  };
+  const fmtDay = (iso) => new Date(`${iso}T00:00:00Z`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+
+  function card({label, value, sub, low=false, valueClass=''}) {
+    return `<div class="stat-card ${low ? 'low-emphasis' : ''}"><div class="stat-label">${label}</div><div class="stat-value ${valueClass}">${value}</div><div class="stat-sub">${sub}</div></div>`;
+  }
+
+  function getProvider(cli, keyNames) {
+    const providers = cli?.providers || {};
+    for (const key of keyNames) if (providers[key]) return providers[key];
+    return null;
+  }
+
+  function renderResourceCards() {
+    const anthropic = getProvider(state.cli, ['claude', 'anthropic']);
+    const codex = getProvider(state.cli, ['codex', 'openai']);
+    const quota = state.quota || {};
+    const rpd = quota?.rpd || {};
+    const rpdPct = rpd.limit > 0 ? (rpd.used / rpd.limit) * 100 : 0;
+
+    const remainingGb = Number(state.proxy?.computed?.remaining_gb || 0);
+    const history = state.proxyHistory?.raw?.traffic_history || [];
+    const recent = history.slice(-7);
+    const burn = recent.length ? recent.reduce((sum, d) => sum + Number(d.total_traffic || 0), 0) / recent.length / (1024**3) : 0;
+    const days = burn > 0 ? (remainingGb / burn) : Infinity;
+
+    const items = [];
+    if (anthropic && anthropic.session_pct != null) {
+      items.push(card({ label:'Anthropic', value:`${Number(anthropic.session_pct).toFixed(1)}%`, sub: anthropic.plan || 'Subscription plan' }));
+    } else {
+      items.push(card({ label:'Anthropic', value:'—', sub:'No metered telemetry — subscription plan', low:true }));
+    }
+
+    if (codex && (codex.session_pct != null || codex.weekly_pct != null)) {
+      items.push(card({ label:'OpenAI / Codex', value:`${Number(codex.session_pct || 0).toFixed(1)}% / ${Number(codex.weekly_pct || 0).toFixed(1)}%`, sub: codex.plan || codex.name || 'Subscription plan' }));
+    } else {
+      items.push(card({ label:'OpenAI / Codex', value:'—', sub:'No metered telemetry', low:true }));
+    }
+
+    const geminiClass = rpdPct > 95 ? 'value-red' : (rpdPct > 80 ? 'value-amber' : '');
+    items.push(card({ label:'Gemini', value:`${fmtNum(rpd.used)} / ${fmtNum(rpd.limit)} RPD`, sub:'Resets daily', valueClass: geminiClass }));
+
+    const runwayClass = days < 1 ? 'value-red' : (days < 5 ? 'value-amber' : '');
+    const runwayVal = Number.isFinite(days) ? `${days.toFixed(1)}d` : '∞';
+    const runwaySub = Number.isFinite(days) ? `${remainingGb.toFixed(1)} GB remaining` : 'No traffic — idle';
+    items.push(card({ label:'Proxy Runway', value:runwayVal, sub:runwaySub, valueClass: runwayClass }));
+
+    $('resourceGrid').innerHTML = items.join('');
+  }
+
+  function rangeData() {
+    const arr = [...(state.tokens?.overTime || [])];
+    if (state.range === 7) return arr;
+    return arr.slice(-state.range);
+  }
+
+  function renderPeriodStats(points) {
+    const totals = points.reduce((a, p) => {
+      a.input += Number(p.inputTokens || 0);
+      a.output += Number(p.outputTokens || 0);
+      a.cache += Number(p.cacheReadTokens || 0);
+      return a;
+    }, { input:0, output:0, cache:0 });
+    const total = totals.input + totals.output + totals.cache;
+    const avg = points.length ? Math.round(total / points.length) : 0;
+    const cacheHit = (totals.input + totals.cache) > 0 ? (totals.cache / (totals.input + totals.cache) * 100) : 0;
+    const calls = state.tokens?.apiCalls || 0;
+    $('periodStats').innerHTML = [
+      ['Total tokens', fmtToken(total)],
+      ['Avg / day', fmtToken(avg)],
+      ['Cache hit rate', `${cacheHit.toFixed(1)}%`],
+      ['API calls', fmtNum(calls)],
+    ].map(([k,v]) => `<div class="mini-stat"><div class="mini-label">${k}</div><div class="mini-value">${v}</div></div>`).join('');
+  }
+
+  function drawChart(points) {
+    const canvas = $('tokenChart');
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0,0,w,h);
+    const p = {l:52,r:16,t:12,b:36};
+    const series = {
+      input: points.map(x => Number(x.inputTokens || 0)),
+      output: points.map(x => Number(x.outputTokens || 0)),
+      cache: points.map(x => Number(x.cacheReadTokens || 0)),
+      total: points.map(x => Number(x.inputTokens || 0) + Number(x.outputTokens || 0) + Number(x.cacheReadTokens || 0)),
+    };
+    const maxY = Math.max(1, ...series.total) * 1.15;
+    const avg7 = series.total.length ? series.total.reduce((a,b)=>a+b,0)/series.total.length : 0;
+
+    const x = (i) => p.l + (i * ((w-p.l-p.r) / Math.max(points.length-1, 1)));
+    const y = (v) => h-p.b - (v / maxY) * (h-p.t-p.b);
+
+    ctx.strokeStyle = '#2a3040'; ctx.lineWidth = 1;
+    for (let i=0;i<=4;i++) {
+      const val = (maxY/4)*i;
+      const yy = y(val);
+      ctx.beginPath(); ctx.moveTo(p.l,yy); ctx.lineTo(w-p.r,yy); ctx.stroke();
+      ctx.fillStyle = '#64748b'; ctx.font = '11px Inter'; ctx.fillText(fmtToken(val), 8, yy+4);
+    }
+
+    const drawLine = (arr,color,dash=[]) => {
+      ctx.beginPath(); ctx.setLineDash(dash); ctx.strokeStyle = color; ctx.lineWidth = 2;
+      arr.forEach((v,i)=>{ const xx=x(i), yy=y(v); i?ctx.lineTo(xx,yy):ctx.moveTo(xx,yy); });
+      ctx.stroke(); ctx.setLineDash([]);
+    };
+    drawLine(series.input, '#14b8a6');
+    drawLine(series.output, '#5eead4');
+    drawLine(series.cache, '#94a3b8', [6,5]);
+
+    series.total.forEach((v,i)=>{
+      if (v > 50000 && v > avg7 * 2) {
+        const xx = x(i), yy = y(v);
+        ctx.beginPath(); ctx.arc(xx,yy,7,0,Math.PI*2); ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 2; ctx.stroke();
+      }
+    });
+
+    ctx.fillStyle = '#94a3b8'; ctx.font = '11px Inter';
+    points.forEach((pt,i)=>{ ctx.fillText(fmtDay(pt.date), x(i)-16, h-12); });
+  }
+
+  function renderAutomation() {
+    const body = $('budgetTable').querySelector('tbody');
+    const payload = state.automation || { sources: [], totals: {} };
+    if (!payload.sources.length) {
+      body.innerHTML = '<tr><td colspan="6" class="empty">No automation usage signals in the last 24h.</td></tr>';
+      return;
+    }
+    const rows = payload.sources.map((s) => {
+      const exp = Array.isArray(s.expected_range) ? `${fmtToken(s.expected_range[0])}–${fmtToken(s.expected_range[1])}` : '—';
+      const runs = s.runs_24h == null ? '—' : fmtNum(s.runs_24h);
+      const source = `${s.name}<span class="kind-badge">${s.kind}</span>${s.note ? `<div class="section-subtitle" style="margin:4px 0 0">${s.note}</div>` : ''}`;
+      return `<tr>
+        <td>${source}</td>
+        <td class="mono">${runs}</td>
+        <td class="mono">${fmtNum(s.total_tokens_24h)}</td>
+        <td class="mono">${fmtNum(s.avg_tokens_per_run)}</td>
+        <td class="mono">${exp}</td>
+        <td><span class="status-pill ${s.status || 'neutral'}">${(s.status || 'neutral').toUpperCase()}</span></td>
+      </tr>`;
+    });
+    const waste = Number(payload.totals?.waste_ratio || 0);
+    const wasteStatus = waste > 0.25 ? 'critical' : (waste > 0.10 ? 'warning' : 'neutral');
+    rows.push(`<tr class="waste-row"><td>Failed/Retry Waste <span class="kind-badge">24h</span></td><td class="mono">—</td><td class="mono">${fmtNum(payload.totals?.total_failed_tokens_24h || 0)}</td><td class="mono">—</td><td class="mono">${(waste*100).toFixed(1)}%</td><td><span class="status-pill ${wasteStatus}">${wasteStatus.toUpperCase()}</span></td></tr>`);
+    body.innerHTML = rows.join('');
+  }
+
+  function renderTokensPanel() {
+    const points = rangeData();
+    drawChart(points);
+    renderPeriodStats(points);
+  }
+
+  async function load() {
+    const calls = [
+      fetch('/api/tokens?range=7').then(r=>r.json()).catch(()=>({overTime:[], apiCalls:0})),
+      fetch('/api/usage/cli').then(r=>r.json()).catch(()=>({providers:{}})),
+      fetch('/api/costs/quota').then(r=>r.json()).catch(()=>({rpd:{used:0,limit:0}})),
+      fetch('/api/proxy/stats').then(r=>r.json()).catch(()=>({computed:{remaining_gb:0}})),
+      fetch('/api/proxy/history?days=7').then(r=>r.json()).catch(()=>({raw:{traffic_history:[]}})),
+      fetch('/api/usage/automation').then(r=>r.json()).catch(()=>({sources:[], totals:{}})),
+    ];
+    [state.tokens, state.cli, state.quota, state.proxy, state.proxyHistory, state.automation] = await Promise.all(calls);
+    renderResourceCards();
+    renderTokensPanel();
+    renderAutomation();
+  }
+
+  $('rangePills').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-range]');
+    if (!btn) return;
+    state.range = Number(btn.dataset.range);
+    document.querySelectorAll('.range-pill').forEach((b) => b.classList.toggle('active', b === btn));
+    renderTokensPanel();
+  });
+
+  load();
+})();
+</script>
+</body>
+</html>

@@ -122,6 +122,8 @@ const CORTEX_CONFIG_PATH = join(OPENCLAW_WORKSPACE, 'cortex/cortex.json');
 const OUTCOME_DB_PATH = join(OPENCLAW_WORKSPACE, 'cortex', 'outcome.db');
 const CORTEX_LOG_PATH = join(OPENCLAW_DIR, 'logs/cortex.log');
 const CRON_JOBS_PATH = join(homedir(), '.openclaw', 'cron', 'jobs.json');
+const CRON_RUNS_DIR = join(homedir(), '.openclaw', 'cron', 'runs');
+const SESSIONS_METADATA_PATH = join(homedir(), '.openclaw', 'agents', 'main', 'sessions', 'sessions.json');
 const PRIMARY_ENV_PATH = join(DIR, '.env');
 const SECONDARY_ENV_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', '.env');
 const LOCAL_HEALTH_SCRIPT_PATH = join(DIR, 'scripts', 'check-system-health.sh');
@@ -1048,6 +1050,174 @@ function loadCliUsage() {
   return {
     checked_at: parsed.checked_at || null,
     providers: parsed.providers && typeof parsed.providers === 'object' ? parsed.providers : {},
+  };
+}
+
+
+function getUsageTokenValue(runEntry, sessionTokenMap) {
+  const direct = Number(runEntry?.usage?.total_tokens);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+
+  const sessionKey = String(runEntry?.sessionKey || runEntry?.session_key || runEntry?.sessionId || runEntry?.session_id || '').trim();
+  if (sessionKey && sessionTokenMap.has(sessionKey)) {
+    return sessionTokenMap.get(sessionKey) || 0;
+  }
+
+  return 0;
+}
+
+function inferAutomationKind(job = {}, runEntries = []) {
+  const slug = `${String(job?.name || '')} ${String(job?.type || '')} ${String(job?.id || '')}`.toLowerCase();
+  if (slug.includes('compact')) return 'compaction';
+  const runSlug = runEntries
+    .map((entry) => String(entry?.trigger || entry?.source || entry?.kind || '').toLowerCase())
+    .join(' ');
+  if (runSlug.includes('compact')) return 'compaction';
+  return 'cron';
+}
+
+function classifyAutomationStatus(expectedRange, avgTokensPerRun) {
+  if (!Array.isArray(expectedRange) || expectedRange.length !== 2) return 'neutral';
+  const [, upperBound] = expectedRange;
+  const upper = Number(upperBound) || 0;
+  if (upper <= 0 || avgTokensPerRun <= upper) return 'normal';
+  if (avgTokensPerRun <= (upper * 3)) return 'warning';
+  return 'critical';
+}
+
+function getAutomationUsageSummary() {
+  const now = Date.now();
+  const windowMs = 24 * 60 * 60 * 1000;
+  const cutoffMs = now - windowMs;
+
+  const expectedRanges = {
+    heartbeat: [2000, 5000],
+    compaction: [8000, 15000],
+  };
+
+  const jobsRaw = readJsonSafe(CRON_JOBS_PATH, []);
+  const jobs = Array.isArray(jobsRaw)
+    ? jobsRaw
+    : (Array.isArray(jobsRaw?.jobs) ? jobsRaw.jobs : []);
+  const jobsById = new Map(jobs.map((job) => [String(job?.id || ''), job]));
+
+  const sessionTokenMap = new Map();
+  const sessionsPayload = readJsonSafe(SESSIONS_METADATA_PATH, {});
+  const sessionsObj = (sessionsPayload && typeof sessionsPayload === 'object')
+    ? (sessionsPayload.sessions && typeof sessionsPayload.sessions === 'object' ? sessionsPayload.sessions : sessionsPayload)
+    : {};
+  for (const [sessionKey, value] of Object.entries(sessionsObj)) {
+    const summary = value?.summary || value?.usage || value;
+    const total = Number(summary?.totalTokens ?? summary?.total_tokens ?? summary?.tokens ?? summary?.token_total ?? 0);
+    if (Number.isFinite(total) && total > 0) {
+      sessionTokenMap.set(sessionKey, total);
+    }
+  }
+
+  const grouped = new Map();
+  if (existsSync(CRON_RUNS_DIR)) {
+    let runFiles = [];
+    try {
+      runFiles = readdirSync(CRON_RUNS_DIR).filter((name) => name.endsWith('.jsonl'));
+    } catch {
+      runFiles = [];
+    }
+
+    for (const runFile of runFiles) {
+      const runPath = join(CRON_RUNS_DIR, runFile);
+      let content = '';
+      try {
+        content = readFileSync(runPath, 'utf8');
+      } catch {
+        continue;
+      }
+
+      for (const line of content.split('\n')) {
+        if (!line.trim()) continue;
+        let parsed;
+        try {
+          parsed = JSON.parse(line);
+        } catch {
+          continue;
+        }
+        const tsValue = parsed?.ts || parsed?.timestamp || parsed?.completed_at || parsed?.ended_at;
+        const tsMs = typeof tsValue === 'number' ? tsValue : Date.parse(tsValue || '');
+        if (!Number.isFinite(tsMs) || tsMs < cutoffMs) continue;
+
+        const jobId = String(parsed?.jobId || parsed?.job_id || runFile.replace(/\.jsonl$/, '') || 'unknown');
+        if (!grouped.has(jobId)) grouped.set(jobId, []);
+        grouped.get(jobId).push(parsed);
+      }
+    }
+  }
+
+  const sources = [];
+  let totalAutomationTokens = 0;
+  let totalFailedTokens = 0;
+
+  for (const [jobId, runEntries] of grouped.entries()) {
+    const job = jobsById.get(jobId) || {};
+    const kind = inferAutomationKind(job, runEntries);
+    const totalTokens = runEntries.reduce((sum, entry) => sum + getUsageTokenValue(entry, sessionTokenMap), 0);
+    const failedEntries = runEntries.filter((entry) => String(entry?.status || '').toLowerCase() !== 'ok');
+    const failedTokens = failedEntries.reduce((sum, entry) => sum + getUsageTokenValue(entry, sessionTokenMap), 0);
+    const runs = runEntries.length;
+    const avgPerRun = runs > 0 ? Math.round(totalTokens / runs) : 0;
+    const expectedRange = kind === 'compaction' ? expectedRanges.compaction : null;
+
+    totalAutomationTokens += totalTokens;
+    totalFailedTokens += failedTokens;
+
+    sources.push({
+      name: String(job?.name || job?.title || runEntries[0]?.jobName || `Job ${jobId}`).trim(),
+      kind,
+      jobId,
+      runs_24h: runs,
+      total_tokens_24h: totalTokens,
+      avg_tokens_per_run: avgPerRun,
+      expected_range: expectedRange,
+      failed_runs_24h: failedEntries.length,
+      failed_tokens_24h: failedTokens,
+      status: classifyAutomationStatus(expectedRange, avgPerRun),
+    });
+  }
+
+  const heartbeatSession = sessionsObj['agent:main:main:heartbeat'] || sessionsObj.heartbeat || null;
+  if (heartbeatSession) {
+    const summary = heartbeatSession?.summary || heartbeatSession?.usage || heartbeatSession;
+    const totalTokens = Number(summary?.totalTokens ?? summary?.total_tokens ?? summary?.tokens ?? 0);
+    const runCount = Number(summary?.runs_24h ?? summary?.run_count_24h ?? summary?.runCount24h ?? 0);
+    const hasPerRun = Number.isFinite(runCount) && runCount > 0;
+    const safeTotal = Number.isFinite(totalTokens) && totalTokens > 0 ? Math.round(totalTokens) : 0;
+    const avgPerRun = hasPerRun ? Math.round(safeTotal / runCount) : safeTotal;
+
+    totalAutomationTokens += safeTotal;
+
+    sources.push({
+      name: 'Heartbeat',
+      kind: 'heartbeat',
+      runs_24h: hasPerRun ? runCount : null,
+      total_tokens_24h: safeTotal,
+      avg_tokens_per_run: avgPerRun,
+      expected_range: hasPerRun ? expectedRanges.heartbeat : null,
+      failed_runs_24h: Number(summary?.failed_runs_24h || 0),
+      failed_tokens_24h: Number(summary?.failed_tokens_24h || 0),
+      status: hasPerRun ? classifyAutomationStatus(expectedRanges.heartbeat, avgPerRun) : 'neutral',
+      note: hasPerRun ? null : 'Per-run breakdown unavailable',
+    });
+  }
+
+  sources.sort((a, b) => Number(b.total_tokens_24h || 0) - Number(a.total_tokens_24h || 0));
+
+  const wasteRatio = totalAutomationTokens > 0 ? (totalFailedTokens / totalAutomationTokens) : 0;
+
+  return {
+    sources,
+    totals: {
+      total_automation_tokens_24h: totalAutomationTokens,
+      total_failed_tokens_24h: totalFailedTokens,
+      waste_ratio: Number(wasteRatio.toFixed(4)),
+    },
   };
 }
 
@@ -4186,6 +4356,32 @@ const server = createServer(async (req, res) => {
       console.error('[API] /api/cli-usage error:', e.message);
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Failed to load CLI usage data' }));
+    }
+    return;
+  }
+
+  if (path === '/api/usage/cli' && req.method === 'GET') {
+    try {
+      const payload = loadCliUsage();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(payload));
+    } catch (e) {
+      console.error('[API] /api/usage/cli error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to load CLI usage data' }));
+    }
+    return;
+  }
+
+  if (path === '/api/usage/automation' && req.method === 'GET') {
+    try {
+      const payload = getAutomationUsageSummary();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(payload));
+    } catch (e) {
+      console.error('[API] /api/usage/automation error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to load automation usage data' }));
     }
     return;
   }

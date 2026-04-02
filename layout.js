@@ -34,7 +34,7 @@
     '/tasks.html': 'tasks',
     '/ops.html': 'ops',
     '/security.html': 'security',
-    '/analytics.html': 'analytics',
+    '/usage.html': 'analytics',
     '/cortex.html': 'cortex',
     '/cortex': 'cortex',
     '/memory.html': 'memory',
@@ -498,7 +498,7 @@ body.has-banner { padding-top: 36px; }
 
       <div class="nav-tier-gap"></div>
 
-      <a href="/analytics.html" class="nav-item tier-2${isActive('analytics')}">
+      <a href="/usage.html" class="nav-item tier-2${isActive('analytics')}">
         <i data-lucide="bar-chart-3" class="nav-icon"></i>
         <span class="nav-label">Usage</span>
       </a>
@@ -1027,7 +1027,7 @@ body.has-banner { padding-top: 36px; }
         '/': 'dashboard', '/dashboard.html': 'dashboard',
         '/agents.html': 'agents', '/sessions.html': 'sessions',
         '/tasks.html': 'tasks', '/ops.html': 'ops',
-        '/security.html': 'security', '/analytics.html': 'analytics',
+        '/security.html': 'security', '/usage.html': 'analytics',
         '/cortex.html': 'cortex', '/cortex': 'cortex',
         '/memory.html': 'memory', '/memory': 'memory',
         '/chat.html': 'chat',
