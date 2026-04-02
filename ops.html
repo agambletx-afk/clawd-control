@@ -2593,14 +2593,32 @@
       }
     }
 
+    function parseVersion(v) {
+      const base = (v || '').split('-')[0];
+      const parts = base.split('.').map(Number);
+      return { major: parts[0] || 0, minor: parts[1] || 0, patch: parts[2] || 0 };
+    }
+
+    function versionGreaterThan(a, b) {
+      if (a.major !== b.major) return a.major > b.major;
+      if (a.minor !== b.minor) return a.minor > b.minor;
+      return a.patch > b.patch;
+    }
+
     function filterStableReleases(data) {
+      const installed = parseVersion(data.current_version || data.installed_version || '');
       return (Array.isArray(data.releases_between) ? data.releases_between : [])
         .filter((r) => {
           const v = r.version || '';
-          const hyphenIdx = v.search(/-/);
-          if (hyphenIdx === -1) return true;
-          const suffix = v.slice(hyphenIdx + 1);
-          return /^\d+$/.test(suffix);
+          // Exclude pre-release suffixes (e.g. -beta.1, -rc.2) but keep recovery releases (e.g. -1)
+          const hyphenIdx = v.indexOf('-');
+          if (hyphenIdx !== -1) {
+            const suffix = v.slice(hyphenIdx + 1);
+            if (!/^\d+$/.test(suffix)) return false;
+          }
+          // Exclude versions older than or equal to the installed version
+          const rv = parseVersion(v);
+          return versionGreaterThan(rv, installed);
         });
     }
 
