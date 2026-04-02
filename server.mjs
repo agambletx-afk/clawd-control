@@ -5532,6 +5532,30 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  function filterVersionPayload(payload) {
+    if (!payload || payload.status !== 'update_available') return payload;
+    const installed = String(payload.current_version || payload.installed_version || '');
+    const installedParts = installed.split('-')[0].split('.').map(Number);
+    const iMajor = installedParts[0] || 0;
+    const iMinor = installedParts[1] || 0;
+    const iPatch = installedParts[2] || 0;
+
+    const releases = Array.isArray(payload.releases_between) ? payload.releases_between : [];
+    const filtered = releases.filter((r) => {
+      const v = String(r.version || '');
+      // Exclude pre-release suffixes (-beta.1, -rc.2) but keep recovery (-1, -2)
+      const hyphenIdx = v.indexOf('-');
+      if (hyphenIdx !== -1 && !/^\d+$/.test(v.slice(hyphenIdx + 1))) return false;
+      // Exclude versions <= installed
+      const parts = v.split('-')[0].split('.').map(Number);
+      const major = parts[0] || 0, minor = parts[1] || 0, patch = parts[2] || 0;
+      if (major !== iMajor) return major > iMajor;
+      if (minor !== iMinor) return minor > iMinor;
+      return patch > iPatch;
+    });
+    return { ...payload, releases_between: filtered, versions_behind: filtered.length };
+  }
+
   if (path === '/api/ops/version-check' && req.method === 'GET') {
     try {
       if (!existsSync(VERSION_CHECK_RESULTS_PATH)) {
@@ -5550,7 +5574,7 @@ const server = createServer(async (req, res) => {
 
       const payload = JSON.parse(readFileSync(VERSION_CHECK_RESULTS_PATH, 'utf8'));
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(payload));
+      res.end(JSON.stringify(filterVersionPayload(payload)));
     } catch {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ status: 'check_failed', error: 'Version check data unavailable' }));
@@ -5573,7 +5597,7 @@ const server = createServer(async (req, res) => {
         duration_ms: duration,
       });
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(payload));
+      res.end(JSON.stringify(filterVersionPayload(payload)));
     } catch (e) {
       const duration = Date.now() - started;
       logAction({
