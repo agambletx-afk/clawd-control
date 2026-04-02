@@ -8,7 +8,7 @@
 
 import http from 'http';
 const { createServer } = http;
-import { readFileSync, existsSync, writeFileSync, copyFileSync, readdirSync, statSync, unlinkSync, renameSync, createReadStream } from 'fs';
+import { readFileSync, existsSync, writeFileSync, copyFileSync, readdirSync, statSync, unlinkSync, renameSync, createReadStream, chmodSync } from 'fs';
 import { join, extname, resolve, sep } from 'path';
 import { createInterface } from 'readline';
 import { gzipSync, gunzipSync } from 'zlib';
@@ -199,6 +199,7 @@ function writeOpenClawConfig(config) {
   }
   writeFileSync(tmpPath, JSON.stringify(config, null, 2), 'utf8');
   renameSync(tmpPath, OPENCLAW_CONFIG_PATH);
+  try { chmodSync(OPENCLAW_CONFIG_PATH, 0o600); } catch {}
 }
 
 function writeOpenClawConfigWithImmutableFallback(config) {
