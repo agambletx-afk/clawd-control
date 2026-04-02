@@ -126,6 +126,8 @@ const PRIMARY_ENV_PATH = join(DIR, '.env');
 const SECONDARY_ENV_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', '.env');
 const LOCAL_HEALTH_SCRIPT_PATH = join(DIR, 'scripts', 'check-system-health.sh');
 const SYSTEM_HEALTH_SCRIPT_PATH = '/usr/local/bin/check-system-health.sh';
+const LOCAL_PROXY_SENTINEL_SCRIPT_PATH = join(DIR, 'scripts', 'check-proxy-sentinel.sh');
+const SYSTEM_PROXY_SENTINEL_SCRIPT_PATH = '/usr/local/bin/check-proxy-sentinel.sh';
 const SECURITY_HEALTH_RESULTS_PATH = '/tmp/security-health-results.json';
 const SECURITY_CHECK_SCRIPT_PATH = '/usr/local/bin/check-security-health.sh';
 const SECURITY_TEST_RESULTS_PATH = '/tmp/security-test-results.json';
@@ -4718,15 +4720,25 @@ const server = createServer(async (req, res) => {
   if (path === '/api/health/check' && req.method === 'POST') {
     readJsonBody(req).then((body) => {
       try {
-        const scriptPath = existsSync(SYSTEM_HEALTH_SCRIPT_PATH)
-          ? SYSTEM_HEALTH_SCRIPT_PATH
-          : LOCAL_HEALTH_SCRIPT_PATH;
-        if (!existsSync(scriptPath)) {
-          throw new Error('Health check script not found');
-        }
         const service = typeof body.service === 'string' ? body.service.trim() : '';
-        const args = service ? [service] : [];
-        execFileSync(scriptPath, args, { encoding: 'utf8', stdio: 'pipe', timeout: 120000 });
+        if (service === 'dataimpulse_proxy') {
+          const proxyScriptPath = existsSync(SYSTEM_PROXY_SENTINEL_SCRIPT_PATH)
+            ? SYSTEM_PROXY_SENTINEL_SCRIPT_PATH
+            : LOCAL_PROXY_SENTINEL_SCRIPT_PATH;
+          if (!existsSync(proxyScriptPath)) {
+            throw new Error('Proxy sentinel script not found');
+          }
+          execFileSync(proxyScriptPath, [], { encoding: 'utf8', stdio: 'pipe', timeout: 120000 });
+        } else {
+          const scriptPath = existsSync(SYSTEM_HEALTH_SCRIPT_PATH)
+            ? SYSTEM_HEALTH_SCRIPT_PATH
+            : LOCAL_HEALTH_SCRIPT_PATH;
+          if (!existsSync(scriptPath)) {
+            throw new Error('Health check script not found');
+          }
+          const args = service ? [service] : [];
+          execFileSync(scriptPath, args, { encoding: 'utf8', stdio: 'pipe', timeout: 120000 });
+        }
         const payload = mergeHealthData();
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(payload));

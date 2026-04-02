@@ -57,6 +57,7 @@ td { padding: 10px 8px; border-top: 1px solid #363b4d; font-size: 13px; color: #
 .dot-green { background: #22c55e; }
 .dot-yellow { background: #f59e0b; }
 .dot-red { background: #ef4444; }
+.dot-gray { background: #64748b; }
 .layer-pill { display: inline-block; border-radius: 4px; padding: 4px 8px; font-size: 11px; color: #94a3b8; background: rgba(148,163,184,0.06); min-width: 28px; text-align: center; font-weight: 600; }
 .action-link { color: #94a3b8; text-decoration: none; font-size: 12px; background: #252a36; border: 1px solid #363b4d; border-radius: 6px; padding: 5px 10px; display: inline-block; cursor: pointer; white-space: nowrap; }
 .row-chevron { width: 14px; height: 14px; stroke: #94a3b8; fill: none; stroke-width: 2; transition: transform 200ms; cursor: pointer; display: block; margin-left: auto; }
@@ -263,6 +264,7 @@ tbody tr.expandable-row { cursor: pointer; }
   };
   const state = {
     checks: [],
+    proxySentinel: null,
     generatedAt: null,
     transitions: [],
     decisions: [],
@@ -308,7 +310,10 @@ tbody tr.expandable-row { cursor: pointer; }
     const ranks = { 'os-hardening': 0, 'network_firewall': 1, 'network_brute_force': 1.1, 'access': 2, 'public': 3, 'gateway': 4, 'channel': 5, 'reasoning': 6, 'operational': 7, 'memory': 8, 'injection-defense': 9, 'gateway-health': 10, 'context': 11 };
     return ranks[layer] !== undefined ? ranks[layer] : 999;
   }
-  function statusDot(status) { return `<span class="status-dot dot-${status === 'yellow' ? 'yellow' : status === 'red' ? 'red' : 'green'}"></span>`; }
+  function statusDot(status) {
+    const dot = status === 'yellow' ? 'yellow' : status === 'red' ? 'red' : status === 'gray' ? 'gray' : 'green';
+    return `<span class="status-dot dot-${dot}"></span>`;
+  }
   function ageColor(ts) { const diffMin = Math.floor((Date.now() - new Date(ts || 0).getTime()) / 60000); return diffMin > 30 ? '#f59e0b' : '#f1f5f9'; }
 
   async function api(url, opts = {}) {
@@ -330,6 +335,53 @@ tbody tr.expandable-row { cursor: pointer; }
     return 'expand';
   }
 
+  function mapProxyStatusToSecurity(status) {
+    const normalized = String(status || '').toLowerCase();
+    if (normalized === 'ok') return 'green';
+    if (normalized === 'warn') return 'yellow';
+    if (normalized === 'critical' || normalized === 'error') return 'red';
+    return 'gray';
+  }
+
+  function buildProxySecurityChecks() {
+    const sentinelData = state.proxySentinel?.available ? state.proxySentinel.data : null;
+    const timestamp = sentinelData?.timestamp || null;
+    const exitCheck = sentinelData?.checks?.proxy_exit_ip || null;
+    const llmCheck = sentinelData?.checks?.llm_bypass || null;
+
+    const proxyAnonymization = {
+      layer: 'network_brute_force',
+      name: 'Proxy Anonymization',
+      status: mapProxyStatusToSecurity(exitCheck?.status),
+      message: String(exitCheck?.detail || 'Proxy sentinel data unavailable.'),
+      details: String(exitCheck?.detail || 'Proxy sentinel data unavailable.'),
+      remediation: String(exitCheck?.threshold || 'must differ from 161.35.136.216'),
+      checked_at: timestamp || state.generatedAt
+    };
+
+    const llmBypassStatus = llmCheck ? mapProxyStatusToSecurity(llmCheck?.status) : 'gray';
+    const llmBypass = {
+      layer: 'network_brute_force',
+      name: 'LLM Proxy Bypass',
+      status: llmBypassStatus,
+      message: String(llmCheck?.detail || 'Check not yet implemented — pending sentinel update.'),
+      details: String(llmCheck?.detail || 'Check not yet implemented — pending sentinel update.'),
+      remediation: String(llmCheck?.threshold || 'Pending sentinel update.'),
+      checked_at: timestamp || state.generatedAt
+    };
+
+    return [proxyAnonymization, llmBypass];
+  }
+
+  function getAllChecks() {
+    const base = Array.isArray(state.checks) ? [...state.checks] : [];
+    const filtered = base.filter((check) => {
+      const key = `${String(check.layer || '')}|${String(check.name || '').toLowerCase()}`;
+      return key !== 'network_brute_force|proxy anonymization' && key !== 'network_brute_force|llm proxy bypass';
+    });
+    return [...filtered, ...buildProxySecurityChecks()];
+  }
+
   function switchSection(section) {
     state.activeSection = section;
     ['posture', 'enforcement', 'integrity'].forEach((name) => {
@@ -344,7 +396,7 @@ tbody tr.expandable-row { cursor: pointer; }
   }
 
   function renderPostureCards() {
-    const checks = state.checks;
+    const checks = getAllChecks();
     const total = checks.length;
     const green = checks.filter((c) => c.status === 'green').length;
     const yellow = checks.filter((c) => c.status === 'yellow').length;
@@ -359,10 +411,11 @@ tbody tr.expandable-row { cursor: pointer; }
   }
 
   function renderContextBars() {
-    const total = state.checks.length;
-    const green = state.checks.filter((c) => c.status === 'green').length;
-    const yellow = state.checks.filter((c) => c.status === 'yellow').length;
-    const red = state.checks.filter((c) => c.status === 'red').length;
+    const checks = getAllChecks();
+    const total = checks.length;
+    const green = checks.filter((c) => c.status === 'green').length;
+    const yellow = checks.filter((c) => c.status === 'yellow').length;
+    const red = checks.filter((c) => c.status === 'red').length;
     const txt = `${green}/${total} passing · ${yellow} warning · ${red} failures · scanned ${rel(state.generatedAt)} ago`;
     refs.enforcementContext.textContent = txt;
     
@@ -385,8 +438,23 @@ tbody tr.expandable-row { cursor: pointer; }
   }
 
   function sortedChecks() {
-    const list = state.checks.filter(ch => ch.layer !== 'version');
-    list.sort((a, b) => layerRank(a.layer) - layerRank(b.layer) || getCheckName(a).localeCompare(getCheckName(b)));
+    const list = getAllChecks().filter(ch => ch.layer !== 'version');
+    list.sort((a, b) => {
+      const rankDelta = layerRank(a.layer) - layerRank(b.layer);
+      if (rankDelta !== 0) return rankDelta;
+      if (a.layer === 'network_brute_force' && b.layer === 'network_brute_force') {
+        const l1Order = {
+          'ufw firewall': 0,
+          'fail2ban': 1,
+          'proxy anonymization': 2,
+          'llm proxy bypass': 3
+        };
+        const aOrder = l1Order[getCheckName(a).toLowerCase()];
+        const bOrder = l1Order[getCheckName(b).toLowerCase()];
+        if (aOrder !== undefined || bOrder !== undefined) return (aOrder ?? 99) - (bOrder ?? 99);
+      }
+      return getCheckName(a).localeCompare(getCheckName(b));
+    });
     return list;
   }
 
@@ -578,10 +646,14 @@ tbody tr.expandable-row { cursor: pointer; }
     }
   }
 
-    async function loadHealth() {
-    const data = await api('/api/security/health');
+  async function loadHealth() {
+    const [data, proxySentinel] = await Promise.all([
+      api('/api/security/health'),
+      api('/api/proxy/sentinel').catch(() => ({ available: false }))
+    ]);
     state.checks = Array.isArray(data.checks) ? data.checks : [];
     state.generatedAt = data.generated_at;
+    state.proxySentinel = proxySentinel;
     renderPostureCards();
     renderContextBars();
     renderDefenseGrid();
@@ -627,9 +699,13 @@ tbody tr.expandable-row { cursor: pointer; }
     refs.checkNowBtn.disabled = true;
       refs.checkNowBtn.textContent = 'Checking...';
     try {
-      const data = await api('/api/security/recheck', { method: 'POST' });
+      const [data, proxySentinel] = await Promise.all([
+        api('/api/security/recheck', { method: 'POST' }),
+        api('/api/proxy/sentinel').catch(() => ({ available: false }))
+      ]);
       state.checks = Array.isArray(data.checks) ? data.checks : state.checks;
       state.generatedAt = data.generated_at || state.generatedAt;
+      state.proxySentinel = proxySentinel;
       renderPostureCards();
       renderContextBars();
       renderDefenseGrid();
@@ -677,7 +753,7 @@ tbody tr.expandable-row { cursor: pointer; }
       const row = target.closest('tr[data-row-id]');
       if (!row) return;
       const rowId = row.dataset.rowId;
-      const check = state.checks.find((c) => `${c.layer}|${getCheckName(c)}` === rowId);
+      const check = getAllChecks().find((c) => `${c.layer}|${getCheckName(c)}` === rowId);
       const actionLink = target.closest('[data-action="switch"]');
       if (actionLink) {
         event.preventDefault();
