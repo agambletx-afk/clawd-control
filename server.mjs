@@ -5534,8 +5534,10 @@ const server = createServer(async (req, res) => {
 
   function filterVersionPayload(payload) {
     if (!payload || payload.status !== 'update_available') return payload;
-    const installed = String(payload.current_version || payload.installed_version || '');
-    const installedParts = installed.split('-')[0].split('.').map(Number);
+    const rawInstalled = String(payload.current_version || payload.installed_version || '');
+    const vMatch = rawInstalled.match(/(\d{4}\.\d+\.\d+)/);
+    const installed = vMatch ? vMatch[1] : rawInstalled;
+    const installedParts = installed.split('.').map(Number);
     const iMajor = installedParts[0] || 0;
     const iMinor = installedParts[1] || 0;
     const iPatch = installedParts[2] || 0;
