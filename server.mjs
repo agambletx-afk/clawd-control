@@ -1182,37 +1182,43 @@ function getAutomationUsageSummary() {
     });
   }
 
-  const heartbeatSession = sessionsObj['agent:main:main:heartbeat'] || sessionsObj.heartbeat || null;
-  if (heartbeatSession) {
-    const summary = heartbeatSession?.summary || heartbeatSession?.usage || heartbeatSession;
-    const fallbackHeartbeatTotal = Number(sessionTokenMap.get('agent:main:main:heartbeat') || sessionTokenMap.get('heartbeat') || 0);
-    const hbInput = Number(summary?.inputTokens ?? summary?.input_tokens ?? 0);
-    const hbOutput = Number(summary?.outputTokens ?? summary?.output_tokens ?? 0);
-    const hbCacheRead = Number(summary?.cacheReadTokens ?? summary?.cache_read_tokens ?? 0);
-    const hbComputedTotal = hbInput + hbOutput + hbCacheRead;
-    const totalTokens = Number(summary?.totalTokens ?? summary?.total_tokens ?? summary?.tokens ?? 0) || hbComputedTotal || fallbackHeartbeatTotal;
-    const runCount = Number(summary?.runs_24h ?? summary?.run_count_24h ?? summary?.runCount24h ?? 0);
-    const hasPerRun = Number.isFinite(runCount) && runCount > 0;
-    const safeTotal = Number.isFinite(totalTokens) && totalTokens > 0 ? Math.round(totalTokens) : 0;
-    const avgPerRun = hasPerRun ? Math.round(safeTotal / runCount) : safeTotal;
-
-    totalAutomationTokens += safeTotal;
-
+  // Parse heartbeat JSONL for real per-run data (input+output only, excludes cache)
+  const heartbeatMeta = sessionsObj['agent:main:main:heartbeat'] || sessionsObj.heartbeat || null;
+  if (heartbeatMeta) {
+    const hbSessionFile = heartbeatMeta?.sessionFile || '';
+    let hbRuns = 0;
+    let hbFreshTokens = 0;
+    if (hbSessionFile && existsSync(hbSessionFile)) {
+      try {
+        const hbLines = readFileSync(hbSessionFile, 'utf8').split('\n');
+        for (const line of hbLines) {
+          if (!line.includes('"usage"')) continue;
+          const tsMatch = line.match(/"timestamp":"([^"]+)"/);
+          const usageMatch = line.match(/"usage":\{"input":(\d+),"output":(\d+)/);
+          if (!tsMatch || !usageMatch) continue;
+          const ts = new Date(tsMatch[1]).getTime();
+          if (!Number.isFinite(ts) || ts < cutoffMs) continue;
+          hbRuns++;
+          hbFreshTokens += Number(usageMatch[1]) + Number(usageMatch[2]);
+        }
+      } catch { /* file read error */ }
+    }
+    const hasPerRun = hbRuns > 0;
+    const avgPerRun = hasPerRun ? Math.round(hbFreshTokens / hbRuns) : 0;
+    totalAutomationTokens += hbFreshTokens;
     sources.push({
       name: 'Heartbeat',
       kind: 'heartbeat',
-      runs_24h: hasPerRun ? runCount : null,
-      total_tokens_24h: safeTotal,
+      runs_24h: hasPerRun ? hbRuns : null,
+      total_tokens_24h: hbFreshTokens,
       avg_tokens_per_run: avgPerRun,
       expected_range: hasPerRun ? expectedRanges.heartbeat : null,
-      failed_runs_24h: Number(summary?.failed_runs_24h || 0),
-      failed_tokens_24h: Number(summary?.failed_tokens_24h || 0),
+      failed_runs_24h: 0,
+      failed_tokens_24h: 0,
       status: hasPerRun ? classifyAutomationStatus(expectedRanges.heartbeat, avgPerRun) : 'neutral',
-      note: hasPerRun ? null : 'Per-run breakdown unavailable',
+      note: hasPerRun ? 'Fresh tokens (input+output, excludes cache)' : null,
     });
   }
-
-  sources.sort((a, b) => Number(b.total_tokens_24h || 0) - Number(a.total_tokens_24h || 0));
 
   const wasteRatio = totalAutomationTokens > 0 ? (totalFailedTokens / totalAutomationTokens) : 0;
 
