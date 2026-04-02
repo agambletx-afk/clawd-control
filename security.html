@@ -553,17 +553,29 @@ tbody tr.expandable-row { cursor: pointer; }
         input?.focus();
         return;
       }
-      await acceptBaseline();
+      await acceptBaseline(acceptBtn);
     });
     confirm?.addEventListener('click', async () => {
       if ((input?.value || '').trim() !== 'ACCEPT') return;
-      await acceptBaseline();
+      await acceptBaseline(confirm);
     });
   }
 
-  async function acceptBaseline() {
-    await api('/api/security/config-drift/ack', { method: 'POST' });
-    await loadHealth();
+  async function acceptBaseline(triggerBtn) {
+    const btn = triggerBtn || document.getElementById('acceptBaselineBtn');
+    const origText = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Rebaselining...'; }
+    try {
+      await api('/api/security/config-drift/ack', { method: 'POST' });
+      if (btn) btn.textContent = 'Accepted';
+      await triggerRecheck();
+    } catch (e) {
+      if (btn) { btn.textContent = origText; btn.disabled = false; }
+      alert('Accept baseline failed: ' + (e.message || 'Unknown error'));
+      return;
+    } finally {
+      if (btn) btn.disabled = false;
+    }
   }
 
     async function loadHealth() {
@@ -728,21 +740,28 @@ tbody tr.expandable-row { cursor: pointer; }
       const btn = refs.acknowledgeBtn;
       const origText = btn.textContent;
       btn.disabled = true;
-      btn.textContent = 'Acknowledging...';
+      btn.textContent = 'Rebaselining...';
       try {
-        const res = await fetch('/api/security/acknowledge', {
+        // Rebaseline critical file hashes so drift clears immediately
+        const rbRes = await fetch('/api/ops/integrity/rebaseline', {
+          method: 'POST',
+          credentials: 'same-origin',
+        });
+        const rbData = await rbRes.json().catch(() => ({}));
+        if (!rbRes.ok) throw new Error(rbData.error || `Rebaseline failed: HTTP ${rbRes.status}`);
+
+        // Also fire the existing acknowledge for audit logging
+        await fetch('/api/security/acknowledge', {
           method: 'POST',
           credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ layer: 'reasoning', note: 'Acknowledged from dashboard' }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        }).catch(() => {});
+
         btn.textContent = 'Acknowledged';
+        await loadIntegrityFiles();
         await triggerRecheck();
       } catch (e) {
-        // If the request failed but the action may have succeeded server-side,
-        // attempt a recheck to reflect current state before showing the error.
         try { await triggerRecheck(); } catch {}
         btn.textContent = origText;
         btn.disabled = false;
