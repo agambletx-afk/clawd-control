@@ -143,6 +143,9 @@
       from { transform: rotate(0deg); }
       to { transform: rotate(360deg); }
     }
+    .spinning svg {
+      animation: spin 0.8s linear infinite;
+    }
 
     .version-check-details {
       border-top: 1px solid var(--border-subtle);
@@ -2690,8 +2693,7 @@
     async function refreshVersionCheck(btn) {
       if (!btn) return;
       btn.disabled = true;
-      btn.innerHTML = '<span class="spin"><i data-lucide="refresh-cw"></i></span>';
-      renderLucideIcons();
+      btn.classList.add("spinning");
       try {
         const data = await api('/api/ops/version-check/refresh', { method: 'POST' });
         renderVersionCheck(data);
@@ -2700,8 +2702,7 @@
         toast(error.message);
       } finally {
         btn.disabled = false;
-        btn.innerHTML = '<i data-lucide="refresh-cw"></i>';
-        renderLucideIcons();
+        btn.classList.remove("spinning");
       }
     }
 
