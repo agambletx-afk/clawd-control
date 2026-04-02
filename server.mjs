@@ -1185,7 +1185,8 @@ function getAutomationUsageSummary() {
   const heartbeatSession = sessionsObj['agent:main:main:heartbeat'] || sessionsObj.heartbeat || null;
   if (heartbeatSession) {
     const summary = heartbeatSession?.summary || heartbeatSession?.usage || heartbeatSession;
-    const totalTokens = Number(summary?.totalTokens ?? summary?.total_tokens ?? summary?.tokens ?? 0);
+    const fallbackHeartbeatTotal = Number(sessionTokenMap.get('agent:main:main:heartbeat') || sessionTokenMap.get('heartbeat') || 0);
+    const totalTokens = Number(summary?.totalTokens ?? summary?.total_tokens ?? summary?.tokens ?? fallbackHeartbeatTotal ?? 0);
     const runCount = Number(summary?.runs_24h ?? summary?.run_count_24h ?? summary?.runCount24h ?? 0);
     const hasPerRun = Number.isFinite(runCount) && runCount > 0;
     const safeTotal = Number.isFinite(totalTokens) && totalTokens > 0 ? Math.round(totalTokens) : 0;
@@ -1294,6 +1295,7 @@ function resolveSessionDisplayName(sessionKey, cronJobNames) {
     const jobId = cronMatch[1];
     const friendly = cronJobNames.get(jobId);
     if (friendly) return friendly;
+    return 'Unknown cron';
   }
   return null;
 }
@@ -1336,6 +1338,8 @@ function getUsageSessionsSummary() {
   const deprecatedModels = new Set(['gpt-5.3-codex', 'sonnet-4-5']);
   const modelCatalog = buildModelCatalog();
   const cronJobNames = buildCronJobNameMap();
+  const now = Date.now();
+  const cutoffMs = now - (7 * 24 * 60 * 60 * 1000);
   const payload = readJsonSafe(SESSIONS_METADATA_PATH, {});
   const sessionsObj = (payload && typeof payload === 'object')
     ? (payload.sessions && typeof payload.sessions === 'object' ? payload.sessions : payload)
@@ -1360,6 +1364,8 @@ function getUsageSessionsSummary() {
       ? Number((Math.max(0, contextTokens) / contextMax).toFixed(4))
       : null;
 
+    const updatedAt = Number(value?.updatedAt ?? summary?.updatedAt ?? summary?.updated_at ?? 0) || 0;
+
     return {
       key,
       kind: deriveUsageSessionKind(key),
@@ -1371,13 +1377,18 @@ function getUsageSessionsSummary() {
       context_max: contextMax,
       context_utilization: contextUtilization,
       message_count: Number(summary?.messageCount ?? summary?.message_count ?? summary?.messages ?? 0) || 0,
-      updated_at: Number(value?.updatedAt ?? summary?.updatedAt ?? summary?.updated_at ?? 0) || 0,
+      updated_at: updatedAt,
       growth_delta_24h: null,
     };
-  }).sort((a, b) => b.total_tokens - a.total_tokens);
+  })
+    .filter((session) => Number.isFinite(session.updated_at) && session.updated_at > 0 && session.updated_at >= cutoffMs)
+    .sort((a, b) => b.updated_at - a.updated_at);
 
   const totalTokensAll = sessions.reduce((sum, s) => sum + Number(s.total_tokens || 0), 0);
-  const top3Tokens = sessions.slice(0, 3).reduce((sum, s) => sum + Number(s.total_tokens || 0), 0);
+  const top3Tokens = [...sessions]
+    .sort((a, b) => Number(b.total_tokens || 0) - Number(a.total_tokens || 0))
+    .slice(0, 3)
+    .reduce((sum, s) => sum + Number(s.total_tokens || 0), 0);
   const top3Pct = totalTokensAll > 0 ? (top3Tokens / totalTokensAll) * 100 : 0;
 
   return {
