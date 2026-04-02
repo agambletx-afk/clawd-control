@@ -282,6 +282,13 @@
     return `${Math.floor(h / 24)}d ago`;
   };
   const fmtGb = (n, d=2) => Number(n || 0).toFixed(d);
+  const fmtResetCentral = (iso) => {
+    if (!iso) return '';
+    try {
+      const d = new Date(iso);
+      return d.toLocaleString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    } catch { return ''; }
+  };
 
   function card({label, value, sub, footer='', low=false, valueClass=''}) {
     const footerHtml = footer ? `<div class="stat-footer">${footer}</div>` : '';
@@ -310,6 +317,7 @@
         label:'Anthropic',
         value:`<span class="resource-pressure-value-main">${Math.round(Number(anthropic.session_pct || 0))}% · ${Math.round(Number(anthropic.weekly_pct || 0))}%</span><span class="resource-pressure-value-sub"><span>5h session</span><span>7d rolling</span></span>`,
         sub: anthropic.plan || 'Subscription plan',
+        footer: anthropic.weekly_reset ? `Resets: ${fmtResetCentral(anthropic.weekly_reset)}` : '',
       }));
     } else {
       items.push(card({ label:'Anthropic', value:'—', sub:'No metered telemetry — subscription plan', low:true }));
@@ -320,7 +328,7 @@
         label:'OpenAI / Codex',
         value:`<span class="resource-pressure-value-main">${Math.round(Number(codex.session_pct || 0))}% · ${Math.round(Number(codex.weekly_pct || 0))}%</span><span class="resource-pressure-value-sub"><span>5h session</span><span>7d rolling</span></span>`,
         sub: 'Codex CLI',
-        footer: codex.weekly_reset ? `Weekly resets: ${new Date(codex.weekly_reset).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : '',
+        footer: codex.weekly_reset ? `Resets: ${fmtResetCentral(codex.weekly_reset)}` : '',
       }));
     } else {
       items.push(card({ label:'OpenAI / Codex', value:'—', sub:'No metered telemetry', low:true }));
