@@ -5532,6 +5532,62 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (path === '/api/ops/integrity/rebaseline' && req.method === 'POST') {
+    const started = Date.now();
+    try {
+      const existing = readJsonSafe(OPS_CRITICAL_HASHES_PATH, { files: {}, generated_at: null });
+      const filePaths = Object.keys(existing?.files && typeof existing.files === 'object' ? existing.files : {});
+      if (!filePaths.length) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'No critical files defined in baseline' }));
+        return;
+      }
+
+      const updatedFiles = {};
+      for (const fp of filePaths) {
+        try {
+          const content = readFileSync(fp);
+          const sha256 = createHash('sha256').update(content).digest('hex');
+          const size = content.length;
+          updatedFiles[fp] = { sha256, size };
+        } catch {
+          // File missing or unreadable — preserve old entry with a flag
+          updatedFiles[fp] = existing.files[fp] || { sha256: null, size: 0, error: 'unreadable' };
+        }
+      }
+
+      const payload = {
+        files: updatedFiles,
+        generated_at: new Date().toISOString(),
+      };
+      writeFileSync(OPS_CRITICAL_HASHES_PATH, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+
+      logAction({
+        category: 'security',
+        action: 'integrity-rebaseline',
+        target: OPS_CRITICAL_HASHES_PATH,
+        status: 'success',
+        detail: `Rebaselined ${filePaths.length} critical files`,
+        duration_ms: Date.now() - started,
+      });
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ rebaselined: true, file_count: filePaths.length, generated_at: payload.generated_at }));
+    } catch (e) {
+      logAction({
+        category: 'security',
+        action: 'integrity-rebaseline',
+        target: OPS_CRITICAL_HASHES_PATH,
+        status: 'failed',
+        detail: truncateOutput(e.message),
+        duration_ms: Date.now() - started,
+      });
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
   function filterVersionPayload(payload) {
     if (!payload || payload.status !== 'update_available') return payload;
     const rawInstalled = String(payload.current_version || payload.installed_version || '');
