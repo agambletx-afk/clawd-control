@@ -13,18 +13,19 @@
     .page-header { margin-bottom: 16px; }
     .page-header h1 { font-size: 20px; font-weight: 700; text-shadow: 0 0 8px rgba(20,184,166,.45); }
     .page-header .subtitle { font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
-    .section { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 16px; margin-bottom: 16px; }
+    .section { background: #161b26; border: 1px solid #363b4d; border-radius: var(--radius-lg); padding: 16px; margin-bottom: 16px; }
     .section-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
     .section-title { font-size: 14px; font-weight: 600; color: var(--text-primary); }
     .section-subtitle { margin-top: 2px; font-size: 12px; color: var(--text-secondary); }
     .stats-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; }
-    .stat-card { position: relative; border: 1px solid #363b4d; border-radius: 12px; background: #131722; padding: 12px; min-height: 102px; }
+    .stat-card { position: relative; border: 1px solid #363b4d; border-radius: 12px; background: #1e2535; padding: 12px; min-height: 102px; }
     .stat-card::before { content: ''; position: absolute; left: 0; top: 0; height: 100%; width: 2px; border-radius: 12px 0 0 12px; background: linear-gradient(180deg,var(--usage-domain),transparent); }
-    .stat-card.low-emphasis { border-color: #2a3040; background: #11151d; padding: 9px 10px; min-height: 88px; }
+    .stat-card.low-emphasis { border-color: #2a3040; background: #1e2535; padding: 9px 10px; min-height: 88px; }
     .stat-card.low-emphasis::before { display: none; }
     .stat-label { text-transform: uppercase; letter-spacing: .08em; font-size: 11px; color: #94a3b8; }
     .stat-value { margin-top: 8px; font: 700 22px/1.2 var(--font-mono); color: #e2e8f0; }
     .stat-sub { margin-top: 8px; font-size: 12px; color: #94a3b8; }
+    .stat-footer { margin-top: 6px; font-size: 11px; color: #64748b; }
     .value-amber { color: #f59e0b; }
     .value-red { color: #ef4444; }
 
@@ -32,10 +33,13 @@
     .range-pill { border: 1px solid var(--border); border-radius: 999px; padding: 4px 10px; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 12px; }
     .range-pill.active { border-color: var(--usage-border); background: var(--usage-soft); color: #5eead4; }
 
-    .chart-wrap { border: 1px solid var(--border-subtle); border-radius: 12px; background: #0f131d; padding: 10px; }
+    .chart-wrap { border: 1px solid var(--border-subtle); border-radius: 12px; background: #1e2535; padding: 10px; }
     .chart-canvas { width: 100%; height: 280px; display: block; }
+    .chart-legend { display:flex; align-items:center; gap:14px; margin: 0 0 10px; flex-wrap: wrap; }
+    .legend-item { display:inline-flex; align-items:center; gap:6px; font-size: 11px; color:#cbd5e1; }
+    .legend-line { width:22px; height:0; border-top: 2px solid; }
     .mini-stats { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 8px; margin-top: 10px; }
-    .mini-stat { border: 1px solid var(--border-subtle); border-radius: 10px; padding: 8px; background: #111623; }
+    .mini-stat { border: 1px solid var(--border-subtle); border-radius: 10px; padding: 8px; background: #1e2535; }
     .mini-label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: #94a3b8; }
     .mini-value { margin-top: 5px; font: 600 14px var(--font-mono); color: #e2e8f0; }
 
@@ -52,7 +56,7 @@
     .status-pill.neutral { color:#94a3b8; }
     .waste-row td { background: rgba(148,163,184,.05); }
     .empty { color: #94a3b8; font-size: 12px; padding: 12px; }
-    .collapsible-panel { border: 1px solid var(--border-subtle); border-radius: 12px; background: #121722; overflow: hidden; }
+    .collapsible-panel { border: 1px solid var(--border-subtle); border-radius: 12px; background: #1e2535; overflow: hidden; }
     .collapsible-header { width: 100%; border: none; background: transparent; display:flex; align-items:center; justify-content:space-between; gap:10px; padding: 10px 12px; color: inherit; cursor: pointer; text-align: left; }
     .collapsible-header-meta { display:flex; align-items:center; gap: 8px; color: var(--text-secondary); font-size: 12px; }
     .collapsible-count { border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; font-size: 11px; font-family: var(--font-mono); }
@@ -77,9 +81,9 @@
     .context-fill.warn { background:#f59e0b; }
     .context-fill.crit { background:#ef4444; }
     .proxy-kpi-grid { display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; }
-    .proxy-chart-wrap { border:1px solid var(--border-subtle); border-radius: 12px; background:#0f131d; padding: 10px; margin-top: 12px; }
+    .proxy-chart-wrap { border:1px solid var(--border-subtle); border-radius: 12px; background:#1e2535; padding: 10px; margin-top: 12px; }
     .proxy-canvas { width:100%; height:220px; display:block; }
-    .nested-panel { border: 1px solid var(--border-subtle); border-radius: 10px; background: #111623; overflow:hidden; margin-top: 10px; }
+    .nested-panel { border: 1px solid var(--border-subtle); border-radius: 10px; background: #1e2535; overflow:hidden; margin-top: 10px; }
     .nested-header { width:100%; border:none; background: transparent; display:flex; align-items:center; justify-content:space-between; padding: 8px 10px; color: inherit; cursor: pointer; text-align:left; }
     .nested-body { max-height: 0; overflow: hidden; transition: max-height .25s ease; border-top: 1px solid transparent; }
     .nested-body.open { border-top-color: var(--border-subtle); }
@@ -109,7 +113,7 @@
     <div class="section-header">
       <div>
         <div class="section-title">Resource Pressure</div>
-        <div class="section-subtitle">Provider limits, subscriptions, and proxy runway</div>
+        <div class="section-subtitle">Provider limits, subscriptions, and proxy balance</div>
       </div>
     </div>
     <div class="stats-grid" id="resourceGrid"></div>
@@ -128,13 +132,22 @@
       </div>
     </div>
     <div class="chart-wrap">
+      <div class="chart-legend" aria-label="Token chart legend">
+        <span class="legend-item"><span class="legend-line" style="border-top-color:#14b8a6"></span>Input</span>
+        <span class="legend-item"><span class="legend-line" style="border-top-color:#5eead4"></span>Output</span>
+        <span class="legend-item"><span class="legend-line" style="border-top-color:#94a3b8;border-top-style:dashed"></span>Cache reads</span>
+      </div>
       <canvas id="tokenChart" class="chart-canvas" width="1200" height="280"></canvas>
     </div>
     <div class="mini-stats" id="periodStats"></div>
+  </section>
 
-    <div class="budget-header">
-      <div class="section-title">Automation Token Budget</div>
-      <div class="section-subtitle">Per-source token allocation and waste detection</div>
+  <section class="section">
+    <div class="section-header">
+      <div>
+        <div class="section-title">Automation Token Budget</div>
+        <div class="section-subtitle">Per-source token allocation and waste detection</div>
+      </div>
     </div>
     <div style="overflow:auto">
       <table class="budget-table" id="budgetTable">
@@ -179,7 +192,7 @@
     <div class="collapsible-panel">
       <button id="proxyPanelHeader" class="collapsible-header" aria-label="Toggle proxy consumption" aria-expanded="false">
         <div class="collapsible-header-meta">
-          <span id="proxyHeaderSummary" class="collapsible-count">— GB remaining · ~— days</span>
+          <span id="proxyHeaderSummary" class="collapsible-count">— GB remaining</span>
         </div>
         <span id="proxyPanelChevron" class="boxed-chevron"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
       </button>
@@ -264,8 +277,9 @@
   };
   const fmtGb = (n, d=2) => Number(n || 0).toFixed(d);
 
-  function card({label, value, sub, low=false, valueClass=''}) {
-    return `<div class="stat-card ${low ? 'low-emphasis' : ''}"><div class="stat-label">${label}</div><div class="stat-value ${valueClass}">${value}</div><div class="stat-sub">${sub}</div></div>`;
+  function card({label, value, sub, footer='', low=false, valueClass=''}) {
+    const footerHtml = footer ? `<div class="stat-footer">${footer}</div>` : '';
+    return `<div class="stat-card ${low ? 'low-emphasis' : ''}"><div class="stat-label">${label}</div><div class="stat-value ${valueClass}">${value}</div><div class="stat-sub">${sub}</div>${footerHtml}</div>`;
   }
 
   function getProvider(cli, keyNames) {
@@ -282,31 +296,31 @@
     const rpdPct = rpd.limit > 0 ? (rpd.used / rpd.limit) * 100 : 0;
 
     const remainingGb = Number(state.proxy?.computed?.remaining_gb || 0);
-    const history = state.proxyHistory?.raw?.traffic_history || [];
-    const recent = history.slice(-7);
-    const burn = recent.length ? recent.reduce((sum, d) => sum + Number(d.total_traffic || 0), 0) / recent.length / (1024**3) : 0;
-    const days = burn > 0 ? (remainingGb / burn) : Infinity;
+    const totalGb = Number(state.proxy?.computed?.total_gb || 25);
 
     const items = [];
     if (anthropic && anthropic.session_pct != null) {
-      items.push(card({ label:'Anthropic', value:`${Number(anthropic.session_pct).toFixed(1)}%`, sub: anthropic.plan || 'Subscription plan' }));
+      items.push(card({ label:'Anthropic', value:`5h: ${Number(anthropic.session_pct || 0).toFixed(1)}% · 7d: ${Number(anthropic.weekly_pct || 0).toFixed(1)}%`, sub: anthropic.plan || 'Subscription plan' }));
     } else {
       items.push(card({ label:'Anthropic', value:'—', sub:'No metered telemetry — subscription plan', low:true }));
     }
 
     if (codex && (codex.session_pct != null || codex.weekly_pct != null)) {
-      items.push(card({ label:'OpenAI / Codex', value:`${Number(codex.session_pct || 0).toFixed(1)}% / ${Number(codex.weekly_pct || 0).toFixed(1)}%`, sub: codex.plan || codex.name || 'Subscription plan' }));
+      items.push(card({
+        label:'OpenAI / Codex',
+        value:`5h: ${Number(codex.session_pct || 0).toFixed(1)}% · 7d: ${Number(codex.weekly_pct || 0).toFixed(1)}%`,
+        sub: 'Codex CLI',
+        footer: codex.weekly_reset ? `Weekly resets: ${new Date(codex.weekly_reset).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : '',
+      }));
     } else {
       items.push(card({ label:'OpenAI / Codex', value:'—', sub:'No metered telemetry', low:true }));
     }
 
     const geminiClass = rpdPct > 95 ? 'value-red' : (rpdPct > 80 ? 'value-amber' : '');
-    items.push(card({ label:'Gemini', value:`${fmtNum(rpd.used)} / ${fmtNum(rpd.limit)} RPD`, sub:'Resets daily', valueClass: geminiClass }));
+    const geminiIdle = Number(rpd.used || 0) === 0 && Number(rpd.limit || 0) > 0;
+    items.push(card({ label:'Gemini', value:`${fmtNum(rpd.used)} / ${fmtNum(rpd.limit)} RPD`, sub: geminiIdle ? 'Rate tracker idle' : 'Resets daily', valueClass: geminiClass }));
 
-    const runwayClass = days < 1 ? 'value-red' : (days < 5 ? 'value-amber' : '');
-    const runwayVal = Number.isFinite(days) ? `${days.toFixed(1)}d` : '∞';
-    const runwaySub = Number.isFinite(days) ? `${remainingGb.toFixed(1)} GB remaining` : 'No traffic — idle';
-    items.push(card({ label:'Proxy Runway', value:runwayVal, sub:runwaySub, valueClass: runwayClass }));
+    items.push(card({ label:'Proxy', value:`${remainingGb.toFixed(1)} GB`, sub:`of ${fmtGb(totalGb, 0)} GB total` }));
 
     $('resourceGrid').innerHTML = items.join('');
   }
@@ -314,6 +328,7 @@
   function rangeData() {
     const arr = [...(state.tokens?.overTime || [])];
     if (state.range === 7) return arr;
+    if (state.range === 1) return arr.length > 1 ? arr.slice(-2) : arr.slice(-1);
     return arr.slice(-state.range);
   }
 
@@ -341,7 +356,7 @@
     const ctx = canvas.getContext('2d');
     const w = canvas.width, h = canvas.height;
     ctx.clearRect(0,0,w,h);
-    const p = {l:52,r:16,t:12,b:36};
+    const p = {l:52,r:16,t:12,b:44};
     const series = {
       input: points.map(x => Number(x.inputTokens || 0)),
       output: points.map(x => Number(x.outputTokens || 0)),
@@ -366,6 +381,12 @@
       ctx.beginPath(); ctx.setLineDash(dash); ctx.strokeStyle = color; ctx.lineWidth = 2;
       arr.forEach((v,i)=>{ const xx=x(i), yy=y(v); i?ctx.lineTo(xx,yy):ctx.moveTo(xx,yy); });
       ctx.stroke(); ctx.setLineDash([]);
+      if (arr.length === 1) {
+        ctx.beginPath();
+        ctx.arc(x(0), y(arr[0]), 3.5, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+      }
     };
     drawLine(series.input, '#14b8a6');
     drawLine(series.output, '#5eead4');
@@ -379,7 +400,10 @@
     });
 
     ctx.fillStyle = '#94a3b8'; ctx.font = '11px Inter';
-    points.forEach((pt,i)=>{ ctx.fillText(fmtDay(pt.date), x(i)-16, h-12); });
+    points.forEach((pt,i)=>{
+      if (points.length > 5 && (i % 2 === 1)) return;
+      ctx.fillText(fmtDay(pt.date), x(i)-16, h-10);
+    });
   }
 
   function renderAutomation() {
@@ -408,11 +432,20 @@
     body.innerHTML = rows.join('');
   }
 
-  const sessionLabel = (key) => {
-    const parts = String(key || '').split(':');
-    if (parts.length < 2) return key || '—';
+  const sessionLabel = (session) => {
+    if (session?.display_name) return session.display_name;
+    const parts = String(session?.key || '').split(':');
+    if (parts.length < 2) return session?.key || '—';
     return parts.slice(-2).join(':');
   };
+
+  function recalcProxyPanelHeight() {
+    const body = $('proxyPanelBody');
+    if (!body || !state.proxyPanelOpen) return;
+    requestAnimationFrame(() => {
+      body.style.maxHeight = `${body.scrollHeight}px`;
+    });
+  }
 
   function toggleCollapsible(bodyId, open, chevronId, headerId) {
     const body = $(bodyId);
@@ -453,7 +486,7 @@
         ? `<div class="context-inline"><div class="context-track"><div class="context-fill ${utilClass}" style="width:${utilPct.toFixed(1)}%"></div></div><span class="mono">${fmtNum(s.context_tokens)} / ${fmtNum(s.context_max)}</span></div>`
         : '—';
       return `<tr>
-        <td><a class="session-link" href="sessions.html#session=${encodeURIComponent(s.key)}">${sessionLabel(s.key)}</a><span class="kind-badge">${s.kind || 'other'}</span><div class="session-key-sub mono">${s.key}</div></td>
+        <td><a class="session-link" href="sessions.html#session=${encodeURIComponent(s.key)}">${sessionLabel(s)}</a><span class="kind-badge">${s.kind || 'other'}</span><div class="session-key-sub mono">${s.key}</div></td>
         <td class="mono">${s.model || 'unknown'}${modelBadge}</td>
         <td class="mono" style="text-align:right">${fmtNum(s.total_tokens)}</td>
         <td>${contextCell}</td>
@@ -544,7 +577,7 @@
     const runway = burn > 0 ? (remaining / burn) : Infinity;
     const daily = Number.isFinite(burn) ? burn : 0;
     const success24h = parseProxy24h(state.proxyHistory30 || stats);
-    $('proxyHeaderSummary').textContent = `${fmtGb(remaining, 1)} GB remaining · ${Number.isFinite(runway) ? `~${runway.toFixed(0)} days` : '~∞ days'}`;
+    $('proxyHeaderSummary').textContent = `${fmtGb(remaining, 1)} GB remaining`;
 
     $('proxyKpiGrid').innerHTML = [
       card({ label: 'Remaining Balance', value: `${fmtGb(remaining, 1)} GB`, sub: `of ${fmtGb(totalGb, 0)} GB total`, low: false }),
@@ -599,13 +632,14 @@
 
   function renderProxyConfig() {
     const sent = state.proxySentinel || {};
+    const hasSentinel = Boolean(sent?.data);
     const exitDetail = sent?.data?.checks?.proxy_exit_ip?.detail || '';
     const rows = [
       ['Proxy host', 'gw.dataimpulse.com'],
       ['Port', '823'],
       ['Connection mode', 'residential'],
-      ['Last verified', sent?.data?.timestamp ? new Date(sent.data.timestamp).toLocaleString() : '—'],
-      ['Current exit IP', maskExitIp(exitDetail)],
+      ['Last verified', hasSentinel && sent?.data?.timestamp ? new Date(sent.data.timestamp).toLocaleString() : 'Pending sentinel data'],
+      ['Current exit IP', hasSentinel ? maskExitIp(exitDetail) : 'Pending sentinel data'],
     ];
     $('proxyConfigRows').innerHTML = rows.map(([k, v]) => `<div class="config-row"><div class="config-key">${k}</div><div class="config-val">${v}</div></div>`).join('');
   }
@@ -634,6 +668,7 @@
     renderProxyErrors();
     renderProxyConfig();
     if (state.proxyTrafficLoaded) drawProxyChart(state.proxyHistory30);
+    recalcProxyPanelHeight();
   }
 
   function renderTokensPanel() {
@@ -685,14 +720,17 @@
   $('topSitesHeader').addEventListener('click', () => {
     state.topSitesOpen = !state.topSitesOpen;
     toggleCollapsible('topSitesBody', state.topSitesOpen, 'topSitesChevron', 'topSitesHeader');
+    setTimeout(recalcProxyPanelHeight, 260);
   });
   $('proxyErrorsHeader').addEventListener('click', () => {
     state.proxyErrorsOpen = !state.proxyErrorsOpen;
     toggleCollapsible('proxyErrorsBody', state.proxyErrorsOpen, 'proxyErrorsChevron', 'proxyErrorsHeader');
+    setTimeout(recalcProxyPanelHeight, 260);
   });
   $('proxyConfigHeader').addEventListener('click', () => {
     state.proxyConfigOpen = !state.proxyConfigOpen;
     toggleCollapsible('proxyConfigBody', state.proxyConfigOpen, 'proxyConfigChevron', 'proxyConfigHeader');
+    setTimeout(recalcProxyPanelHeight, 260);
   });
 
   load();
