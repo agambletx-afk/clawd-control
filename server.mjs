@@ -4860,16 +4860,21 @@ const server = createServer(async (req, res) => {
   if (path === '/api/ops/services/status' && req.method === 'GET') {
     try {
       const services = OPS_SERVICES.map((name) => {
-        const activeRaw = execSync(`systemctl is-active ${name}`, { encoding: 'utf8', timeout: 30000, stdio: ['ignore', 'pipe', 'pipe'] }).trim();
-        const showRaw = execSync(`systemctl show ${name} --property=ActiveEnterTimestamp,MainPID,MemoryUsageCurrent`, { encoding: 'utf8', timeout: 30000, stdio: ['ignore', 'pipe', 'pipe'] });
-        const parsed = parseSystemctlShow(showRaw);
-        return {
-          name,
-          active: activeRaw === 'active',
-          pid: Number.parseInt(parsed.MainPID, 10) || null,
-          uptime_since: parsed.ActiveEnterTimestamp || null,
-          memory_mb: parseMemoryMb(parsed.MemoryUsageCurrent),
-        };
+        try {
+          const activeResult = spawnSync('systemctl', ['is-active', name], { encoding: 'utf8', timeout: 30000, stdio: ['ignore', 'pipe', 'pipe'] });
+          const activeRaw = (activeResult.stdout || '').trim();
+          const showRaw = execSync(`systemctl show ${name} --property=ActiveEnterTimestamp,MainPID,MemoryUsageCurrent`, { encoding: 'utf8', timeout: 30000, stdio: ['ignore', 'pipe', 'pipe'] });
+          const parsed = parseSystemctlShow(showRaw);
+          return {
+            name,
+            active: activeRaw === 'active',
+            pid: Number.parseInt(parsed.MainPID, 10) || null,
+            uptime_since: parsed.ActiveEnterTimestamp || null,
+            memory_mb: parseMemoryMb(parsed.MemoryUsageCurrent),
+          };
+        } catch {
+          return { name, active: false, pid: null, uptime_since: null, memory_mb: null };
+        }
       });
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ services }));
@@ -4943,7 +4948,8 @@ const server = createServer(async (req, res) => {
   }
 
   if (path.startsWith('/api/ops/crons/') && path.endsWith('/trigger') && req.method === 'POST') {
-    const jobName = decodeURIComponent(path.split('/')[4] || '');
+    const rawSegment = path.slice('/api/ops/crons/'.length, path.length - '/trigger'.length);
+    const jobName = decodeURIComponent(rawSegment);
     const jobs = parseCronEntries();
     const job = jobs.find((j) => j.name === jobName);
     if (!job) {
@@ -5208,14 +5214,14 @@ const server = createServer(async (req, res) => {
       const now = Date.now();
       const buildLayer = (name, filePath, staleThresholdSeconds, extra = {}) => {
         if (!existsSync(filePath)) {
-          return { name, last_success_at: null, age_seconds: null, status: 'red', source_available: false, ...extra };
+          return { name, last_success_at: null, age_seconds: null, status: 'red', source_available: false, source_hint: `Status file not found: ${filePath}`, ...extra };
         }
         try {
           const payload = JSON.parse(readFileSync(filePath, 'utf8'));
           const lastSuccessAt = payload?.last_success_at || null;
           const parsed = parseIsoSafe(lastSuccessAt);
           if (!parsed) {
-            return { name, last_success_at: null, age_seconds: null, status: 'red', source_available: false, ...extra };
+            return { name, last_success_at: null, age_seconds: null, status: 'red', source_available: false, source_hint: `No last_success_at in ${filePath}`, ...extra };
           }
           const ageSeconds = Math.max(0, Math.floor((now - parsed) / 1000));
           return {
@@ -5227,7 +5233,7 @@ const server = createServer(async (req, res) => {
             ...extra,
           };
         } catch {
-          return { name, last_success_at: null, age_seconds: null, status: 'red', source_available: false, ...extra };
+          return { name, last_success_at: null, age_seconds: null, status: 'red', source_available: false, source_hint: `Failed to parse ${filePath}`, ...extra };
         }
       };
 
