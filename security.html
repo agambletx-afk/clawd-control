@@ -730,16 +730,24 @@ tbody tr.expandable-row { cursor: pointer; }
       btn.disabled = true;
       btn.textContent = 'Acknowledging...';
       try {
-        await api('/api/security/acknowledge', {
+        const res = await fetch('/api/security/acknowledge', {
           method: 'POST',
+          credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ layer: 'reasoning', note: 'Acknowledged from dashboard' }),
         });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
         btn.textContent = 'Acknowledged';
         await triggerRecheck();
       } catch (e) {
+        // If the request failed but the action may have succeeded server-side,
+        // attempt a recheck to reflect current state before showing the error.
+        try { await triggerRecheck(); } catch {}
         btn.textContent = origText;
+        btn.disabled = false;
         alert('Acknowledge failed: ' + (e.message || 'Unknown error'));
+        return;
       } finally {
         btn.disabled = false;
       }
