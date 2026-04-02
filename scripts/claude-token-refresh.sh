@@ -57,10 +57,23 @@ if (( curl_exit != 0 )); then
   exit 1
 fi
 
-if [[ "$(jq -r 'has("error")' <<< "$response")" == "true" ]]; then
-  error_msg="$(jq -r '.error_description // .error // "unknown_error"' <<< "$response")"
-  echo "ERROR: OAuth refresh rejected: ${error_msg}"
-  exit 1
+if [[ "$(jq -r 'has("error") or ((.type // "") | test("error"))' <<< "$response")" == "true" ]]; then
+  error_msg="$(jq -r '.error_description // .message // .error // .type // "unknown_error"' <<< "$response")"
+  if [[ "$error_msg" == *"Rate limited"* || "$error_msg" == *"rate_limit"* ]]; then
+    echo "WARN: Rate limited, retrying in 30s..."
+    sleep 30
+    response="$(curl -sS --max-time 10 -X POST "$TOKEN_ENDPOINT" -H 'Content-Type: application/json' -d "$request_body")"
+    if [[ "$(jq -r 'has("error") or ((.type // "") | test("error"))' <<< "$response")" == "true" ]]; then
+      echo "ERROR: OAuth refresh rejected after retry: ${error_msg}"
+      exit 1
+    fi
+    new_access_token="$(jq -r '.access_token // empty' <<< "$response")"
+    new_refresh_token="$(jq -r '.refresh_token // empty' <<< "$response")"
+    expires_in="$(jq -r '.expires_in // 0' <<< "$response")"
+  else
+    echo "ERROR: OAuth refresh rejected: ${error_msg}"
+    exit 1
+  fi
 fi
 
 new_access_token="$(jq -r '.access_token // empty' <<< "$response")"
