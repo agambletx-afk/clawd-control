@@ -3239,14 +3239,53 @@
       return [];
     }
 
+    function deriveProxyServiceStatus(proxySentinel) {
+      if (!proxySentinel || proxySentinel.available === false) return 'stale';
+      const checkedAt = proxySentinel?.data?.timestamp || null;
+      const checkedMs = checkedAt ? Date.parse(checkedAt) : NaN;
+      if (!Number.isFinite(checkedMs) || (Date.now() - checkedMs) > (90 * 60 * 1000)) return 'stale';
+      const checks = proxySentinel?.data?.checks && typeof proxySentinel.data.checks === 'object'
+        ? Object.values(proxySentinel.data.checks)
+        : [];
+      if (checks.some((check) => ['critical', 'error'].includes(String(check?.status || '').toLowerCase()))) return 'down';
+      if (checks.some((check) => String(check?.status || '').toLowerCase() === 'warn')) return 'degraded';
+      if (String(proxySentinel?.data?.overall || '').toLowerCase() === 'ok') return 'healthy';
+      return 'degraded';
+    }
+
+    function mapProxySentinelToService(proxySentinel) {
+      const checkedAt = proxySentinel?.data?.timestamp || null;
+      const balanceDetail = String(proxySentinel?.data?.checks?.balance?.detail || '');
+      const balanceMatch = balanceDetail.match(/(\d+(?:\.\d+)?)\s*GB\s+remaining/i);
+      const subtitle = balanceMatch ? `${balanceMatch[1]} GB remaining` : (balanceDetail || 'Balance unavailable');
+      const responseCandidates = [
+        proxySentinel?.data?.checks?.api_reachable?.detail,
+        proxySentinel?.data?.checks?.success_rate?.detail,
+      ].filter(Boolean).map((txt) => String(txt));
+      const responseMatch = responseCandidates.map((txt) => txt.match(/(\d+(?:\.\d+)?)\s*ms/i)).find(Boolean);
+      const responseMs = responseMatch ? Number(responseMatch[1]) : null;
+      return {
+        id: 'dataimpulse_proxy',
+        name: 'DataImpulse Proxy',
+        provider: 'DataImpulse',
+        type: 'external',
+        status: deriveProxyServiceStatus(proxySentinel),
+        checked_at: checkedAt,
+        response_ms: Number.isFinite(responseMs) ? responseMs : null,
+        subtitle
+      };
+    }
+
     function serviceHealthStatusRank(status) {
       if (status === 'down') return 0;
       if (status === 'degraded') return 1;
-      if (status === 'healthy') return 2;
-      return 3;
+      if (status === 'stale') return 2;
+      if (status === 'healthy') return 3;
+      return 4;
     }
 
     function serviceHealthTypeLabel(service = {}) {
+      if (String(service.id || '').toLowerCase() === 'dataimpulse_proxy') return 'External Proxy';
       const raw = String(service.type || service.provider || '').toLowerCase();
       const idName = `${service.id || ''} ${service.name || ''}`.toLowerCase();
       if (
@@ -3262,7 +3301,14 @@
     function serviceHealthPillStyle(status) {
       if (status === 'healthy') return 'background: rgba(34,197,94,0.15); color: var(--accent-green); border-color: rgba(34,197,94,0.45);';
       if (status === 'degraded') return 'background: rgba(245,158,11,0.15); color: var(--accent-amber); border-color: rgba(245,158,11,0.45);';
+      if (status === 'stale') return 'background: rgba(148,163,184,0.15); color: #cbd5e1; border-color: rgba(148,163,184,0.45);';
       return 'background: rgba(239,68,68,0.15); color: var(--accent-red); border-color: rgba(239,68,68,0.45);';
+    }
+
+    function getServiceStaleThresholdMs(service = {}) {
+      return String(service.id || '').toLowerCase() === 'dataimpulse_proxy'
+        ? 90 * 60 * 1000
+        : 10 * 60 * 1000;
     }
 
     function renderServiceHealthStats() {
@@ -3292,14 +3338,13 @@
       }
 
       const now = Date.now();
-      const staleThresholdMs = 10 * 60 * 1000;
       const healthy = externalRows.filter((row) => row?.status === 'healthy').length;
       const degraded = externalRows.filter((row) => row?.status === 'degraded').length;
       const down = externalRows.filter((row) => row?.status === 'down').length;
       const staleCount = externalRows.filter((row) => {
         const checkedAt = row?.checked_at || row?.last_check || null;
         const checkedMs = checkedAt ? Date.parse(checkedAt) : NaN;
-        return !Number.isFinite(checkedMs) || ((now - checkedMs) > staleThresholdMs);
+        return !Number.isFinite(checkedMs) || ((now - checkedMs) > getServiceStaleThresholdMs(row));
       }).length;
       const total = externalRows.length;
       const itemStyle = 'display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);';
@@ -3368,7 +3413,7 @@
         const response = Number.isFinite(Number(service.response_ms))
           ? `${Number(service.response_ms)}ms`
           : '—';
-        const stale = checkedAt && Number.isFinite(Date.parse(checkedAt)) && ((Date.now() - Date.parse(checkedAt)) > 10 * 60 * 1000);
+        const stale = checkedAt && Number.isFinite(Date.parse(checkedAt)) && ((Date.now() - Date.parse(checkedAt)) > getServiceStaleThresholdMs(service));
         const staleText = stale ? '<span style="color: var(--text-tertiary);">(stale)</span>' : '';
         return `<article class="service-health-card" style="background: #1e2535; border: 1px solid #363b4d; border-radius: 12px; padding: 8px 12px; ">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; gap: 8px;">
@@ -3379,6 +3424,7 @@
             <span>${esc(serviceHealthTypeLabel(service))}</span>
             <span style="font-family: var(--font-mono); font-variant-numeric: tabular-nums;">${esc(rel(checkedAt))} ${staleText}</span>
             ${response !== '—' ? `<span style="font-family: var(--font-mono); font-variant-numeric: tabular-nums;">Response: ${esc(response)}</span>` : ''}
+            ${service.subtitle ? `<span>${esc(service.subtitle)}</span>` : ''}
           </div>
           <div style="margin-top: 8px;">
             <button class="btn" style="font-size: 11px; padding: 3px 10px;" onclick='checkServiceNow(${JSON.stringify(serviceId)}, this)'>Check Now</button>
@@ -3397,13 +3443,24 @@
       renderServiceHealthStats();
       renderServiceHealthGrid();
       try {
-        const res = await fetch('/api/health', {
-          method: 'GET',
-          credentials: 'include'
-        });
-        if (!res.ok) throw new Error(`Health fetch failed: ${res.status}`);
-        const data = await res.json();
-        state.serviceHealth = Array.isArray(data) ? data : (Array.isArray(data.services) ? data.services : []);
+        const [healthRes, proxyRes] = await Promise.all([
+          fetch('/api/health', {
+            method: 'GET',
+            credentials: 'include'
+          }),
+          fetch('/api/proxy/sentinel', {
+            method: 'GET',
+            credentials: 'include'
+          }).catch(() => null)
+        ]);
+        if (!healthRes.ok) throw new Error(`Health fetch failed: ${healthRes.status}`);
+        const data = await healthRes.json();
+        const rows = Array.isArray(data) ? data : (Array.isArray(data.services) ? data.services : []);
+        if (proxyRes && proxyRes.ok) {
+          const proxyPayload = await proxyRes.json();
+          rows.push(mapProxySentinelToService(proxyPayload));
+        }
+        state.serviceHealth = rows;
         state.serviceHealthError = '';
       } catch {
         state.serviceHealth = null;
