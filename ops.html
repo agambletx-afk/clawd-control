@@ -3883,7 +3883,10 @@
       const recoveryToggle = $('opsRecoveryLogToggle');
       if (recoveryToggle) recoveryToggle.onclick = () => {
         state.recoveryLog.expanded = !state.recoveryLog.expanded;
-        $('opsRecoveryLogBody').classList.toggle('collapsed', !state.recoveryLog.expanded);
+        const body = $('opsRecoveryLogBody');
+        body.classList.toggle('open', state.recoveryLog.expanded);
+        body.classList.toggle('collapsed', !state.recoveryLog.expanded);
+        body.style.maxHeight = state.recoveryLog.expanded ? body.scrollHeight + 'px' : '0';
         recoveryToggle.setAttribute('aria-expanded', state.recoveryLog.expanded ? 'true' : 'false');
         if (state.recoveryLog.expanded) loadRecoveryLog();
       };
@@ -3948,7 +3951,7 @@
       };
 
       try {
-        await Promise.all([loadServices(), loadVersionCheck(), loadVerification(), loadCrons(), loadBackups(), loadGatewayEvents(), loadWatcherHealth(), loadInfraHealth(true), loadServiceHealth(true), loadMonitoringLayers(), loadOpsLogsHealth(), loadKillSwitches(), loadDoctorPanel()]);
+        await Promise.all([loadServices(), loadVersionCheck(), loadVerification(), loadCrons(), loadBackups(), loadGatewayEvents(), loadWatcherHealth(), loadInfraHealth(true), loadServiceHealth(true), loadMonitoringLayers(), loadOpsLogsHealth(), loadKillSwitches(), loadDoctorPanel(), loadRecoveryLogCount()]);
         applyCollapsibleState();
         if (window.__opsServicesRefreshTimer) clearInterval(window.__opsServicesRefreshTimer);
         window.__opsServicesRefreshTimer = setInterval(() => {
@@ -4089,6 +4092,14 @@
       if (more) more.style.display = state.recoveryLog.entries.length > entries.length ? '' : 'none';
     }
 
+    async function loadRecoveryLogCount() {
+      try {
+        const data = await api('/api/ops/recovery-log?limit=1');
+        const entries = Array.isArray(data.entries) ? data.entries : [];
+        const countEl = $('opsRecoveryLogCount');
+        if (countEl) countEl.textContent = (data.total || entries.length) + ' actions';
+      } catch {}
+    }
     async function loadRecoveryLog() {
       if (!state.recoveryLog.expanded) return;
       try {
