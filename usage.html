@@ -410,12 +410,7 @@
     drawLine(series.output, '#5eead4');
     drawLine(series.cache, '#94a3b8', [6,5]);
 
-    series.total.forEach((v,i)=>{
-      if (v > 50000 && v > avg7 * 2) {
-        const xx = x(i), yy = y(v);
-        ctx.beginPath(); ctx.arc(xx,yy,7,0,Math.PI*2); ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 2; ctx.stroke();
-      }
-    });
+
 
     ctx.fillStyle = '#e2e8f0'; ctx.font = '13px Inter';
     points.forEach((pt,i)=>{
