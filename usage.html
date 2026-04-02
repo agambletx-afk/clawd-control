@@ -52,7 +52,50 @@
     .status-pill.neutral { color:#94a3b8; }
     .waste-row td { background: rgba(148,163,184,.05); }
     .empty { color: #94a3b8; font-size: 12px; padding: 12px; }
+    .collapsible-panel { border: 1px solid var(--border-subtle); border-radius: 12px; background: #121722; overflow: hidden; }
+    .collapsible-header { width: 100%; border: none; background: transparent; display:flex; align-items:center; justify-content:space-between; gap:10px; padding: 10px 12px; color: inherit; cursor: pointer; text-align: left; }
+    .collapsible-header-meta { display:flex; align-items:center; gap: 8px; color: var(--text-secondary); font-size: 12px; }
+    .collapsible-count { border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; font-size: 11px; font-family: var(--font-mono); }
+    .boxed-chevron { width: 24px; height: 24px; border-radius: 8px; border: 1px solid #363b4d; display:inline-flex; align-items:center; justify-content:center; color:#94a3b8; background:#0f131d; }
+    .collapsible-body { max-height: 0; overflow: hidden; transition: max-height .25s ease; border-top: 1px solid transparent; }
+    .collapsible-body.open { border-top-color: var(--border-subtle); }
+    .collapsible-body.collapsed { display: none; }
+    .panel-inner { padding: 12px; }
+    .session-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .session-table th, .session-table td { padding: 8px; border-bottom: 1px solid var(--border-subtle); }
+    .session-table th { color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; text-align:left; }
+    .session-link { color: #cbd5e1; text-decoration: none; }
+    .session-link:hover { color: #5eead4; }
+    .session-key-sub { color: #64748b; font-size: 11px; margin-top: 2px; }
+    .model-badge { margin-left: 6px; border-radius: 999px; padding: 2px 8px; font-size: 10px; letter-spacing: .07em; text-transform: uppercase; border: 1px solid #334155; }
+    .model-badge.missing { color: #fca5a5; border-color: rgba(239,68,68,.5); background: rgba(239,68,68,.15); }
+    .model-badge.unresolved { color: #fbbf24; border-color: rgba(245,158,11,.5); background: rgba(245,158,11,.12); }
+    .model-badge.deprecated { color: #9ca3af; border-color: rgba(148,163,184,.5); background: rgba(148,163,184,.12); text-decoration: line-through; }
+    .context-inline { display:flex; align-items:center; gap:8px; min-width: 140px; }
+    .context-track { flex:1; height: 6px; border-radius: 999px; background: #0f172a; border: 1px solid #334155; overflow:hidden; }
+    .context-fill { height:100%; background:#22c55e; }
+    .context-fill.warn { background:#f59e0b; }
+    .context-fill.crit { background:#ef4444; }
+    .proxy-kpi-grid { display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; }
+    .proxy-chart-wrap { border:1px solid var(--border-subtle); border-radius: 12px; background:#0f131d; padding: 10px; margin-top: 12px; }
+    .proxy-canvas { width:100%; height:220px; display:block; }
+    .nested-panel { border: 1px solid var(--border-subtle); border-radius: 10px; background: #111623; overflow:hidden; margin-top: 10px; }
+    .nested-header { width:100%; border:none; background: transparent; display:flex; align-items:center; justify-content:space-between; padding: 8px 10px; color: inherit; cursor: pointer; text-align:left; }
+    .nested-body { max-height: 0; overflow: hidden; transition: max-height .25s ease; border-top: 1px solid transparent; }
+    .nested-body.open { border-top-color: var(--border-subtle); }
+    .nested-body.collapsed { display:none; }
+    .top-sites-list { display:grid; gap:8px; padding: 10px; }
+    .top-site-row { display:grid; grid-template-columns: 1fr auto auto; gap:8px; font-size:12px; align-items:center; }
+    .mini-track { grid-column:1/-1; height: 6px; border-radius: 999px; border: 1px solid #334155; background:#0f172a; overflow:hidden; }
+    .mini-fill { height:100%; background:#2dd4bf; }
+    .errors-table { width:100%; border-collapse: collapse; font-size:12px; }
+    .errors-table th, .errors-table td { padding: 8px; border-bottom:1px solid var(--border-subtle); text-align:left; }
+    .config-grid { padding: 10px; display:grid; gap:6px; }
+    .config-row { display:grid; grid-template-columns: 170px 1fr; gap:8px; font-size:12px; }
+    .config-key { color:#94a3b8; }
+    .config-val { color:#e2e8f0; font-family: var(--font-mono); }
     @media (max-width: 1200px){ .stats-grid,.mini-stats { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+    @media (max-width: 1200px){ .proxy-kpi-grid { grid-template-columns: 1fr; } .session-table { min-width: 900px; } }
   </style>
 </head>
 <body>
@@ -100,11 +143,105 @@
       </table>
     </div>
   </section>
+
+  <section class="section">
+    <div class="section-header">
+      <div>
+        <div class="section-title">Top Token Sessions</div>
+        <div class="section-subtitle">Session-level token allocation ranked by total consumption</div>
+      </div>
+    </div>
+    <div class="collapsible-panel">
+      <button id="topSessionsHeader" class="collapsible-header" aria-label="Toggle top token sessions" aria-expanded="false">
+        <div class="collapsible-header-meta">
+          <span id="topSessionsConcentration" class="collapsible-count">Top 3 = —% of total tokens</span>
+        </div>
+        <span id="topSessionsChevron" class="boxed-chevron"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
+      </button>
+      <div id="topSessionsBody" class="collapsible-body collapsed">
+        <div class="panel-inner" style="overflow:auto">
+          <table class="session-table">
+            <thead><tr><th>Session</th><th>Model</th><th style="text-align:right;">Tokens</th><th>Context</th><th>Activity</th></tr></thead>
+            <tbody id="topSessionsRows"><tr><td colspan="5" class="empty">Loading sessions…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-header">
+      <div>
+        <div class="section-title">Proxy Consumption</div>
+        <div class="section-subtitle">DataImpulse residential proxy balance and traffic</div>
+      </div>
+    </div>
+    <div class="collapsible-panel">
+      <button id="proxyPanelHeader" class="collapsible-header" aria-label="Toggle proxy consumption" aria-expanded="false">
+        <div class="collapsible-header-meta">
+          <span id="proxyHeaderSummary" class="collapsible-count">— GB remaining · ~— days</span>
+        </div>
+        <span id="proxyPanelChevron" class="boxed-chevron"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
+      </button>
+      <div id="proxyPanelBody" class="collapsible-body collapsed">
+        <div class="panel-inner">
+          <div id="proxyKpiGrid" class="proxy-kpi-grid"></div>
+          <div class="proxy-chart-wrap">
+            <div class="bar-track"><div id="proxyBalanceFill" class="bar-fill" style="width:0%"></div></div>
+            <div class="bar-labels"><span id="proxyBalanceLabel">0 GB used / 25 GB total</span><span id="proxyBalancePct">0% used</span></div>
+          </div>
+          <div class="proxy-chart-wrap">
+            <div class="section-title" style="font-size:12px; margin-bottom:8px;">Traffic History (30 days)</div>
+            <canvas id="proxyTrafficChart" class="proxy-canvas" width="1200" height="220"></canvas>
+          </div>
+
+          <div class="nested-panel">
+            <button id="topSitesHeader" class="nested-header" aria-expanded="false">
+              <span class="mono" id="topSitesCount">0 sites tracked (7 days)</span>
+              <span id="topSitesChevron" class="boxed-chevron" style="width:20px;height:20px;"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></span>
+            </button>
+            <div id="topSitesBody" class="nested-body collapsed">
+              <div id="topSitesList" class="top-sites-list"></div>
+            </div>
+          </div>
+
+          <div class="nested-panel">
+            <button id="proxyErrorsHeader" class="nested-header" aria-expanded="false">
+              <span class="mono" id="proxyErrorsCount">0 hosts with errors</span>
+              <span id="proxyErrorsChevron" class="boxed-chevron" style="width:20px;height:20px;"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></span>
+            </button>
+            <div id="proxyErrorsBody" class="nested-body collapsed">
+              <div style="padding:10px;overflow:auto;">
+                <table class="errors-table">
+                  <thead><tr><th>Host</th><th>Errors</th><th>Last Seen</th></tr></thead>
+                  <tbody id="proxyErrorsRows"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div class="nested-panel">
+            <button id="proxyConfigHeader" class="nested-header" aria-expanded="false">
+              <span class="mono">Proxy Config Reference</span>
+              <span id="proxyConfigChevron" class="boxed-chevron" style="width:20px;height:20px;"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></span>
+            </button>
+            <div id="proxyConfigBody" class="nested-body collapsed">
+              <div id="proxyConfigRows" class="config-grid"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
 </main>
 <script src="/layout.js"></script>
 <script>
 (() => {
-  const state = { range: 7, tokens: null, cli: null, quota: null, proxy: null, proxyHistory: null, automation: null };
+  const state = {
+    range: 7, tokens: null, cli: null, quota: null, proxy: null, proxyHistory: null, automation: null,
+    sessions: null, topSessionsOpen: false, proxyPanelOpen: false, topSitesOpen: false, proxyErrorsOpen: false, proxyConfigOpen: false,
+    proxyStats: null, proxySentinel: null, proxyHistory30: null, proxyTopHosts: null, proxyErrors: null, proxyTrafficLoaded: false,
+  };
   const $ = (id) => document.getElementById(id);
   const fmtNum = (n) => Number(n || 0).toLocaleString();
   const fmtToken = (n) => {
@@ -114,6 +251,18 @@
     return `${Math.round(v)}`;
   };
   const fmtDay = (iso) => new Date(`${iso}T00:00:00Z`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const fmtAgo = (value) => {
+    const ms = typeof value === 'number' ? value : Date.parse(value || '');
+    if (!Number.isFinite(ms)) return '—';
+    const s = Math.max(0, Math.floor((Date.now() - ms) / 1000));
+    if (s < 60) return `${s}s ago`;
+    const m = Math.floor(s / 60);
+    if (m < 60) return `${m}m ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h}h ago`;
+    return `${Math.floor(h / 24)}d ago`;
+  };
+  const fmtGb = (n, d=2) => Number(n || 0).toFixed(d);
 
   function card({label, value, sub, low=false, valueClass=''}) {
     return `<div class="stat-card ${low ? 'low-emphasis' : ''}"><div class="stat-label">${label}</div><div class="stat-value ${valueClass}">${value}</div><div class="stat-sub">${sub}</div></div>`;
@@ -259,6 +408,234 @@
     body.innerHTML = rows.join('');
   }
 
+  const sessionLabel = (key) => {
+    const parts = String(key || '').split(':');
+    if (parts.length < 2) return key || '—';
+    return parts.slice(-2).join(':');
+  };
+
+  function toggleCollapsible(bodyId, open, chevronId, headerId) {
+    const body = $(bodyId);
+    const chev = $(chevronId);
+    const header = $(headerId);
+    if (!body || !chev || !header) return;
+    body.classList.toggle('open', open);
+    body.classList.toggle('collapsed', !open);
+    body.style.maxHeight = open ? `${body.scrollHeight}px` : '0';
+    header.setAttribute('aria-expanded', open ? 'true' : 'false');
+    chev.innerHTML = open
+      ? '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m18 15-6-6-6 6"/></svg>'
+      : '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>';
+  }
+
+  function renderTopSessions() {
+    const payload = state.sessions || { sessions: [], totals: {} };
+    const topPct = Number(payload?.totals?.top3_pct || 0).toFixed(1);
+    $('topSessionsConcentration').textContent = `Top 3 = ${topPct}% of total tokens`;
+    const rows = (payload.sessions || []).slice(0, 15);
+    if (!rows.length) {
+      $('topSessionsRows').innerHTML = '<tr><td colspan="5" class="empty">No session metadata available.</td></tr>';
+      return;
+    }
+    $('topSessionsRows').innerHTML = rows.map((s) => {
+      const util = Number(s.context_utilization);
+      const utilKnown = Number.isFinite(util);
+      const utilPct = utilKnown ? Math.max(0, Math.min(100, util * 100)) : null;
+      const utilClass = utilPct == null ? '' : (utilPct > 80 ? 'crit' : (utilPct >= 60 ? 'warn' : ''));
+      const modelBadge = s.model_status === 'missing'
+        ? '<span class="model-badge missing">MISSING</span>'
+        : s.model_status === 'unresolved'
+          ? '<span class="model-badge unresolved">UNRESOLVED</span>'
+          : s.model_status === 'deprecated'
+            ? '<span class="model-badge deprecated">DEPRECATED</span>'
+            : '';
+      const contextCell = utilKnown
+        ? `<div class="context-inline"><div class="context-track"><div class="context-fill ${utilClass}" style="width:${utilPct.toFixed(1)}%"></div></div><span class="mono">${fmtNum(s.context_tokens)} / ${fmtNum(s.context_max)}</span></div>`
+        : '—';
+      return `<tr>
+        <td><a class="session-link" href="sessions.html#session=${encodeURIComponent(s.key)}">${sessionLabel(s.key)}</a><span class="kind-badge">${s.kind || 'other'}</span><div class="session-key-sub mono">${s.key}</div></td>
+        <td class="mono">${s.model || 'unknown'}${modelBadge}</td>
+        <td class="mono" style="text-align:right">${fmtNum(s.total_tokens)}</td>
+        <td>${contextCell}</td>
+        <td class="mono">${fmtAgo(s.updated_at)}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function parseProxy24h(stats) {
+    const rows = stats?.computed?.history || stats?.raw?.history || [];
+    if (!Array.isArray(rows)) return { success: null, total: 0, ok: 0 };
+    const now = Date.now();
+    const cutoff = now - 24 * 60 * 60 * 1000;
+    let total = 0;
+    let err = 0;
+    for (const row of rows) {
+      const ts = Date.parse(row?.group_date || row?.date || '');
+      if (!Number.isFinite(ts) || ts < cutoff) continue;
+      total += Number(row?.requests_count || 0);
+      err += Number(row?.errors || 0);
+    }
+    const ok = Math.max(0, total - err);
+    return { success: total > 0 ? (ok / total) * 100 : null, total, ok };
+  }
+
+  function maskExitIp(detail) {
+    const match = String(detail || '').match(/\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b/);
+    if (!match) return 'Unavailable';
+    const parts = match[1].split('.');
+    return `${parts[0]}.${parts[1]}.${parts[2]}.xxx`;
+  }
+
+  function drawProxyChart(payload) {
+    const canvas = $('proxyTrafficChart');
+    const ctx = canvas.getContext('2d');
+    const list = payload?.raw?.traffic_history || [];
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (!list.length) {
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '12px Inter';
+      ctx.fillText('No proxy traffic history yet.', 14, 22);
+      return;
+    }
+    const p = { l: 44, r: 8, t: 8, b: 26 };
+    const w = canvas.width - p.l - p.r;
+    const h = canvas.height - p.t - p.b;
+    const maxBytes = Math.max(...list.map((d) => Number(d.total_traffic || 0)), 1);
+    const maxMb = maxBytes / (1024 * 1024);
+    ctx.strokeStyle = '#2a3040';
+    for (let i = 0; i <= 4; i++) {
+      const y = p.t + (h - (i / 4) * h);
+      ctx.beginPath(); ctx.moveTo(p.l, y); ctx.lineTo(canvas.width - p.r, y); ctx.stroke();
+      ctx.fillStyle = '#64748b'; ctx.font = '11px Inter';
+      ctx.fillText(`${((maxMb / 4) * i).toFixed(0)} MB`, 2, y + 4);
+    }
+    const slot = w / Math.max(1, list.length);
+    list.forEach((d, i) => {
+      const inMb = Number(d.inbound_traffic || 0) / (1024 * 1024);
+      const outMb = Number(d.outgoing_traffic || 0) / (1024 * 1024);
+      const totMb = inMb + outMb;
+      const x = p.l + i * slot + slot * 0.15;
+      const bw = slot * 0.7;
+      const totalH = (totMb / Math.max(maxMb, 1)) * h;
+      const outH = totalH * (outMb / Math.max(totMb, 1));
+      const inH = totalH - outH;
+      const yBottom = p.t + h;
+      ctx.fillStyle = '#5eead4';
+      ctx.fillRect(x, yBottom - outH, bw, outH);
+      ctx.fillStyle = '#0d9488';
+      ctx.fillRect(x, yBottom - outH - inH, bw, inH);
+      if (i % Math.ceil(list.length / 10) === 0 || i === list.length - 1) {
+        const date = new Date(d.group_date).toLocaleDateString(undefined, { month: '2-digit', day: '2-digit' });
+        ctx.fillStyle = '#94a3b8'; ctx.font = '10px Inter';
+        ctx.fillText(date, x - 4, canvas.height - 8);
+      }
+    });
+  }
+
+  function renderProxyCore() {
+    const stats = state.proxyStats || { computed: {} };
+    const totalGb = Number(stats?.computed?.total_gb || 25);
+    const remaining = Number(stats?.computed?.remaining_gb || 0);
+    const usedGb = Number(stats?.computed?.used_gb || 0);
+    const usedPct = totalGb > 0 ? (usedGb / totalGb) * 100 : 0;
+    const history = state.proxyHistory30?.raw?.traffic_history || [];
+    const recent7 = history.slice(-7);
+    const burn = recent7.length ? recent7.reduce((sum, d) => sum + Number(d.total_traffic || 0), 0) / recent7.length / (1024 ** 3) : 0;
+    const runway = burn > 0 ? (remaining / burn) : Infinity;
+    const daily = Number.isFinite(burn) ? burn : 0;
+    const success24h = parseProxy24h(state.proxyHistory30 || stats);
+    $('proxyHeaderSummary').textContent = `${fmtGb(remaining, 1)} GB remaining · ${Number.isFinite(runway) ? `~${runway.toFixed(0)} days` : '~∞ days'}`;
+
+    $('proxyKpiGrid').innerHTML = [
+      card({ label: 'Remaining Balance', value: `${fmtGb(remaining, 1)} GB`, sub: `of ${fmtGb(totalGb, 0)} GB total`, low: false }),
+      card({ label: 'Daily Burn Rate', value: `${fmtGb(daily, 3)} GB/day`, sub: '7-day average', low: false }),
+      card({ label: 'Success Rate (24h)', value: success24h.success == null ? 'N/A' : `${success24h.success.toFixed(1)}%`, sub: `${success24h.ok} successful of ${success24h.total} requests`, low: false }),
+    ].join('');
+
+    const fill = $('proxyBalanceFill');
+    fill.style.width = `${Math.min(100, Math.max(0, usedPct))}%`;
+    let fillColor = '#22c55e';
+    if (daily > 0) fillColor = runway < 1 ? '#ef4444' : (runway <= 5 ? '#f59e0b' : '#22c55e');
+    fill.style.background = fillColor;
+    $('proxyBalanceLabel').textContent = `${fmtGb(usedGb)} GB used / ${fmtGb(totalGb, 0)} GB total`;
+    $('proxyBalancePct').textContent = `${usedPct.toFixed(1)}% used`;
+  }
+
+  function renderTopSites() {
+    const payload = state.proxyTopHosts || {};
+    const hosts = Array.isArray(payload.hosts) ? payload.hosts : [];
+    $('topSitesCount').textContent = `${hosts.length} sites tracked (7 days)`;
+    if (!payload.available || !hosts.length) {
+      $('topSitesList').innerHTML = '<div class="empty">No traffic — Camoufox inactive</div>';
+      return;
+    }
+    const max = Math.max(...hosts.map((h) => Number(h.requests || 0)), 1);
+    $('topSitesList').innerHTML = hosts.map((host) => {
+      const pct = (Number(host.requests || 0) / max) * 100;
+      return `<div class="top-site-row"><span title="${host.host}">${host.host}</span><span class="mono">${fmtNum(host.requests)}</span><span class="mono">${fmtAgo(host.last_seen)}</span><div class="mini-track"><div class="mini-fill" style="width:${pct.toFixed(1)}%"></div></div></div>`;
+    }).join('');
+  }
+
+  function renderProxyErrors() {
+    const items = state.proxyErrors?.raw?.items || [];
+    const grouped = new Map();
+    for (const item of items) {
+      const host = item?.group_key?.host || 'unknown';
+      const val = Number(item?.value || 0);
+      const dt = item?.group_key?.datetime || null;
+      const prev = grouped.get(host) || { count: 0, last: null };
+      prev.count += val;
+      if (!prev.last || (dt && dt > prev.last)) prev.last = dt;
+      grouped.set(host, prev);
+    }
+    const rows = [...grouped.entries()].sort((a, b) => b[1].count - a[1].count);
+    $('proxyErrorsCount').textContent = `${rows.length} hosts with errors`;
+    if (!rows.length) {
+      $('proxyErrorsRows').innerHTML = '<tr><td colspan="3" class="empty">No errors recorded</td></tr>';
+      return;
+    }
+    $('proxyErrorsRows').innerHTML = rows.map(([host, meta]) => `<tr><td>${host}</td><td class="mono">${fmtNum(meta.count)}</td><td class="mono">${fmtAgo(meta.last)}</td></tr>`).join('');
+  }
+
+  function renderProxyConfig() {
+    const sent = state.proxySentinel || {};
+    const exitDetail = sent?.data?.checks?.proxy_exit_ip?.detail || '';
+    const rows = [
+      ['Proxy host', 'gw.dataimpulse.com'],
+      ['Port', '823'],
+      ['Connection mode', 'residential'],
+      ['Last verified', sent?.data?.timestamp ? new Date(sent.data.timestamp).toLocaleString() : '—'],
+      ['Current exit IP', maskExitIp(exitDetail)],
+    ];
+    $('proxyConfigRows').innerHTML = rows.map(([k, v]) => `<div class="config-row"><div class="config-key">${k}</div><div class="config-val">${v}</div></div>`).join('');
+  }
+
+  async function loadProxyPanelData(forceTraffic = false) {
+    const calls = [
+      fetch('/api/proxy/stats').then((r) => r.json()).catch(() => ({ available: false })),
+      fetch('/api/proxy/sentinel').then((r) => r.json()).catch(() => ({ available: false })),
+      fetch('/api/proxy/top-hosts?days=7').then((r) => r.json()).catch(() => ({ available: false, hosts: [] })),
+      fetch('/api/proxy/errors?days=7').then((r) => r.json()).catch(() => ({ raw: { items: [] } })),
+    ];
+    if (forceTraffic || !state.proxyTrafficLoaded) {
+      calls.push(fetch('/api/proxy/history?days=30').then((r) => r.json()).catch(() => ({ raw: { traffic_history: [] } })));
+    }
+    const [stats, sentinel, topHosts, errors, history30] = await Promise.all(calls);
+    state.proxyStats = stats;
+    state.proxySentinel = sentinel;
+    state.proxyTopHosts = topHosts;
+    state.proxyErrors = errors;
+    if (history30) {
+      state.proxyHistory30 = history30;
+      state.proxyTrafficLoaded = true;
+    }
+    renderProxyCore();
+    renderTopSites();
+    renderProxyErrors();
+    renderProxyConfig();
+    if (state.proxyTrafficLoaded) drawProxyChart(state.proxyHistory30);
+  }
+
   function renderTokensPanel() {
     const points = rangeData();
     drawChart(points);
@@ -273,11 +650,14 @@
       fetch('/api/proxy/stats').then(r=>r.json()).catch(()=>({computed:{remaining_gb:0}})),
       fetch('/api/proxy/history?days=7').then(r=>r.json()).catch(()=>({raw:{traffic_history:[]}})),
       fetch('/api/usage/automation').then(r=>r.json()).catch(()=>({sources:[], totals:{}})),
+      fetch('/api/usage/sessions').then(r=>r.json()).catch(()=>({sessions:[], totals:{}})),
     ];
-    [state.tokens, state.cli, state.quota, state.proxy, state.proxyHistory, state.automation] = await Promise.all(calls);
+    [state.tokens, state.cli, state.quota, state.proxy, state.proxyHistory, state.automation, state.sessions] = await Promise.all(calls);
     renderResourceCards();
     renderTokensPanel();
     renderAutomation();
+    renderTopSessions();
+    await loadProxyPanelData(false);
   }
 
   $('rangePills').addEventListener('click', (e) => {
@@ -286,6 +666,33 @@
     state.range = Number(btn.dataset.range);
     document.querySelectorAll('.range-pill').forEach((b) => b.classList.toggle('active', b === btn));
     renderTokensPanel();
+  });
+
+  $('topSessionsHeader').addEventListener('click', () => {
+    state.topSessionsOpen = !state.topSessionsOpen;
+    toggleCollapsible('topSessionsBody', state.topSessionsOpen, 'topSessionsChevron', 'topSessionsHeader');
+  });
+
+  $('proxyPanelHeader').addEventListener('click', async () => {
+    state.proxyPanelOpen = !state.proxyPanelOpen;
+    toggleCollapsible('proxyPanelBody', state.proxyPanelOpen, 'proxyPanelChevron', 'proxyPanelHeader');
+    if (state.proxyPanelOpen && !state.proxyTrafficLoaded) {
+      await loadProxyPanelData(true);
+      toggleCollapsible('proxyPanelBody', state.proxyPanelOpen, 'proxyPanelChevron', 'proxyPanelHeader');
+    }
+  });
+
+  $('topSitesHeader').addEventListener('click', () => {
+    state.topSitesOpen = !state.topSitesOpen;
+    toggleCollapsible('topSitesBody', state.topSitesOpen, 'topSitesChevron', 'topSitesHeader');
+  });
+  $('proxyErrorsHeader').addEventListener('click', () => {
+    state.proxyErrorsOpen = !state.proxyErrorsOpen;
+    toggleCollapsible('proxyErrorsBody', state.proxyErrorsOpen, 'proxyErrorsChevron', 'proxyErrorsHeader');
+  });
+  $('proxyConfigHeader').addEventListener('click', () => {
+    state.proxyConfigOpen = !state.proxyConfigOpen;
+    toggleCollapsible('proxyConfigBody', state.proxyConfigOpen, 'proxyConfigChevron', 'proxyConfigHeader');
   });
 
   load();
