@@ -1230,13 +1230,23 @@ function deriveUsageSessionKind(sessionKey) {
 }
 
 function buildModelCatalog() {
+  const contextFallbacks = new Map([
+    ['openai-codex/gpt-5.4', 266000],
+    ['openai-codex/gpt-5.4-mini', 266000],
+    ['openai-codex/gpt-5.3-codex', 266000],
+    ['anthropic/claude-sonnet-4-6', 977000],
+    ['anthropic/claude-opus-4-6', 977000],
+    ['gemini-2.5-flash', 1000000],
+  ]);
   const config = readOpenClawConfig();
   const defaultsModels = config?.agents?.defaults?.models;
   const catalog = new Map();
   if (Array.isArray(defaultsModels)) {
     for (const entry of defaultsModels) {
       if (typeof entry === 'string') {
-        catalog.set(normalizeModelName(entry), { id: entry, missing: false, contextMax: null });
+        const key = normalizeModelName(entry);
+        const fallback = contextFallbacks.get(entry) || contextFallbacks.get(key) || null;
+        catalog.set(key, { id: entry, missing: false, contextMax: fallback });
         continue;
       }
       if (!entry || typeof entry !== 'object') continue;
@@ -1245,7 +1255,8 @@ function buildModelCatalog() {
       const norm = normalizeModelName(id);
       const missing = entry.missing === true || entry.status === 'missing' || entry.available === false;
       const contextMax = Number(entry.context_max ?? entry.contextMax ?? entry.max_context ?? entry.maxContext ?? entry.max_tokens ?? entry.maxTokens);
-      catalog.set(norm, { id, missing, contextMax: Number.isFinite(contextMax) && contextMax > 0 ? contextMax : null });
+      const fallback = contextFallbacks.get(id) || contextFallbacks.get(norm) || null;
+      catalog.set(norm, { id, missing, contextMax: Number.isFinite(contextMax) && contextMax > 0 ? contextMax : fallback });
     }
   } else if (defaultsModels && typeof defaultsModels === 'object') {
     for (const [id, entry] of Object.entries(defaultsModels)) {
@@ -1253,15 +1264,78 @@ function buildModelCatalog() {
       const norm = normalizeModelName(id);
       const missing = entry?.missing === true || entry?.status === 'missing' || entry?.available === false;
       const contextMax = Number(entry?.context_max ?? entry?.contextMax ?? entry?.max_context ?? entry?.maxContext ?? entry?.max_tokens ?? entry?.maxTokens);
-      catalog.set(norm, { id, missing, contextMax: Number.isFinite(contextMax) && contextMax > 0 ? contextMax : null });
+      const fallback = contextFallbacks.get(id) || contextFallbacks.get(norm) || null;
+      catalog.set(norm, { id, missing, contextMax: Number.isFinite(contextMax) && contextMax > 0 ? contextMax : fallback });
     }
   }
   return catalog;
 }
 
+
+function buildCronJobNameMap() {
+  const jobsPayload = readJsonSafe(CRON_JOBS_PATH, []);
+  const jobs = Array.isArray(jobsPayload)
+    ? jobsPayload
+    : (Array.isArray(jobsPayload?.jobs) ? jobsPayload.jobs : []);
+  const map = new Map();
+  for (const job of jobs) {
+    if (!job || typeof job !== 'object') continue;
+    const id = String(job.id || '').trim();
+    const name = String(job.name || '').trim();
+    if (id && name) map.set(id, name);
+  }
+  return map;
+}
+
+function resolveSessionDisplayName(sessionKey, cronJobNames) {
+  const key = String(sessionKey || '');
+  const cronMatch = key.match(/cron:([a-zA-Z0-9._-]+)/);
+  if (cronMatch) {
+    const jobId = cronMatch[1];
+    const friendly = cronJobNames.get(jobId);
+    if (friendly) return friendly;
+  }
+  return null;
+}
+
+function buildModelLookupKeys(modelRaw = '', provider = '') {
+  const keys = [];
+  const raw = String(modelRaw || '').trim();
+  const normalizedRaw = normalizeModelName(raw);
+  const normalizedProvider = String(provider || '').trim().toLowerCase();
+  const providers = [normalizedProvider];
+  if (normalizedProvider === 'openai' || normalizedProvider === 'codex') providers.push('openai-codex');
+  if (normalizedProvider === 'claude') providers.push('anthropic');
+  if (normalizedProvider === 'gemini') providers.push('google');
+
+  const add = (value) => {
+    if (!value) return;
+    const text = String(value).trim();
+    if (!text) return;
+    if (!keys.includes(text)) keys.push(text);
+    const norm = normalizeModelName(text);
+    if (norm && !keys.includes(norm)) keys.push(norm);
+  };
+
+  add(raw);
+  add(normalizedRaw);
+
+  for (const p of providers.filter(Boolean)) {
+    add(`${p}/${normalizedRaw}`);
+    add(`${p}/${raw}`);
+  }
+
+  add(`openai-codex/${normalizedRaw}`);
+  add(`anthropic/${normalizedRaw}`);
+  add(`google/${normalizedRaw}`);
+
+  return keys;
+}
+
 function getUsageSessionsSummary() {
   const deprecatedModels = new Set(['gpt-5.3-codex', 'sonnet-4-5']);
   const modelCatalog = buildModelCatalog();
+  const cronJobNames = buildCronJobNameMap();
   const payload = readJsonSafe(SESSIONS_METADATA_PATH, {});
   const sessionsObj = (payload && typeof payload === 'object')
     ? (payload.sessions && typeof payload.sessions === 'object' ? payload.sessions : payload)
@@ -1269,9 +1343,11 @@ function getUsageSessionsSummary() {
 
   const sessions = Object.entries(sessionsObj).map(([key, value]) => {
     const summary = value?.summary || value?.usage || value || {};
+    const provider = String(summary?.provider || value?.provider || '').trim();
     const modelRaw = String(summary?.model || value?.model || '').trim();
     const model = normalizeModelName(modelRaw || 'unknown');
-    const modelEntry = modelCatalog.get(model);
+    const modelLookupKeys = buildModelLookupKeys(modelRaw || model, provider);
+    const modelEntry = modelLookupKeys.map((lookup) => modelCatalog.get(lookup)).find(Boolean) || null;
     let modelStatus = 'healthy';
     if (deprecatedModels.has(model)) modelStatus = 'deprecated';
     else if (!modelEntry) modelStatus = 'unresolved';
@@ -1287,6 +1363,7 @@ function getUsageSessionsSummary() {
     return {
       key,
       kind: deriveUsageSessionKind(key),
+      display_name: resolveSessionDisplayName(key, cronJobNames),
       model,
       model_status: modelStatus,
       total_tokens: Number.isFinite(totalTokens) ? Math.max(0, Math.round(totalTokens)) : 0,
