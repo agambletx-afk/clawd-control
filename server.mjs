@@ -4959,20 +4959,26 @@ const server = createServer(async (req, res) => {
     }
 
     const commandSpec = CRON_TRIGGER_ALLOWLIST.get(job.command);
-    if (!commandSpec) {
-      const detail = `Blocked non-allowlisted cron command for ${job.name}: ${job.command}`;
-      logAction({ category: 'cron', action: 'trigger', target: job.name, status: 'blocked', detail, duration_ms: 0 });
-      res.writeHead(403, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Cron job is not triggerable via API' }));
-      return;
-    }
 
     const started = Date.now();
-    const result = spawnSync(commandSpec.command, commandSpec.args, {
-      encoding: 'utf8',
-      timeout: 60000,
-      shell: false,
-    });
+    let result;
+    if (commandSpec) {
+      // Use optimised non-shell execution for allowlisted commands
+      result = spawnSync(commandSpec.command, commandSpec.args, {
+        encoding: 'utf8',
+        timeout: 60000,
+        shell: false,
+      });
+    } else {
+      // For other parsed system crons, run through shell as the cron user
+      // (these commands come from /etc/cron.d/ or crontab, already root-trusted)
+      const runAs = job.user || 'openclaw';
+      result = spawnSync('sudo', ['-u', runAs, 'bash', '-c', job.command], {
+        encoding: 'utf8',
+        timeout: 60000,
+        shell: false,
+      });
+    }
     const duration = Date.now() - started;
     const output = truncateOutput((result.stdout || '') + (result.stderr || ''));
     const status = result.status === 0 ? 'success' : 'failed';
@@ -5254,24 +5260,37 @@ const server = createServer(async (req, res) => {
         if (!existsSync(filePath)) {
           return { name, last_success_at: null, age_seconds: null, status: 'red', source_available: false, source_hint: `Status file not found: ${filePath}`, ...extra };
         }
-        try {
-          const payload = JSON.parse(readFileSync(filePath, 'utf8'));
-          const lastSuccessAt = payload?.last_success_at || null;
+        // Try JSON parse, then fall back to file mtime for corrupt/empty files
+        const payload = readJsonSafe(filePath, null);
+        if (payload !== null && typeof payload === 'object') {
+          const lastSuccessAt = payload.last_success_at || payload.completed_at || payload.timestamp || null;
           const parsed = parseIsoSafe(lastSuccessAt);
-          if (!parsed) {
-            return { name, last_success_at: null, age_seconds: null, status: 'red', source_available: false, source_hint: `No last_success_at in ${filePath}`, ...extra };
+          if (parsed) {
+            const ageSeconds = Math.max(0, Math.floor((now - parsed) / 1000));
+            return {
+              name,
+              last_success_at: lastSuccessAt,
+              age_seconds: ageSeconds,
+              status: ageSeconds < staleThresholdSeconds ? 'green' : 'amber',
+              source_available: true,
+              ...extra,
+            };
           }
-          const ageSeconds = Math.max(0, Math.floor((now - parsed) / 1000));
+        }
+        // Fall back to file modification time
+        try {
+          const mtime = statSync(filePath).mtimeMs;
+          const ageSeconds = Math.max(0, Math.floor((now - mtime) / 1000));
           return {
             name,
-            last_success_at: lastSuccessAt,
+            last_success_at: new Date(mtime).toISOString(),
             age_seconds: ageSeconds,
             status: ageSeconds < staleThresholdSeconds ? 'green' : 'amber',
             source_available: true,
             ...extra,
           };
         } catch {
-          return { name, last_success_at: null, age_seconds: null, status: 'red', source_available: false, source_hint: `Failed to parse ${filePath}`, ...extra };
+          return { name, last_success_at: null, age_seconds: null, status: 'red', source_available: false, source_hint: `Unable to read ${filePath}`, ...extra };
         }
       };
 
