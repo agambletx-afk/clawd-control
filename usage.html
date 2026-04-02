@@ -71,10 +71,15 @@
     .session-link { color: #cbd5e1; text-decoration: none; }
     .session-link:hover { color: #5eead4; }
     .session-key-sub { color: #64748b; font-size: 11px; margin-top: 2px; }
-    .model-badge { margin-left: 6px; border-radius: 999px; padding: 2px 8px; font-size: 10px; letter-spacing: .07em; text-transform: uppercase; border: 1px solid #334155; }
+    .resource-pressure-value-main { display:block; }
+    .resource-pressure-value-sub { display:flex; gap: 18px; margin-top: 4px; font: 500 11px/1.2 var(--font-mono); color: #64748b; }
+    .model-main { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display:block; }
+    .model-badge { display:inline-block; margin-top: 4px; border-radius: 999px; padding: 1px 6px; font-size: 9px; letter-spacing: .07em; text-transform: uppercase; border: 1px solid #334155; }
     .model-badge.missing { color: #fca5a5; border-color: rgba(239,68,68,.5); background: rgba(239,68,68,.15); }
     .model-badge.unresolved { color: #fbbf24; border-color: rgba(245,158,11,.5); background: rgba(245,158,11,.12); }
-    .model-badge.deprecated { color: #9ca3af; border-color: rgba(148,163,184,.5); background: rgba(148,163,184,.12); text-decoration: line-through; }
+    .model-badge.deprecated { color: #9ca3af; border-color: rgba(148,163,184,.5); background: rgba(148,163,184,.12); }
+    .session-table th.sortable { cursor: pointer; user-select: none; }
+    .sort-indicator { margin-left: 4px; font-size: 11px; color: #cbd5e1; }
     .context-inline { display:flex; align-items:center; gap:8px; min-width: 140px; }
     .context-track { flex:1; height: 6px; border-radius: 999px; background: #0f172a; border: 1px solid #334155; overflow:hidden; }
     .context-fill { height:100%; background:#22c55e; }
@@ -174,7 +179,7 @@
       <div id="topSessionsBody" class="collapsible-body collapsed">
         <div class="panel-inner" style="overflow:auto">
           <table class="session-table">
-            <thead><tr><th>Session</th><th>Model</th><th style="text-align:right;">Tokens</th><th>Context</th><th>Activity</th></tr></thead>
+            <thead><tr><th>Session</th><th>Model</th><th id="sessionsTokensHeader" class="sortable" style="text-align:right;">Tokens</th><th>Context</th><th id="sessionsActivityHeader" class="sortable">Activity</th></tr></thead>
             <tbody id="topSessionsRows"><tr><td colspan="5" class="empty">Loading sessions…</td></tr></tbody>
           </table>
         </div>
@@ -253,6 +258,7 @@
   const state = {
     range: 7, tokens: null, cli: null, quota: null, proxy: null, proxyHistory: null, automation: null,
     sessions: null, topSessionsOpen: false, proxyPanelOpen: false, topSitesOpen: false, proxyErrorsOpen: false, proxyConfigOpen: false,
+    sessionSort: 'updated_at',
     proxyStats: null, proxySentinel: null, proxyHistory30: null, proxyTopHosts: null, proxyErrors: null, proxyTrafficLoaded: false,
   };
   const $ = (id) => document.getElementById(id);
@@ -300,7 +306,11 @@
 
     const items = [];
     if (anthropic && anthropic.session_pct != null) {
-      items.push(card({ label:'Anthropic', value:`5h: ${Number(anthropic.session_pct || 0).toFixed(1)}% · 7d: ${Number(anthropic.weekly_pct || 0).toFixed(1)}%`, sub: anthropic.plan || 'Subscription plan' }));
+      items.push(card({
+        label:'Anthropic',
+        value:`<span class="resource-pressure-value-main">${Math.round(Number(anthropic.session_pct || 0))}% · ${Math.round(Number(anthropic.weekly_pct || 0))}%</span><span class="resource-pressure-value-sub"><span>5h session</span><span>7d rolling</span></span>`,
+        sub: anthropic.plan || 'Subscription plan',
+      }));
     } else {
       items.push(card({ label:'Anthropic', value:'—', sub:'No metered telemetry — subscription plan', low:true }));
     }
@@ -308,7 +318,7 @@
     if (codex && (codex.session_pct != null || codex.weekly_pct != null)) {
       items.push(card({
         label:'OpenAI / Codex',
-        value:`5h: ${Number(codex.session_pct || 0).toFixed(1)}% · 7d: ${Number(codex.weekly_pct || 0).toFixed(1)}%`,
+        value:`<span class="resource-pressure-value-main">${Math.round(Number(codex.session_pct || 0))}% · ${Math.round(Number(codex.weekly_pct || 0))}%</span><span class="resource-pressure-value-sub"><span>5h session</span><span>7d rolling</span></span>`,
         sub: 'Codex CLI',
         footer: codex.weekly_reset ? `Weekly resets: ${new Date(codex.weekly_reset).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : '',
       }));
@@ -356,7 +366,7 @@
     const ctx = canvas.getContext('2d');
     const w = canvas.width, h = canvas.height;
     ctx.clearRect(0,0,w,h);
-    const p = {l:52,r:16,t:12,b:44};
+    const p = {l:52,r:16,t:12,b:48};
     const series = {
       input: points.map(x => Number(x.inputTokens || 0)),
       output: points.map(x => Number(x.outputTokens || 0)),
@@ -374,7 +384,7 @@
       const val = (maxY/4)*i;
       const yy = y(val);
       ctx.beginPath(); ctx.moveTo(p.l,yy); ctx.lineTo(w-p.r,yy); ctx.stroke();
-      ctx.fillStyle = '#64748b'; ctx.font = '11px Inter'; ctx.fillText(fmtToken(val), 8, yy+4);
+      ctx.fillStyle = '#94a3b8'; ctx.font = '12px Inter'; ctx.fillText(fmtToken(val), 8, yy+4);
     }
 
     const drawLine = (arr,color,dash=[]) => {
@@ -399,7 +409,7 @@
       }
     });
 
-    ctx.fillStyle = '#94a3b8'; ctx.font = '11px Inter';
+    ctx.fillStyle = '#cbd5e1'; ctx.font = '12px Inter';
     points.forEach((pt,i)=>{
       if (points.length > 5 && (i % 2 === 1)) return;
       ctx.fillText(fmtDay(pt.date), x(i)-16, h-10);
@@ -483,16 +493,24 @@
             ? '<span class="model-badge deprecated">DEPRECATED</span>'
             : '';
       const contextCell = utilKnown
-        ? `<div class="context-inline"><div class="context-track"><div class="context-fill ${utilClass}" style="width:${utilPct.toFixed(1)}%"></div></div><span class="mono">${fmtNum(s.context_tokens)} / ${fmtNum(s.context_max)}</span></div>`
+        ? `<div class="context-inline"><div class="context-track"><div class="context-fill ${utilClass}" style="width:${utilPct.toFixed(1)}%"></div></div><span class="mono">${fmtToken(s.context_tokens)} / ${fmtToken(s.context_max)}</span></div>`
         : '—';
       return `<tr>
         <td><a class="session-link" href="sessions.html#session=${encodeURIComponent(s.key)}">${sessionLabel(s)}</a><span class="kind-badge">${s.kind || 'other'}</span><div class="session-key-sub mono">${s.key}</div></td>
-        <td class="mono">${s.model || 'unknown'}${modelBadge}</td>
+        <td class="mono"><span class="model-main">${s.model || 'unknown'}</span>${modelBadge}</td>
         <td class="mono" style="text-align:right">${fmtNum(s.total_tokens)}</td>
         <td>${contextCell}</td>
         <td class="mono">${fmtAgo(s.updated_at)}</td>
       </tr>`;
     }).join('');
+    const tokensHeader = $('sessionsTokensHeader');
+    const activityHeader = $('sessionsActivityHeader');
+    if (tokensHeader) {
+      tokensHeader.innerHTML = `Tokens${state.sessionSort === 'total_tokens' ? '<span class="sort-indicator">↓</span>' : ''}`;
+    }
+    if (activityHeader) {
+      activityHeader.innerHTML = `Activity${state.sessionSort === 'updated_at' ? '<span class="sort-indicator">↓</span>' : ''}`;
+    }
   }
 
   function parseProxy24h(stats) {
@@ -688,6 +706,7 @@
       fetch('/api/usage/sessions').then(r=>r.json()).catch(()=>({sessions:[], totals:{}})),
     ];
     [state.tokens, state.cli, state.quota, state.proxy, state.proxyHistory, state.automation, state.sessions] = await Promise.all(calls);
+    state.sessions.sessions = [...(state.sessions.sessions || [])].sort((a, b) => b.updated_at - a.updated_at);
     renderResourceCards();
     renderTokensPanel();
     renderAutomation();
@@ -706,6 +725,15 @@
   $('topSessionsHeader').addEventListener('click', () => {
     state.topSessionsOpen = !state.topSessionsOpen;
     toggleCollapsible('topSessionsBody', state.topSessionsOpen, 'topSessionsChevron', 'topSessionsHeader');
+  });
+  $('sessionsTokensHeader').addEventListener('click', () => {
+    state.sessionSort = state.sessionSort === 'total_tokens' ? 'updated_at' : 'total_tokens';
+    const rows = [...((state.sessions && state.sessions.sessions) || [])];
+    rows.sort((a, b) => state.sessionSort === 'total_tokens'
+      ? (Number(b.total_tokens || 0) - Number(a.total_tokens || 0))
+      : (Number(b.updated_at || 0) - Number(a.updated_at || 0)));
+    if (state.sessions) state.sessions.sessions = rows;
+    renderTopSessions();
   });
 
   $('proxyPanelHeader').addEventListener('click', async () => {
