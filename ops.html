@@ -2185,6 +2185,18 @@
       if (!state.watcherHealth) return null;
       const results = getWatcherResults();
       const byId = new Map(results.map((row) => [row?.id, row]));
+      // Explicit name-to-ID overrides for crons that resist fuzzy matching
+      const explicitMap = {
+        'claude/anthropic token refresh': 'claude-token-refresh',
+        'openclaw version check': 'version-check',
+      };
+      const lowCheck = String(cronName || '').toLowerCase();
+      for (const [prefix, id] of Object.entries(explicitMap)) {
+        if (lowCheck.startsWith(prefix) || lowCheck.includes(prefix)) {
+          const found = byId.get(id);
+          if (found) return found;
+        }
+      }
       const cfgAll = [
         ...(Array.isArray((state.watcherHealth?.config || {}).system_crons) ? state.watcherHealth.config.system_crons : []),
         ...(Array.isArray((state.watcherHealth?.config || {}).gateway_crons) ? state.watcherHealth.config.gateway_crons : [])
