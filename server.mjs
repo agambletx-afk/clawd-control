@@ -9560,8 +9560,9 @@ const server = createServer(async (req, res) => {
         compaction: {
           model: config.agents?.defaults?.compaction?.model || null,
           mode: defaults.compaction?.mode || config.compaction?.mode || null,
-          status: 'unavailable',
+          status: defaults.compaction?.model ? 'pinned' : 'inherits_primary',
         },
+        compaction_model: config.agents?.defaults?.compaction?.model || null,
         cron: {
           model: null,
           status: 'inherits_primary',
@@ -9619,6 +9620,24 @@ const server = createServer(async (req, res) => {
         if (Object.hasOwn(body, 'heartbeat_every') && typeof body.heartbeat_every === 'string') {
           config.agents.defaults.heartbeat.every = body.heartbeat_every;
           changed = true;
+        }
+
+        if (Object.hasOwn(body, 'compaction_model')) {
+          const nextCompactionModel = body.compaction_model;
+          if (nextCompactionModel === null || nextCompactionModel === '') {
+            if (config.agents.defaults.compaction && typeof config.agents.defaults.compaction === 'object') {
+              if (Object.hasOwn(config.agents.defaults.compaction, 'model')) {
+                delete config.agents.defaults.compaction.model;
+              }
+            }
+            changed = true;
+          } else if (typeof nextCompactionModel === 'string') {
+            if (!config.agents.defaults.compaction || typeof config.agents.defaults.compaction !== 'object') {
+              config.agents.defaults.compaction = {};
+            }
+            config.agents.defaults.compaction.model = nextCompactionModel;
+            changed = true;
+          }
         }
 
         if (!changed) {
