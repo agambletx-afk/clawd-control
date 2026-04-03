@@ -377,7 +377,7 @@ tbody tr.expandable-row { cursor: pointer; }
     const base = Array.isArray(state.checks) ? [...state.checks] : [];
     const filtered = base.filter((check) => {
       const key = `${String(check.layer || '')}|${String(check.name || '').toLowerCase()}`;
-      return key !== 'network_brute_force|proxy anonymization' && key !== 'network_brute_force|llm proxy bypass';
+      return key !== 'network_brute_force|proxy anonymization';
     });
     return [...filtered, ...buildProxySecurityChecks()];
   }
