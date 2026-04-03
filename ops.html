@@ -1960,7 +1960,7 @@
       if (status === 'healthy') return 'green';
       if (status === 'stale') return 'amber';
       if (status === 'failed' || status === 'erroring') return 'red';
-      if (status === 'disabled') return 'gray';
+      if (status === 'disabled' || status === 'unknown') return 'gray';
       return 'amber';
     }
 
@@ -2170,11 +2170,12 @@
         if (!stat || stat === "total") return;
         var cronName = row.dataset.cronName;
         var match = getCronWatcherMatch(cronName);
-        if (stat === "healthy" && match && ["healthy", "ok"].indexOf(String(match.status || "").toLowerCase()) >= 0) {
+        var isConfigOnly = match && match._configOnly;
+        if (stat === "healthy" && match && !isConfigOnly && ["healthy", "ok"].indexOf(String(match.status || "").toLowerCase()) >= 0) {
           row.classList.add("highlight-healthy");
-        } else if (stat === "failing" && match && ["failed", "erroring"].indexOf(String(match.status || "").toLowerCase()) >= 0) {
+        } else if (stat === "failing" && match && !isConfigOnly && ["failed", "erroring"].indexOf(String(match.status || "").toLowerCase()) >= 0) {
           row.classList.add("highlight-failing");
-        } else if (stat === "unmonitored" && !match) {
+        } else if (stat === "unmonitored" && (!match || isConfigOnly)) {
           row.classList.add("highlight-unmonitored");
         }
       });
@@ -2192,17 +2193,20 @@
       cfgAll.forEach((job) => {
         if (job?.description && job?.id) descToId.set(job.description.toLowerCase(), job.id);
       });
+      function configFallback(id, description) {
+        return byId.get(id) || { id, status: 'unknown', name: description, _configOnly: true };
+      }
       if (byId.has(cronName)) return byId.get(cronName);
       const lowered = String(cronName || '').toLowerCase();
       for (const [description, id] of descToId) {
-        if (lowered.startsWith(description)) return byId.get(id) || null;
+        if (lowered.startsWith(description)) return configFallback(id, description);
       }
       for (const [, row] of byId) {
         if ((row?.name || '') === cronName) return row;
       }
       // Fallback: check if any WATCHER description is contained in the cron name
       for (const [description, id] of descToId) {
-        if (lowered.includes(description)) return byId.get(id) || null;
+        if (lowered.includes(description)) return configFallback(id, description);
       }
       return null;
     }
@@ -2385,7 +2389,7 @@
       state.crons.forEach((job) => {
         const cronName = job?._isGateway ? (job._gatewayId || job.name) : job?.name;
         const match = getCronWatcherMatch(cronName);
-        if (!match) {
+        if (!match || match._configOnly) {
           unmonitoredCount += 1;
           return;
         }
@@ -2428,6 +2432,10 @@
         const match = getCronWatcherMatch(cronName);
         if (!match) {
           cell.innerHTML = '<span class="jobs-status-dot gray" title="Not monitored by WATCHER" style="opacity:0.4;"></span>';
+          return;
+        }
+        if (match._configOnly) {
+          cell.innerHTML = '<span class="jobs-status-dot gray" title="Monitored — awaiting results"></span>';
           return;
         }
         const dotClass = watcherStatusClass(match.status);
