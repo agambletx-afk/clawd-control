@@ -2196,17 +2196,41 @@
       function configFallback(id, description) {
         return byId.get(id) || { id, status: 'unknown', name: description, _configOnly: true };
       }
+      // 1. Direct result-ID match
       if (byId.has(cronName)) return byId.get(cronName);
       const lowered = String(cronName || '').toLowerCase();
+      // 2. cronName starts with a config description
       for (const [description, id] of descToId) {
         if (lowered.startsWith(description)) return configFallback(id, description);
       }
+      // 3. Exact result-name match
       for (const [, row] of byId) {
         if ((row?.name || '') === cronName) return row;
       }
-      // Fallback: check if any WATCHER description is contained in the cron name
+      // 4. cronName contains a config description
       for (const [description, id] of descToId) {
         if (lowered.includes(description)) return configFallback(id, description);
+      }
+      // 5. Config description contains cronName
+      for (const [description, id] of descToId) {
+        if (description.includes(lowered)) return configFallback(id, description);
+      }
+      // 6. cronName contains a config ID (handles raw names like "openclaw-version-check:check-openclaw-version.sh")
+      var normalised = lowered.replace(/[^a-z0-9]+/g, '-');
+      for (const job of cfgAll) {
+        if (job?.id && normalised.includes(job.id)) return configFallback(job.id, (job.description || job.id).toLowerCase());
+      }
+      // 7. Config ID contains significant portion of cronName tokens
+      var tokens = lowered.replace(/[^a-z0-9]+/g, ' ').trim().split(/\s+/).filter(function(t) { return t.length > 2; });
+      if (tokens.length > 0) {
+        for (const job of cfgAll) {
+          if (!job?.id) continue;
+          var idNorm = job.id.replace(/[^a-z0-9]+/g, ' ');
+          var matched = tokens.filter(function(t) { return idNorm.includes(t); });
+          if (matched.length >= Math.ceil(tokens.length * 0.5) && matched.length >= 2) {
+            return configFallback(job.id, (job.description || job.id).toLowerCase());
+          }
+        }
       }
       return null;
     }
