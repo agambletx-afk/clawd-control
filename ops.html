@@ -2164,12 +2164,14 @@
     }
 
     function highlightJobRows(stat) {
+      var _byId = new Map(getWatcherResults().map(function(row) { return [row?.id, row]; }));
       var rows = document.querySelectorAll("#cronRows tr[data-cron-name]");
       rows.forEach(function(row) {
         row.classList.remove("highlight-healthy", "highlight-failing", "highlight-unmonitored");
         if (!stat || stat === "total") return;
         var cronName = row.dataset.cronName;
-        var match = getCronWatcherMatch(cronName);
+        var watcherId = row.dataset.watcherId;
+        var match = (watcherId && _byId.get(watcherId)) || getCronWatcherMatch(cronName);
         var isConfigOnly = match && match._configOnly;
         if (stat === "healthy" && match && !isConfigOnly && ["healthy", "ok"].indexOf(String(match.status || "").toLowerCase()) >= 0) {
           row.classList.add("highlight-healthy");
@@ -2304,9 +2306,11 @@
       if (!cronName || state.jobHistory[cronName] || state.jobHistoryLoading[cronName]) return;
       const job = getCronByName(cronName);
       if (!job) return;
-      const watcherMatch = getCronWatcherMatch(cronName);
+      const _wId = job.watcher_id || watcherId;
+      const _rMap = new Map(getWatcherResults().map((r) => [r?.id, r]));
+      const watcherMatch = (_wId && _rMap.get(_wId)) || getCronWatcherMatch(cronName);
       const isGateway = job._isGateway || job.source === 'gateway';
-      if (!watcherMatch && !watcherId) {
+      if (!watcherMatch && !_wId) {
         state.jobHistory[cronName] = { unmonitored: true, runs: [] };
         renderJobHistoryContent(cronName);
         return;
@@ -2367,7 +2371,9 @@
       const expansion = document.createElement('tr');
       expansion.className = 'job-expansion';
       expansion.style.background = 'var(--bg-elevated)';
-      const watcherMatch = getCronWatcherMatch(expandedName);
+      const _wid = job.watcher_id || row.dataset.watcherId;
+      const _rById = new Map(getWatcherResults().map((r) => [r?.id, r]));
+      const watcherMatch = (_wid && _rById.get(_wid)) || getCronWatcherMatch(expandedName);
       const lastRun = watcherMatch?.finished_at || watcherMatch?.last_seen || job.last_run;
       const lastRunRel = lastRun ? rel(lastRun) : 'Unknown';
       const duration = watcherMatch?.duration_ms != null ? watcherMatch.duration_ms + 'ms' : '—';
@@ -2422,9 +2428,10 @@
       let failingCount = 0;
       let unmonitoredCount = 0;
 
+      const _byId = new Map(getWatcherResults().map((row) => [row?.id, row]));
       state.crons.forEach((job) => {
         const cronName = job?._isGateway ? (job._gatewayId || job.name) : job?.name;
-        const match = getCronWatcherMatch(cronName);
+        const match = (job.watcher_id && _byId.get(job.watcher_id)) || getCronWatcherMatch(cronName);
         if (!match || match._configOnly) {
           unmonitoredCount += 1;
           return;
@@ -2461,11 +2468,20 @@
         return;
       }
       warning.innerHTML = '';
+      const byId = new Map(getWatcherResults().map((row) => [row?.id, row]));
       document.querySelectorAll('#cronRows tr[data-cron-name]').forEach((row) => {
         const cell = row.querySelector('[data-role="watcher-status-dot"]');
         if (!cell) return;
         const cronName = row.dataset.cronName;
-        const match = getCronWatcherMatch(cronName);
+        const watcherId = row.dataset.watcherId;
+        // Primary: use server-provided watcher_id for direct lookup
+        var match = watcherId ? (byId.get(watcherId) || null) : null;
+        // Fallback: client-side fuzzy matching
+        if (!match) match = getCronWatcherMatch(cronName);
+        // If server says it's monitored (has watcher_id) but no result yet, show config-only
+        if (!match && watcherId) {
+          match = { id: watcherId, status: 'unknown', _configOnly: true };
+        }
         if (!match) {
           cell.innerHTML = '<span class="jobs-status-dot gray" title="Not monitored by WATCHER" style="opacity:0.4;"></span>';
           return;
@@ -3019,7 +3035,7 @@
           : '';
         lastCategory = cat;
         return catHeader + `
-          <tr data-cron-name="${esc(isGateway ? gwId : job.name)}" style="cursor:pointer;">
+          <tr data-cron-name="${esc(isGateway ? gwId : job.name)}"${job.watcher_id ? ` data-watcher-id="${esc(job.watcher_id)}"` : ''} style="cursor:pointer;">
             <td data-role="watcher-status-dot"></td>
             <td>${esc(job.name)}</td>
             <td title="${esc(job.schedule)}">${esc(job.description || job.schedule)}</td>

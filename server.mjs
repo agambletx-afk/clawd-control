@@ -5350,6 +5350,27 @@ const server = createServer(async (req, res) => {
   if (path === '/api/ops/crons' && req.method === 'GET') {
     try {
       const jobs = parseCronEntries();
+
+      // Attach watcher_id to each job by matching against watcher config
+      try {
+        if (existsSync(WATCHER_CONFIG_PATH)) {
+          const wcfg = JSON.parse(readFileSync(WATCHER_CONFIG_PATH, 'utf8'));
+          const cfgCrons = Array.isArray(wcfg.system_crons) ? wcfg.system_crons : [];
+          for (const job of jobs) {
+            const low = String(job.name || '').toLowerCase();
+            const norm = low.replace(/[^a-z0-9]+/g, '-');
+            for (const cfg of cfgCrons) {
+              if (!cfg.id || !cfg.description) continue;
+              const descLow = cfg.description.toLowerCase();
+              if (low === descLow || low.startsWith(descLow) || descLow.startsWith(low) || norm.includes(cfg.id)) {
+                job.watcher_id = cfg.id;
+                break;
+              }
+            }
+          }
+        }
+      } catch { /* watcher config matching is best-effort */ }
+
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ jobs }));
     } catch {
