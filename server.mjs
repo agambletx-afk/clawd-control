@@ -6774,13 +6774,6 @@ const server = createServer(async (req, res) => {
         }
 
         if (layer === 'reasoning') {
-          let scriptOutput = '';
-          try {
-            scriptOutput = execSync('/usr/local/bin/reset-integrity-baseline.sh', { encoding: 'utf8', timeout: 30000 });
-          } catch (scriptErr) {
-            // Script may exit non-zero but still perform the reset
-            scriptOutput = (scriptErr.stdout || '') + (scriptErr.stderr || '');
-          }
           logAction({
             category: 'security',
             action: 'security-acknowledge',
@@ -6789,7 +6782,7 @@ const server = createServer(async (req, res) => {
             detail: `Acknowledged ${layer}: ${note}`,
           });
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: true, message: 'Integrity manifest updated' }));
+          res.end(JSON.stringify({ success: true, message: 'Integrity acknowledged' }));
           return;
         }
 
