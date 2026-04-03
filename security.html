@@ -347,7 +347,6 @@ tbody tr.expandable-row { cursor: pointer; }
     const sentinelData = state.proxySentinel?.available ? state.proxySentinel.data : null;
     const timestamp = sentinelData?.timestamp || null;
     const exitCheck = sentinelData?.checks?.proxy_exit_ip || null;
-    const llmCheck = sentinelData?.checks?.llm_bypass || null;
 
     const proxyAnonymization = {
       layer: 'network_brute_force',
@@ -359,18 +358,8 @@ tbody tr.expandable-row { cursor: pointer; }
       checked_at: timestamp || state.generatedAt
     };
 
-    const llmBypassStatus = llmCheck ? mapProxyStatusToSecurity(llmCheck?.status) : 'gray';
-    const llmBypass = {
-      layer: 'network_brute_force',
-      name: 'LLM Proxy Bypass',
-      status: llmBypassStatus,
-      message: String(llmCheck?.detail || 'Check not yet implemented — pending sentinel update.'),
-      details: String(llmCheck?.detail || 'Check not yet implemented — pending sentinel update.'),
-      remediation: String(llmCheck?.threshold || 'Pending sentinel update.'),
-      checked_at: timestamp || state.generatedAt
-    };
 
-    return [proxyAnonymization, llmBypass];
+    return [proxyAnonymization];
   }
 
   function getAllChecks() {
