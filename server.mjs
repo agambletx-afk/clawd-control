@@ -1743,6 +1743,12 @@ if (!existsSync(agentsJsonPath)) {
   console.log(`✅ Created agents.json with ${discovered.agents.length} agent(s)`);
 }
 
+const SESSION_SUMMARY_CACHE_LIMIT = 500;
+const SESSION_SUMMARY_RECENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const SESSION_ACTIVE_WINDOW_MS = 5 * 60 * 1000;
+const SESSION_STALE_WINDOW_MS = 30 * 60 * 1000;
+const sessionSummaryCache = new Map();
+
 const collector = new AgentCollector(agentsJsonPath);
 const chatGatewayClient = new ChatGatewayClient({ configPath: agentsJsonPath });
 chatGatewayClient.start().catch((error) => {
@@ -3679,11 +3685,6 @@ let cachedSessionEvents = null;
 let lastSessionEventsComputeTime = 0;
 const SESSION_EVENTS_CACHE_TTL = 30000; // 30 seconds for session events
 const EVENTS_PER_PAGE = 100;
-const SESSION_SUMMARY_CACHE_LIMIT = 500;
-const SESSION_SUMMARY_RECENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
-const SESSION_ACTIVE_WINDOW_MS = 5 * 60 * 1000;
-const SESSION_STALE_WINDOW_MS = 30 * 60 * 1000;
-const sessionSummaryCache = new Map();
 
 function escapeSessionSourceName(name) {
   return typeof name === 'string' ? name.trim() : '';
@@ -3703,7 +3704,7 @@ function deriveSessionSource({ sessionKey, sessionMeta, firstUserMessage }) {
   const messageChannel = String(sessionMeta?.messageChannel || '').toLowerCase();
   const cronJobId = escapeSessionSourceName(sessionMeta?.cronJobId || sessionMeta?.origin?.cronJobId || '');
 
-  if (messageChannel === 'cron') {
+  if (messageChannel === 'cron' || String(sessionKey || '').includes(':cron:')) {
     const fallbackFromPrefix = parseCronSourceName(firstUserMessage);
     return {
       sourceType: 'cron',
@@ -3711,11 +3712,13 @@ function deriveSessionSource({ sessionKey, sessionMeta, firstUserMessage }) {
       // Legacy fallback: old cron sessions encode job labels in first message prefix.
     };
   }
-  if (messageChannel === 'heartbeat') return { sourceType: 'heartbeat', sourceName: '' };
-  if (messageChannel === 'telegram') return { sourceType: 'telegram', sourceName: '' };
+  if (messageChannel === 'heartbeat' || String(sessionKey || '').toLowerCase().includes('heartbeat')) return { sourceType: 'heartbeat', sourceName: '' };
+  if (messageChannel === 'telegram' || String(sessionKey || '').includes(':telegram:')) return { sourceType: 'telegram', sourceName: '' };
   if (messageChannel === 'dashboard' || String(sessionKey || '').includes('dashboard')) {
     return { sourceType: 'dashboard', sourceName: '' };
   }
+  // Fallback: main session key without specific channel is likely Telegram/Chat
+  if (String(sessionKey || '').match(/^agent:[^:]+:main$/)) return { sourceType: 'telegram', sourceName: '' };
   return { sourceType: 'unknown', sourceName: '' };
 }
 
@@ -3855,7 +3858,13 @@ function buildSessionSummary(agentId, sessionKey, sessionMeta = {}, parsed = {})
 }
 
 function maybeSessionFilePath(agentId, sessionMeta) {
-  return getSafeSessionFilePath(sessionMeta?.sessionFile, agentId);
+  const fromMeta = getSafeSessionFilePath(sessionMeta?.sessionFile, agentId);
+  if (fromMeta) return fromMeta;
+  // Fallback: construct path from sessionId when sessionFile is absent
+  const sessionId = sessionMeta?.sessionId;
+  if (!sessionId || typeof sessionId !== 'string') return null;
+  const fallback = join(homedir(), '.openclaw', 'agents', agentId, 'sessions', sessionId + '.jsonl');
+  return existsSync(fallback) ? fallback : null;
 }
 
 function warmSessionSummaryCache() {
