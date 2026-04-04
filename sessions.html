@@ -214,6 +214,12 @@
         <section id="listView" class="view-section active">
             <div id="overviewCards" class="overview-cards"></div>
             <div id="activeStrip" class="active-strip" style="display:none"></div>
+            <div style="display:flex;gap:16px;font-size:11px;color:#94a3b8;margin-bottom:10px;align-items:center">
+                <span style="display:flex;align-items:center;gap:4px"><span class="status-dot status-active"></span> Active</span>
+                <span style="display:flex;align-items:center;gap:4px"><span class="status-dot status-closed"></span> Closed</span>
+                <span style="display:flex;align-items:center;gap:4px"><span class="status-dot status-stale"></span> Stale</span>
+                <span style="display:flex;align-items:center;gap:4px"><span class="status-dot status-failed"></span> Failed</span>
+            </div>
             <div class="overview-filters">
                 <div class="pill-group" id="sourcePills">
                     <button class="pill active" data-source-type="all">All</button>

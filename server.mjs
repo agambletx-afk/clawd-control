@@ -3888,7 +3888,9 @@ function warmSessionSummaryCache() {
         if (!sessionId) continue;
         const updatedMs = new Date(sessionMeta.updatedAt || 0).getTime();
         const shouldParse = Number.isFinite(updatedMs) && (now - updatedMs) <= SESSION_SUMMARY_RECENT_WINDOW_MS;
-        const parsed = shouldParse ? parseSessionJsonlSummary(maybeSessionFilePath(agentId, sessionMeta)) : {};
+        const sessionFilePath = maybeSessionFilePath(agentId, sessionMeta);
+        if (!sessionFilePath) continue; // Skip sessions with no JSONL file on disk
+        const parsed = shouldParse ? parseSessionJsonlSummary(sessionFilePath) : {};
         const summary = buildSessionSummary(agentId, sessionKey, sessionMeta, parsed);
         if (summary) upsertSessionSummary(summary);
       }
@@ -3938,6 +3940,7 @@ function updateSessionSummaryCacheFromCollector(agentId, state) {
         toolCallCount: existing.toolCallCount,
       };
     }
+    if (!maybeSessionFilePath(agentId, sessionMeta)) continue; // Skip sessions with no JSONL
     const summary = buildSessionSummary(agentId, sessionKey, sessionMeta, parsed);
     if (summary) upsertSessionSummary(summary);
   }
