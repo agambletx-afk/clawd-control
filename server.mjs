@@ -9173,6 +9173,98 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  // ── Heartbeat Status (consolidated) ──
+  if (path === '/api/heartbeat/status' && req.method === 'GET') {
+    try {
+      const result = { timestamp: new Date().toISOString(), overall: 'green', checks: [] };
+      const TEN_MINUTES_MS = 10 * 60 * 1000;
+      const now = Date.now();
+
+      // 1. System Health
+      try {
+        const healthPath = join(homedir(), '.openclaw', 'workspace', 'health-status.json');
+        if (existsSync(healthPath)) {
+          const health = JSON.parse(readFileSync(healthPath, 'utf8'));
+          const ts = new Date(health.timestamp || 0).getTime();
+          const stale = (now - ts) > TEN_MINUTES_MS;
+          const status = stale ? 'stale' : (health.overall_status === 'green' ? 'green' : health.overall_status || 'unknown');
+          result.checks.push({ name: 'system_health', status, message: stale ? 'Timestamp stale (>' + Math.round((now - ts) / 60000) + 'm)' : health.overall_status || 'ok' });
+          if (status !== 'green') result.overall = status === 'red' ? 'red' : (result.overall === 'red' ? 'red' : 'amber');
+        } else {
+          result.checks.push({ name: 'system_health', status: 'unknown', message: 'health-status.json not found' });
+          result.overall = 'amber';
+        }
+      } catch (e) { result.checks.push({ name: 'system_health', status: 'error', message: e.message }); result.overall = 'amber'; }
+
+      // 2. WATCHER Status
+      try {
+        const watcherPath = join(homedir(), '.openclaw', 'workspace', 'watcher-status.json');
+        if (existsSync(watcherPath)) {
+          const watcher = JSON.parse(readFileSync(watcherPath, 'utf8'));
+          const status = watcher.overall_status === 'healthy' ? 'green' : (watcher.overall_status || 'unknown');
+          const failing = [];
+          for (const c of (watcher.system_crons || [])) { if (c.status && c.status !== 'healthy' && c.status !== 'ok') failing.push(c.id + ':' + c.status); }
+          for (const c of (watcher.gateway_crons || [])) { if (c.status && c.status !== 'healthy' && c.status !== 'ok' && c.status !== 'disabled') failing.push(c.name + ':' + c.status); }
+          result.checks.push({ name: 'watcher', status, message: failing.length ? failing.join(', ') : 'ok' });
+          if (status !== 'green' && status !== 'healthy') result.overall = result.overall === 'red' ? 'red' : 'amber';
+        } else {
+          result.checks.push({ name: 'watcher', status: 'unknown', message: 'watcher-status.json not found' });
+        }
+      } catch (e) { result.checks.push({ name: 'watcher', status: 'error', message: e.message }); }
+
+      // 3. Stale Tasks
+      try {
+        const staleRes = await new Promise((resolve) => {
+          const req2 = require('http').get('http://127.0.0.1:3100/api/tasks/stale?soft_threshold=0.5', (r) => {
+            let body = ''; r.on('data', (c) => body += c); r.on('end', () => { try { resolve(JSON.parse(body)); } catch { resolve(null); } });
+          });
+          req2.on('error', () => resolve(null));
+          req2.setTimeout(3000, () => { req2.destroy(); resolve(null); });
+        });
+        const staleCount = staleRes?.stale?.length || staleRes?.counts?.stale || 0;
+        const status = staleCount > 0 ? 'amber' : 'green';
+        result.checks.push({ name: 'stale_tasks', status, message: staleCount > 0 ? staleCount + ' stale tasks' : 'ok' });
+        if (status !== 'green') result.overall = result.overall === 'red' ? 'red' : 'amber';
+      } catch (e) { result.checks.push({ name: 'stale_tasks', status: 'error', message: e.message }); }
+
+      // 4. Delegation Sweep
+      try {
+        const sweepPath = join(homedir(), '.openclaw', 'logs', 'delegation-sweep.log');
+        if (existsSync(sweepPath)) {
+          const content2 = readFileSync(sweepPath, 'utf8').trim();
+          const status = content2.length > 0 ? 'amber' : 'green';
+          result.checks.push({ name: 'delegation_sweep', status, message: content2.length > 0 ? 'New entries in sweep log' : 'ok' });
+          if (status !== 'green') result.overall = result.overall === 'red' ? 'red' : 'amber';
+        } else {
+          result.checks.push({ name: 'delegation_sweep', status: 'green', message: 'No sweep log (normal)' });
+        }
+      } catch (e) { result.checks.push({ name: 'delegation_sweep', status: 'error', message: e.message }); }
+
+      // 5. Overdue Tasks
+      try {
+        const tasksRes = await new Promise((resolve) => {
+          const req2 = require('http').get('http://127.0.0.1:3100/api/tasks?status=in-progress', (r) => {
+            let body = ''; r.on('data', (c) => body += c); r.on('end', () => { try { resolve(JSON.parse(body)); } catch { resolve(null); } });
+          });
+          req2.on('error', () => resolve(null));
+          req2.setTimeout(3000, () => { req2.destroy(); resolve(null); });
+        });
+        const tasks = tasksRes?.tasks || [];
+        const overdue = tasks.filter((t) => t.due_at && new Date(t.due_at).getTime() < now);
+        const status = overdue.length > 0 ? 'amber' : 'green';
+        result.checks.push({ name: 'overdue_tasks', status, message: overdue.length > 0 ? overdue.length + ' overdue tasks' : 'ok' });
+        if (status !== 'green') result.overall = result.overall === 'red' ? 'red' : 'amber';
+      } catch (e) { result.checks.push({ name: 'overdue_tasks', status: 'error', message: e.message }); }
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
   // ── List Sessions (summary cache) ──
   if (path === '/api/sessions' && req.method === 'GET') {
     try {
