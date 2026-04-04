@@ -3905,6 +3905,28 @@ function warmSessionSummaryCache() {
   } catch (error) {
     console.warn('[sessions] cache warmup failed:', error.message);
   }
+  // Second pass: discover JSONL files on disk not in sessions.json
+  try {
+    const agentIds = readdirSync(agentsDir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
+    for (const agentId of agentIds) {
+      const sessDir = join(agentsDir, agentId, 'sessions');
+      if (!existsSync(sessDir)) continue;
+      const jsonlFiles = readdirSync(sessDir).filter((f) => f.endsWith('.jsonl'));
+      for (const file of jsonlFiles) {
+        const sessionId = file.replace('.jsonl', '');
+        if (sessionSummaryCache.has(sessionId)) continue;
+        const filePath = join(sessDir, file);
+        const stat = statSync(filePath);
+        const ageMs = now - stat.mtimeMs;
+        if (ageMs > SESSION_SUMMARY_RECENT_WINDOW_MS) continue;
+        const parsed = parseSessionJsonlSummary(filePath);
+        const summary = buildSessionSummary(agentId, 'agent:' + agentId + ':orphan:' + sessionId, { sessionId, active: false }, parsed);
+        if (summary) upsertSessionSummary(summary);
+      }
+    }
+  } catch (err) {
+    console.warn('[sessions] disk scan failed:', err.message);
+  }
 }
 
 function updateSessionSummaryCacheFromCollector(agentId, state) {
