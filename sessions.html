@@ -173,6 +173,29 @@
         .banner { margin: 8px 0; padding: 8px; border-radius: 6px; border: 1px solid #363b4d; background: #1e2535; color: #cbd5e1; font-size: 12px; }
         .raw-panel { display: none; background: #0d1117; color: #cbd5e1; border: 1px solid #363b4d; border-radius: 8px; padding: 10px; white-space: pre; overflow: auto; max-height: 450px; }
         .waterfall-placeholder { background: #161b26; border: 1px solid #363b4d; border-radius: 10px; padding: 20px; color: #94a3b8; }
+
+        :root { --sessions-domain: #38bdf8; }
+        .overview-cards { display:grid; grid-template-columns: repeat(4,minmax(150px,1fr)); gap:10px; margin-bottom:10px; }
+        .summary-card { position:relative; background:#1e2535; border:1px solid #363b4d; border-radius:12px; padding:10px 12px 10px 14px; overflow:hidden; }
+        .summary-card::before { content:''; position:absolute; left:0; top:0; bottom:0; width:2px; background: linear-gradient(180deg, var(--sessions-domain), transparent); }
+        .summary-label { font-size:11px; text-transform:uppercase; color:#94a3b8; letter-spacing:.08em; }
+        .summary-value { font-size:22px; font-family:var(--font-mono); font-variant-numeric:tabular-nums; color:#e2e8f0; }
+        .summary-sub { font-size:12px; color:#94a3b8; }
+        .overview-filters { display:flex; justify-content:space-between; gap:10px; margin: 8px 0 12px; flex-wrap: wrap; }
+        .pill-group { display:flex; gap:6px; flex-wrap:wrap; }
+        .pill { background:#161b26; border:1px solid #363b4d; color:#94a3b8; border-radius:999px; padding:6px 12px; font-size:13px; cursor:pointer; }
+        .pill.active { border-color:#38bdf8; color:#38bdf8; background:rgba(56,189,248,.08); }
+        .status-dot { width:10px; height:10px; border-radius:50%; display:inline-block; }
+        .status-active { background:#22c55e; box-shadow:0 0 0 0 rgba(34,197,94,.4); animation:pulse 2s infinite; }
+        .status-closed { background:#64748b; }
+        .status-stale { background:#f59e0b; }
+        .status-failed { background:#ef4444; }
+        .source-pill { padding:3px 8px; border-radius:999px; border:1px solid rgba(56,189,248,.35); background:rgba(56,189,248,.12); color:#7dd3fc; font-size:11px; }
+        .mono-num { font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
+        .session-detail-row td { background:#161b26; }
+        .session-detail { padding:10px; font-size:12px; color:#cbd5e1; line-height:1.5; }
+        .active-strip { margin-bottom:10px; background:#161b26; border:1px solid #363b4d; border-radius:10px; padding:8px 10px; font-size:12px; color:#cbd5e1; }
+        @keyframes pulse { 0% { box-shadow:0 0 0 0 rgba(34,197,94,.4);} 70% { box-shadow:0 0 0 6px rgba(34,197,94,0);} 100% { box-shadow:0 0 0 0 rgba(34,197,94,0);} }
     </style>
 </head>
 <body>
@@ -183,46 +206,44 @@
         </div>
 
         <div class="sub-nav" role="tablist" aria-label="Sessions views">
-            <button class="sub-nav-btn active" data-view="list">List</button>
+            <button class="sub-nav-btn active" data-view="overview">Overview</button>
             <button class="sub-nav-btn" data-view="transcript">Transcript</button>
             <button class="sub-nav-btn" data-view="waterfall">Waterfall</button>
         </div>
 
         <section id="listView" class="view-section active">
-            <div class="filters-bar">
-                <label for="timeRange">Time Range:</label>
-                <button id="filter24h" class="active" data-range="24h">24h</button>
-                <button id="filter3d" data-range="3d">3d</button>
-                <button id="filter7d" data-range="7d">7d</button>
-                <button id="filter30d" data-range="30d">30d</button>
-
-                <label for="sourceFilter" style="margin-left: 20px;">Source:</label>
-                <button id="filterSourceAll" class="active" data-source="all">All</button>
-                <button id="filterSourceTelegram" data-source="Telegram">Telegram</button>
-                <button id="filterSourceHeartbeat" data-source="Heartbeat">Heartbeat</button>
+            <div id="overviewCards" class="overview-cards"></div>
+            <div id="activeStrip" class="active-strip" style="display:none"></div>
+            <div class="overview-filters">
+                <div class="pill-group" id="sourcePills">
+                    <button class="pill active" data-source-type="all">All</button>
+                    <button class="pill" data-source-type="telegram">Telegram</button>
+                    <button class="pill" data-source-type="heartbeat">Heartbeat</button>
+                    <button class="pill" data-source-type="cron">Cron</button>
+                    <button class="pill" data-source-type="dashboard">Dashboard</button>
+                </div>
+                <div class="pill-group" id="timePills">
+                    <button class="pill active" data-range="24h">24h</button>
+                    <button class="pill" data-range="3d">3d</button>
+                    <button class="pill" data-range="7d">7d</button>
+                    <button class="pill" data-range="30d">30d</button>
+                </div>
             </div>
-
             <table class="event-log-table" id="eventLogTable">
                 <thead>
                     <tr>
-                        <th>Time (CST)</th>
-                        <th>Session</th>
-                        <th>Type</th>
-                        <th>Model</th>
-                        <th>Role</th>
-                        <th>Preview</th>
-                        <th>Tokens</th>
-                        <th>Cost</th>
+                        <th data-sort="status">Status</th>
+                        <th data-sort="sourceType">Source</th>
+                        <th data-sort="id">Session</th>
+                        <th data-sort="primaryModel">Model</th>
+                        <th data-sort="turnCount">Turns</th>
+                        <th data-sort="totalTokens">Tokens</th>
+                        <th data-sort="startedAt">Duration</th>
+                        <th data-sort="lastActivityAt">Last Activity</th>
                     </tr>
                 </thead>
-                <tbody>
-                    <tr><td colspan="8" style="text-align: center;">Loading events...</td></tr>
-                </tbody>
+                <tbody><tr><td colspan="8" style="text-align:center;">Loading sessions...</td></tr></tbody>
             </table>
-
-            <div id="loadMoreButtonContainer" style="text-align: center; margin-top: 20px;">
-                <button id="loadMoreButton" style="padding: 10px 20px;" class="nav-item">Load More</button>
-            </div>
         </section>
 
         <section id="transcriptView" class="view-section">
@@ -251,27 +272,152 @@
         </section>
 
         <script>
-            const CST_OFFSET_MS = -6 * 60 * 60 * 1000;
-            let currentPage = 1;
             let currentRange = '24h';
-            let currentSource = 'all';
-            let isLoading = false;
-            let hasMore = true;
-            let transcriptState = { sessionId: null, entries: [], pagination: null, raw: '', current: null, rawOpen: false };
-
+            let currentSourceType = 'all';
+            let sortField = 'lastActivityAt';
+            let sortOrder = 'desc';
+            let expandedSessionId = null;
+            let transcriptState = { sessionId: null, entries: [], pagination: null, raw: '', current: null, rawOpen: false, summary: null };
             const FETCH_OPTS = { credentials: 'same-origin' };
 
+            function escapeHtml(value) {
+                return String(value || '')
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            }
+
             function parseHash() {
-                const raw = (window.location.hash || '#list').replace(/^#/, '');
+                const raw = (window.location.hash || '#overview').replace(/^#/, '');
                 const [viewPart, ...rest] = raw.split('&');
+                const normalized = viewPart === 'list' ? 'overview' : (viewPart || 'overview');
                 const params = new URLSearchParams(rest.join('&'));
-                return { view: viewPart || 'list', params };
+                return { view: normalized, params };
             }
 
             function setHash(view, extras = {}) {
                 const params = new URLSearchParams(extras);
                 const suffix = params.toString();
                 window.location.hash = suffix ? `#${view}&${suffix}` : `#${view}`;
+            }
+
+            function formatTokens(num) {
+                const n = Number(num || 0);
+                if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
+                return String(Math.round(n));
+            }
+
+            function formatDuration(startedAt, endedAt, lastActivityAt) {
+                const s = new Date(startedAt || 0).getTime();
+                const e = new Date(endedAt || lastActivityAt || Date.now()).getTime();
+                const ms = Math.max(0, e - s);
+                const sec = Math.floor(ms / 1000);
+                if (sec < 60) return `${sec}s`;
+                const min = Math.floor(sec / 60);
+                const rem = sec % 60;
+                if (min < 60) return `${min}m ${rem}s`;
+                const hr = Math.floor(min / 60);
+                return `${hr}h ${min % 60}m`;
+            }
+
+            function relativeTime(ts) {
+                const ms = Date.now() - new Date(ts || 0).getTime();
+                const sec = Math.floor(ms / 1000);
+                if (sec < 60) return `${sec}s ago`;
+                const min = Math.floor(sec / 60);
+                if (min < 60) return `${min}m ago`;
+                const hr = Math.floor(min / 60);
+                return `${hr}h ago`;
+            }
+
+            async function fetchOverview() {
+                const map = { '24h': 1, '3d': 3, '7d': 7, '30d': 30 };
+                const from = new Date(Date.now() - ((map[currentRange] || 1) * 24 * 60 * 60 * 1000)).toISOString();
+                const params = new URLSearchParams({ from, sort: sortField, order: sortOrder, limit: '200' });
+                if (currentSourceType !== 'all') params.set('sourceType', currentSourceType);
+                const res = await fetch(`/api/sessions?${params.toString()}`, FETCH_OPTS);
+                if (!res.ok) throw new Error('Session data unavailable. Check gateway connection.');
+                return res.json();
+            }
+
+            function renderCards(summary) {
+                const cards = [
+                    ['ACTIVE SESSIONS', summary.activeCount || 0, 'Live now'],
+                    [`SESSIONS (${currentRange.toUpperCase()})`, summary.sessionCount || 0, 'Filtered set'],
+                    [`TOKENS (${currentRange.toUpperCase()})`, (summary.totalInputTokens || 0) + (summary.totalOutputTokens || 0), 'Input + output'],
+                    ['AVG TOKENS/SESSION', summary.sessionCount ? Math.round(((summary.totalInputTokens || 0) + (summary.totalOutputTokens || 0)) / summary.sessionCount) : 0, 'Mean per session'],
+                ];
+                document.getElementById('overviewCards').innerHTML = cards.map(([label, value, sub]) => `
+                    <div class="summary-card">
+                        <div class="summary-label">${escapeHtml(label)}</div>
+                        <div class="summary-value">${escapeHtml(formatTokens(value))}</div>
+                        <div class="summary-sub">${escapeHtml(sub)}</div>
+                    </div>
+                `).join('');
+            }
+
+            function renderActiveStrip(sessions, summary) {
+                const strip = document.getElementById('activeStrip');
+                if (!(summary.activeCount > 0)) { strip.style.display = 'none'; strip.innerHTML = ''; return; }
+                const active = sessions.filter((s) => s.status === 'active');
+                strip.style.display = 'block';
+                strip.innerHTML = `${active.length} active: ` + active.map((s) => `<span class="source-pill">${escapeHtml(s.sourceType)}${s.sourceName ? ':' + escapeHtml(s.sourceName) : ''}</span>`).join(' ');
+            }
+
+            function statusDot(status) {
+                return `<span class="status-dot status-${escapeHtml(status)}"></span>`;
+            }
+
+            function renderOverviewTable(sessions) {
+                const tbody = document.querySelector('#eventLogTable tbody');
+                if (!sessions.length) {
+                    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">No sessions found for the selected filters.</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = sessions.map((s) => {
+                    const totalTokens = Number(s.inputTokens || 0) + Number(s.outputTokens || 0);
+                    const source = s.sourceName ? `${s.sourceType}: ${s.sourceName}` : s.sourceType;
+                    return `<tr class="session-row-clickable" data-session-id="${escapeHtml(s.id)}">
+                        <td>${statusDot(s.status)}</td>
+                        <td><span class="source-pill">${escapeHtml(source)}</span></td>
+                        <td class="mono-num">${escapeHtml(String(s.id).slice(0, 8))}</td>
+                        <td class="mono-num">${escapeHtml(s.primaryModel || 'unknown')}</td>
+                        <td class="mono-num">${escapeHtml(String(s.turnCount || 0))}</td>
+                        <td class="mono-num">${escapeHtml(formatTokens(totalTokens))}</td>
+                        <td class="mono-num">${escapeHtml(formatDuration(s.startedAt, s.endedAt, s.lastActivityAt))}</td>
+                        <td>${escapeHtml(relativeTime(s.lastActivityAt))}</td>
+                    </tr>
+                    <tr class="session-detail-row" data-detail-id="${escapeHtml(s.id)}" style="display:${expandedSessionId === s.id ? 'table-row' : 'none'}"><td colspan="8"><div class="session-detail">
+                        <div>${escapeHtml(source)} · ${escapeHtml(s.primaryModel || 'unknown')} · ${escapeHtml(s.startedAt || '--')} → ${escapeHtml(s.endedAt || 'active')} · <span class="source-pill">${escapeHtml(s.status)}</span></div>
+                        <div>User turns: ${escapeHtml(s.turnCount)} · Tool calls: ${escapeHtml(s.toolCallCount || 0)} · Tool errors: ${escapeHtml(s.errorCount || 0)} · Total tokens: ${escapeHtml(totalTokens)}</div>
+                        <div>User: ${escapeHtml((s.latestUserMessage || '').slice(0, 120))}</div>
+                        <div>Assistant: ${escapeHtml((s.latestAssistantMessage || '').slice(0, 120))}</div>
+                        <div><a href="#transcript&session=${encodeURIComponent(s.id)}" style="color:#38bdf8">View Full Transcript →</a></div>
+                    </div></td></tr>`;
+                }).join('');
+
+                tbody.querySelectorAll('tr.session-row-clickable').forEach((row) => {
+                    row.addEventListener('click', () => {
+                        const id = row.dataset.sessionId;
+                        expandedSessionId = expandedSessionId === id ? null : id;
+                        renderOverview();
+                    });
+                });
+            }
+
+            async function renderOverview() {
+                const tbody = document.querySelector('#eventLogTable tbody');
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">Loading sessions...</td></tr>';
+                try {
+                    const data = await fetchOverview();
+                    renderCards(data.summary || {});
+                    renderActiveStrip(data.sessions || [], data.summary || {});
+                    renderOverviewTable(data.sessions || []);
+                } catch (e) {
+                    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--error);">${escapeHtml(e.message)}</td></tr>`;
+                }
             }
 
             function applyView() {
@@ -289,6 +435,7 @@
                     document.getElementById('waterfallView').classList.add('active');
                 } else {
                     document.getElementById('listView').classList.add('active');
+                    renderOverview();
                 }
             }
 
@@ -296,56 +443,29 @@
                 const from = params.get('from');
                 const taskId = params.get('taskId');
                 const wrap = document.getElementById('backLinkWrap');
-                if (from === 'usage') {
-                    wrap.innerHTML = '<a href="analytics.html" style="color:#38bdf8;display:inline-block;margin-bottom:8px">← Back to Usage</a>';
-                } else if (from === 'tasks') {
-                    wrap.innerHTML = `<a href="tasks.html#task=${taskId || ''}" style="color:#38bdf8;display:inline-block;margin-bottom:8px">← Back to Task #${taskId || ''} audit</a>`;
-                } else {
-                    wrap.innerHTML = '';
-                }
+                if (from === 'usage') wrap.innerHTML = '<a href="analytics.html" style="color:#38bdf8;display:inline-block;margin-bottom:8px">← Back to Usage</a>';
+                else if (from === 'tasks') wrap.innerHTML = `<a href="tasks.html#task=${escapeHtml(taskId || '')}" style="color:#38bdf8;display:inline-block;margin-bottom:8px">← Back to Task #${escapeHtml(taskId || '')} audit</a>`;
+                else wrap.innerHTML = '';
             }
 
-            function normalizePreview(text, maxLen) {
-                return String(text || '').replace(/[#*_`>\[\]\(\)!-]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, maxLen);
-            }
-            function friendlyTool(name) {
-                return String(name || 'Tool').split('_').map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
-            }
-
+            function normalizePreview(text, maxLen) { return String(text || '').replace(/[#*_`>\[\]\(\)!-]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, maxLen); }
+            function friendlyTool(name) { return String(name || 'Tool').split('_').map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(' '); }
             async function loadSessionPicker() {
                 const picker = document.getElementById('transcriptPicker');
                 picker.innerHTML = 'Loading recent sessions...';
                 const res = await fetch('/api/sessions?limit=20', FETCH_OPTS);
                 const data = await res.json();
                 const sessions = data.sessions || [];
-                if (sessions.length === 0) {
-                    picker.innerHTML = 'No recent sessions found.';
-                    return;
-                }
-                picker.innerHTML = sessions.map((s) => `<div class="picker-item" data-session-id="${s.sessionId}">${s.agentEmoji || '🤖'} ${s.displayName || s.sessionId} · <span class="mono">${(s.model || 'unknown')}</span> · ${new Date(s.updatedAt || Date.now()).toLocaleString()}</div>`).join('');
-                picker.querySelectorAll('.picker-item').forEach((el) => {
-                    el.addEventListener('click', () => setHash('transcript', { session: el.dataset.sessionId }));
-                });
+                if (!sessions.length) { picker.innerHTML = 'No recent sessions found.'; return; }
+                picker.innerHTML = sessions.map((s) => `<div class="picker-item" data-session-id="${escapeHtml(s.id)}">🤖 ${escapeHtml(String(s.id).slice(0, 12))} · <span class="mono">${escapeHtml(s.primaryModel || 'unknown')}</span> · ${escapeHtml(new Date(s.lastActivityAt || Date.now()).toLocaleString())}</div>`).join('');
+                picker.querySelectorAll('.picker-item').forEach((el) => el.addEventListener('click', () => setHash('transcript', { session: el.dataset.sessionId })));
             }
 
             function renderTranscriptHeader(session) {
                 const wrap = document.getElementById('transcriptHeader');
-                if (!session) {
-                    wrap.innerHTML = '<div class="transcript-title"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg><span class="transcript-title-capsule"></span>Transcript</div><div class="panel-subtitle">Session metadata and status.</div><div class="meta-v">Transcript not available.</div>';
-                    return;
-                }
+                if (!session) { wrap.innerHTML = '<div class="transcript-title"><span class="transcript-title-capsule"></span>Transcript</div><div class="meta-v">Transcript not available.</div>'; return; }
                 const started = session.startedAt ? new Date(session.startedAt).toLocaleString() : '--';
-                wrap.innerHTML = `
-                    <div class="transcript-title"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg><span class="transcript-title-capsule"></span>Transcript</div>
-                    <div class="panel-subtitle">Session metadata and status.</div>
-                    <div class="transcript-meta-grid">
-                        <div class="meta-item"><div class="meta-k">Agent</div><div class="meta-v">${session.agentEmoji || '🤖'} ${session.agent || '--'}</div></div>
-                        <div class="meta-item"><div class="meta-k">Source</div><div class="meta-v">${session.source || 'Direct'}</div></div>
-                        <div class="meta-item"><div class="meta-k">Model</div><div class="meta-v mono">${session.model || '--'}</div></div>
-                        <div class="meta-item"><div class="meta-k">Timing</div><div class="meta-v">${started}${session.active ? ' · Active' : ''}</div></div>
-                        <div class="meta-item" style="display:${session.taskId ? 'block' : 'none'}"><div class="meta-k">Task</div><div class="meta-v"><a href="tasks.html#task=${session.taskId || ''}" style="color:#38bdf8">Task #${session.taskId || ''}</a></div></div>
-                        <div class="meta-item"><div class="meta-k">Status</div><div class="meta-v"><span class="status-pill status-${session.transcriptStatus}">${(session.transcriptStatus || '').replace('_', ' ')}</span></div></div>
-                    </div>`;
+                wrap.innerHTML = `<div class="transcript-title"><span class="transcript-title-capsule"></span>Transcript</div><div class="panel-subtitle">Session metadata and status.</div><div class="transcript-meta-grid"><div class="meta-item"><div class="meta-k">Agent</div><div class="meta-v">${escapeHtml(session.agent || '--')}</div></div><div class="meta-item"><div class="meta-k">Source</div><div class="meta-v">${escapeHtml(session.source || 'Direct')}</div></div><div class="meta-item"><div class="meta-k">Model</div><div class="meta-v mono">${escapeHtml(session.model || '--')}</div></div><div class="meta-item"><div class="meta-k">Timing</div><div class="meta-v">${escapeHtml(started)}${session.active ? ' · Active' : ''}</div></div><div class="meta-item"><div class="meta-k">Status</div><div class="meta-v"><span class="status-pill status-${escapeHtml(session.transcriptStatus)}">${escapeHtml((session.transcriptStatus || '').replace('_', ' '))}</span></div></div></div>`;
             }
 
             function renderTranscriptBanners(session) {
@@ -353,85 +473,29 @@
                 const bits = [];
                 if (session?.active) bits.push('<div class="banner">Session active. Showing last complete entry.</div>');
                 if (session?.branchDetected) bits.push('<div class="banner">This transcript contains branches. Showing chronological view.</div>');
-                if ((session?.corruptionCount || 0) > 0) bits.push(`<div class="banner">Some entries in this transcript could not be read. ${session.corruptionCount} entries skipped.</div>`);
+                if ((session?.corruptionCount || 0) > 0) bits.push(`<div class="banner">Some entries in this transcript could not be read. ${escapeHtml(session.corruptionCount)} entries skipped.</div>`);
+                if (transcriptState.summary) bits.push(`<div class="banner mono">Total tokens: ${escapeHtml(transcriptState.summary.totalTokens || 0)} (input: ${escapeHtml(transcriptState.summary.inputTokens || 0)}, output: ${escapeHtml(transcriptState.summary.outputTokens || 0)}, cache: ${escapeHtml(transcriptState.summary.cacheTokens || 0)}) · Turns: ${escapeHtml(transcriptState.summary.turns || 0)}</div>`);
                 wrap.innerHTML = bits.join('');
             }
 
-            function getIndentClass(entry) {
-                if (entry.type === 'tool_call') return 'indent-1';
-                if (entry.type === 'tool_result') return 'indent-2';
-                return '';
-            }
-
-            function summarizeEntry(entry) {
-                if (entry.type === 'tool_call') return `Called ${friendlyTool(entry.toolName)}`.slice(0, 80);
-                if (entry.type === 'tool_result') return entry.isError ? `Failed: ${normalizePreview(entry.content || '', 70)}` : 'Returned successfully';
-                if (entry.type === 'branch_summary') return `Branch summary ${normalizePreview(entry.summary || '', 60)}`;
-                if (entry.type === 'compaction') return 'Context compacted';
-                if (entry.type === 'system_internal') return 'System note';
-                if (entry.type === 'unknown') return `Unknown event (${entry.rawType || 'unknown'})`;
-                if (entry.type === 'corruption') return 'Entry could not be read';
-                return normalizePreview(entry.content || '', 150);
-            }
-
-            function chipFor(entry) {
-                if (entry.type === 'user_message') return '<span class="chip chip-user">User</span>';
-                if (entry.type === 'assistant_message') return '<span class="chip chip-assistant">Assistant</span>';
-                if (entry.type === 'tool_call') return '<span class="chip chip-tool">Tool Call</span>';
-                if (entry.type === 'tool_result') return '<span class="chip chip-tool">Tool Result</span>';
-                if (entry.type === 'system_internal') return '<span class="chip chip-system">System</span>';
-                if (entry.type === 'unknown') return '<span class="chip chip-system">Unknown event</span>';
-                return '';
-            }
+            function getIndentClass(entry) { if (entry.type === 'tool_call') return 'indent-1'; if (entry.type === 'tool_result') return 'indent-2'; return ''; }
+            function summarizeEntry(entry) { if (entry.type === 'tool_call') return `Called ${friendlyTool(entry.toolName)}`.slice(0, 80); if (entry.type === 'tool_result') return entry.isError ? `Failed: ${normalizePreview(entry.content || '', 70)}` : 'Returned successfully'; if (entry.type === 'branch_summary') return `Branch summary ${normalizePreview(entry.summary || '', 60)}`; if (entry.type === 'compaction') return 'Context compacted'; if (entry.type === 'system_internal') return 'System note'; if (entry.type === 'unknown') return `Unknown event (${entry.rawType || 'unknown'})`; if (entry.type === 'corruption') return 'Entry could not be read'; return normalizePreview(entry.content || '', 150); }
+            function chipFor(entry) { if (entry.type === 'user_message') return '<span class="chip chip-user">User</span>'; if (entry.type === 'assistant_message') return '<span class="chip chip-assistant">Assistant</span>'; if (entry.type === 'tool_call') return '<span class="chip chip-tool">Tool Call</span>'; if (entry.type === 'tool_result') return '<span class="chip chip-tool">Tool Result</span>'; if (entry.type === 'system_internal') return '<span class="chip chip-system">System</span>'; if (entry.type === 'unknown') return '<span class="chip chip-system">Unknown event</span>'; return ''; }
 
             function renderTimeline() {
+                const target = document.getElementById('timeline');
                 const showToolResults = document.getElementById('toggleToolResults').checked;
                 const showSystem = document.getElementById('toggleSystem').checked;
                 const showCompaction = document.getElementById('toggleCompaction').checked;
-                const target = document.getElementById('timeline');
-                const filtered = transcriptState.entries.filter((entry) => {
-                    if (!showToolResults && entry.type === 'tool_result') return false;
-                    if (!showSystem && entry.type === 'system_internal') return false;
-                    if (!showCompaction && entry.type === 'compaction') return false;
-                    return true;
-                });
-
-                if (!transcriptState.current) {
-                    target.innerHTML = '<div class="timeline-header"><div class="timeline-title"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg><span class="transcript-title-capsule"></span>Timeline</div><div class="panel-subtitle">Chronological conversation flow.</div></div><div class="timeline-item slim">Select a session to view transcript.</div>';
-                    return;
-                }
-
-                if (transcriptState.current.transcriptStatus === 'summary_only') {
-                    const summary = transcriptState.summary || {};
-                    target.innerHTML = `<div class="timeline-header"><div class="timeline-title"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg><span class="transcript-title-capsule"></span>Timeline</div><div class="panel-subtitle">Chronological conversation flow.</div></div><div class="timeline-item slim">Transcript no longer available. Session ran ${summary.timestamp || '--'}, ${summary.tokens || 0} tokens, model ${summary.model || '--'}.</div>`;
-                    return;
-                }
-
-                if (filtered.length === 0) {
-                    target.innerHTML = '<div class="timeline-header"><div class="timeline-title"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg><span class="transcript-title-capsule"></span>Timeline</div><div class="panel-subtitle">Chronological conversation flow.</div></div><div class="timeline-item slim">Transcript not available.</div>';
-                    return;
-                }
-
-                target.innerHTML = `<div class="timeline-header"><div class="timeline-title"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg><span class="transcript-title-capsule"></span>Timeline</div><div class="panel-subtitle">Chronological conversation flow.</div></div>` + filtered.map((entry) => {
+                const filtered = transcriptState.entries.filter((entry) => !((!showToolResults && entry.type === 'tool_result') || (!showSystem && entry.type === 'system_internal') || (!showCompaction && entry.type === 'compaction')));
+                if (!filtered.length) { target.innerHTML = '<div class="timeline-item slim">Transcript not available.</div>'; return; }
+                target.innerHTML = filtered.map((entry) => {
                     const slim = entry.type === 'compaction' || entry.type === 'branch_summary' || entry.type === 'corruption';
-                    const full = entry.content || entry.summary || JSON.stringify(entry, null, 2);
-                    const preview = summarizeEntry(entry);
-                    const showMore = (entry.type === 'user_message' || entry.type === 'assistant_message') && (String(entry.content || '').length > 150);
-                    return `<div class="timeline-item ${slim ? 'slim' : ''} ${getIndentClass(entry)}" data-entry-id="${entry.id}">
-                        <div class="timeline-head">${chipFor(entry)} <span class="mono">${entry.timestamp ? new Date(entry.timestamp).toLocaleTimeString() : ''}</span></div>
-                        <div class="timeline-preview">${preview || '--'}</div>
-                        ${showMore ? '<div class="show-more">Show more</div>' : ''}
-                        <div class="timeline-full">${full}</div>
-                    </div>`;
+                    const full = escapeHtml(entry.content || entry.summary || JSON.stringify(entry, null, 2));
+                    const preview = escapeHtml(summarizeEntry(entry));
+                    const turnTokens = entry.type === 'assistant_message' && entry.usage ? Number(entry.usage.input || 0) + Number(entry.usage.output || 0) : null;
+                    return `<div class="timeline-item ${slim ? 'slim' : ''} ${getIndentClass(entry)}" data-entry-id="${escapeHtml(entry.id)}"><div class="timeline-head">${chipFor(entry)} <span class="mono">${entry.timestamp ? escapeHtml(new Date(entry.timestamp).toLocaleTimeString()) : ''}</span><span class="mono" style="margin-left:auto;color:#64748b;font-size:11px;">${turnTokens !== null ? escapeHtml(turnTokens.toLocaleString() + ' tk') : ''}</span></div><div class="timeline-preview">${preview || '--'}</div><div class="timeline-full">${full}</div></div>`;
                 }).join('');
-
-                target.querySelectorAll('.show-more').forEach((el) => {
-                    el.addEventListener('click', () => {
-                        const item = el.closest('.timeline-item');
-                        item.classList.toggle('expanded');
-                        el.textContent = item.classList.contains('expanded') ? 'Show less' : 'Show more';
-                    });
-                });
             }
 
             async function loadTranscript(sessionId, reset = false) {
@@ -440,11 +504,7 @@
                 const limit = 100;
                 const beforeParam = !reset && transcriptState.pagination?.oldestEntryId ? `&before=${encodeURIComponent(transcriptState.pagination.oldestEntryId)}` : '';
                 const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/transcript?limit=${limit}${beforeParam}`, FETCH_OPTS);
-                if (!res.ok) {
-                    renderTranscriptHeader(null);
-                    document.getElementById('timeline').innerHTML = '<div class="timeline-header"><div class="timeline-title"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg><span class="transcript-title-capsule"></span>Timeline</div><div class="panel-subtitle">Chronological conversation flow.</div></div><div class="timeline-item slim">Transcript not available.</div>';
-                    return;
-                }
+                if (!res.ok) { renderTranscriptHeader(null); return; }
                 const data = await res.json();
                 transcriptState.current = data.session;
                 transcriptState.pagination = data.pagination;
@@ -457,112 +517,28 @@
             }
 
             function initSessionsTab() {
-                const eventLogTableBody = document.querySelector('#eventLogTable tbody');
-                const loadMoreButton = document.getElementById('loadMoreButton');
-                const timeRangeButtons = document.querySelectorAll('.filters-bar button[data-range]');
-                const sourceFilterButtons = document.querySelectorAll('.filters-bar button[data-source]');
-
-                function toCstString(isoString) {
-                    if (!isoString) return '--';
-                    const date = new Date(isoString);
-                    const cstDate = new Date(date.getTime() + CST_OFFSET_MS);
-                    return cstDate.toLocaleString('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-                }
-
-                async function fetchAndRenderEvents(append = false) {
-                    if (isLoading || (!hasMore && append)) return;
-                    isLoading = true;
-                    if (!append) {
-                        eventLogTableBody.innerHTML = '<tr><td colspan="8" style="text-align: center;">Loading events...</td></tr>';
-                        currentPage = 1;
-                        hasMore = true;
-                    }
-
-                    try {
-                        const response = await fetch(`/api/sessions/events?range=${currentRange}&source=${currentSource}&page=${currentPage}`, FETCH_OPTS);
-                        const data = await response.json();
-
-                        if (!append) {
-                            eventLogTableBody.innerHTML = '';
-                        }
-
-                        if (data.events.length === 0 && !append) {
-                            eventLogTableBody.innerHTML = '<tr><td colspan="8" style="text-align: center;">No events found for selected filters.</td></tr>';
-                            loadMoreButton.style.display = 'none';
-                            hasMore = false;
-                            return;
-                        }
-
-                        data.events.forEach(event => {
-                            const row = eventLogTableBody.insertRow();
-                            row.classList.add('session-row-clickable');
-
-                            const timeCell = row.insertCell();
-                            timeCell.textContent = toCstString(event.timestamp);
-
-                            const sessionCell = row.insertCell();
-                            sessionCell.textContent = event.sessionId.substring(0, 8);
-
-                            const typeCell = row.insertCell();
-                            const typeBadge = document.createElement('span');
-                            typeBadge.className = `type-badge ${event.type}`;
-                            typeBadge.textContent = event.type === 'tool_call' ? 'Tool Call' : event.type.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
-                            typeCell.appendChild(typeBadge);
-
-                            row.insertCell().textContent = event.model || '--';
-                            row.insertCell().textContent = event.role || '--';
-                            row.insertCell().textContent = event.preview || '--';
-                            row.insertCell().textContent = event.tokens || '0';
-                            row.insertCell().textContent = `$${(event.cost || 0).toFixed(4)}`;
-
-                            row.addEventListener('click', () => setHash('transcript', { session: event.sessionId }));
-                        });
-
-                        hasMore = data.hasMore;
-                        if (hasMore) {
-                            loadMoreButton.style.display = 'block';
-                            currentPage++;
-                        } else {
-                            loadMoreButton.style.display = 'none';
-                        }
-
-                    } catch (error) {
-                        console.error('Failed to fetch session events:', error);
-                        eventLogTableBody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--error);">Error loading events.</td></tr>';
-                        loadMoreButton.style.display = 'none';
-                        hasMore = false;
-                    } finally {
-                        isLoading = false;
-                    }
-                }
-
-                timeRangeButtons.forEach(button => {
-                    button.addEventListener('click', () => {
-                        timeRangeButtons.forEach(btn => btn.classList.remove('active'));
-                        button.classList.add('active');
-                        currentRange = button.dataset.range;
-                        fetchAndRenderEvents();
-                    });
-                });
-
-                sourceFilterButtons.forEach(button => {
-                    button.addEventListener('click', () => {
-                        sourceFilterButtons.forEach(btn => btn.classList.remove('active'));
-                        button.classList.add('active');
-                        currentSource = button.dataset.source;
-                        fetchAndRenderEvents();
-                    });
-                });
-
-                loadMoreButton.addEventListener('click', () => fetchAndRenderEvents(true));
+                document.querySelectorAll('#sourcePills .pill').forEach((button) => button.addEventListener('click', () => {
+                    document.querySelectorAll('#sourcePills .pill').forEach((b) => b.classList.remove('active'));
+                    button.classList.add('active');
+                    currentSourceType = button.dataset.sourceType;
+                    renderOverview();
+                }));
+                document.querySelectorAll('#timePills .pill').forEach((button) => button.addEventListener('click', () => {
+                    document.querySelectorAll('#timePills .pill').forEach((b) => b.classList.remove('active'));
+                    button.classList.add('active');
+                    currentRange = button.dataset.range;
+                    renderOverview();
+                }));
+                document.querySelectorAll('#eventLogTable th[data-sort]').forEach((th) => th.addEventListener('click', () => {
+                    const key = th.dataset.sort;
+                    sortOrder = sortField === key && sortOrder === 'desc' ? 'asc' : 'desc';
+                    sortField = key === 'totalTokens' ? 'inputTokens' : key;
+                    renderOverview();
+                }));
                 document.querySelectorAll('.sub-nav-btn').forEach((btn) => btn.addEventListener('click', () => setHash(btn.dataset.view)));
                 window.addEventListener('hashchange', applyView);
-                document.getElementById('loadEarlier').addEventListener('click', () => {
-                    if (transcriptState.sessionId && transcriptState.pagination?.hasMore) loadTranscript(transcriptState.sessionId, false);
-                });
-                document.getElementById('jumpLatest').addEventListener('click', () => {
-                    if (transcriptState.sessionId) loadTranscript(transcriptState.sessionId, true);
-                });
+                document.getElementById('loadEarlier').addEventListener('click', () => { if (transcriptState.sessionId && transcriptState.pagination?.hasMore) loadTranscript(transcriptState.sessionId, false); });
+                document.getElementById('jumpLatest').addEventListener('click', () => { if (transcriptState.sessionId) loadTranscript(transcriptState.sessionId, true); });
                 document.getElementById('toggleRaw').addEventListener('click', () => {
                     transcriptState.rawOpen = !transcriptState.rawOpen;
                     const panel = document.getElementById('rawPanel');
@@ -570,11 +546,7 @@
                     panel.textContent = transcriptState.raw || 'No raw transcript available.';
                     document.getElementById('toggleRaw').textContent = transcriptState.rawOpen ? 'View formatted' : 'View raw';
                 });
-                ['toggleToolResults', 'toggleSystem', 'toggleCompaction'].forEach((id) => {
-                    document.getElementById(id).addEventListener('change', renderTimeline);
-                });
-
-                fetchAndRenderEvents();
+                ['toggleToolResults', 'toggleSystem', 'toggleCompaction'].forEach((id) => document.getElementById(id).addEventListener('change', renderTimeline));
                 applyView();
             }
 

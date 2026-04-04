@@ -1751,6 +1751,7 @@ chatGatewayClient.start().catch((error) => {
 const sseClients = new Set();
 
 collector.on('update', ({ id, state, removed }) => {
+  updateSessionSummaryCacheFromCollector(id, state);
   broadcast({ type: 'agent', id, data: state, removed: !!removed });
 });
 
@@ -1766,6 +1767,7 @@ function broadcast(event) {
 }
 
 collector.start();
+warmSessionSummaryCache();
 console.log('📡 Collector started');
 
 // ── Agent Actions ──
@@ -3478,6 +3480,17 @@ function getSessionTranscript(sessionId, { limit = 100, before = null } = {}) {
   const pageEntries = allEntries.slice(startIndex, endIndex);
   const hasMore = startIndex > 0;
 
+  const totals = allEntries.reduce((acc, entry) => {
+    if (entry.type === 'assistant_message') {
+      const usage = entry.usage || {};
+      acc.inputTokens += Number(usage.input || 0);
+      acc.outputTokens += Number(usage.output || 0);
+      acc.cacheTokens += Number(usage.cacheRead || 0);
+    }
+    if (entry.type === 'user_message') acc.turns += 1;
+    return acc;
+  }, { inputTokens: 0, outputTokens: 0, cacheTokens: 0, turns: 0 });
+
   const agentInfo = collector.state.get(matched.agentId) || {};
   return {
     session: {
@@ -3495,6 +3508,13 @@ function getSessionTranscript(sessionId, { limit = 100, before = null } = {}) {
     },
     entries: pageEntries,
     raw,
+    summary: {
+      inputTokens: totals.inputTokens,
+      outputTokens: totals.outputTokens,
+      cacheTokens: totals.cacheTokens,
+      totalTokens: totals.inputTokens + totals.outputTokens,
+      turns: totals.turns,
+    },
     pagination: {
       hasMore,
       oldestEntryId: pageEntries[0]?.id || null,
@@ -3659,6 +3679,347 @@ let cachedSessionEvents = null;
 let lastSessionEventsComputeTime = 0;
 const SESSION_EVENTS_CACHE_TTL = 30000; // 30 seconds for session events
 const EVENTS_PER_PAGE = 100;
+const SESSION_SUMMARY_CACHE_LIMIT = 500;
+const SESSION_SUMMARY_RECENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const SESSION_ACTIVE_WINDOW_MS = 5 * 60 * 1000;
+const SESSION_STALE_WINDOW_MS = 30 * 60 * 1000;
+const sessionSummaryCache = new Map();
+
+function escapeSessionSourceName(name) {
+  return typeof name === 'string' ? name.trim() : '';
+}
+
+function parseCronSourceName(text) {
+  const match = String(text || '').match(/\[cron:[^\s\]]+\s+([^\]]+)\]/i);
+  return match ? escapeSessionSourceName(match[1]) : '';
+}
+
+function normalizeModel(model) {
+  if (!model) return 'unknown';
+  return String(model).replace('anthropic/', '').replace('openai/', '').trim() || 'unknown';
+}
+
+function deriveSessionSource({ sessionKey, sessionMeta, firstUserMessage }) {
+  const messageChannel = String(sessionMeta?.messageChannel || '').toLowerCase();
+  const cronJobId = escapeSessionSourceName(sessionMeta?.cronJobId || sessionMeta?.origin?.cronJobId || '');
+
+  if (messageChannel === 'cron') {
+    const fallbackFromPrefix = parseCronSourceName(firstUserMessage);
+    return {
+      sourceType: 'cron',
+      sourceName: cronJobId || fallbackFromPrefix,
+      // Legacy fallback: old cron sessions encode job labels in first message prefix.
+    };
+  }
+  if (messageChannel === 'heartbeat') return { sourceType: 'heartbeat', sourceName: '' };
+  if (messageChannel === 'telegram') return { sourceType: 'telegram', sourceName: '' };
+  if (messageChannel === 'dashboard' || String(sessionKey || '').includes('dashboard')) {
+    return { sourceType: 'dashboard', sourceName: '' };
+  }
+  return { sourceType: 'unknown', sourceName: '' };
+}
+
+function parseSessionJsonlSummary(sessionPath) {
+  const summary = {
+    turnCount: 0,
+    eventCount: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheTokens: 0,
+    errorCount: 0,
+    hasToolErrors: false,
+    primaryModel: 'unknown',
+    startedAt: null,
+    endedAt: null,
+    lastActivityAt: null,
+    latestUserMessage: '',
+    latestAssistantMessage: '',
+    toolCallCount: 0,
+    firstUserMessage: '',
+  };
+
+  if (!sessionPath || !existsSync(sessionPath)) return summary;
+
+  const lines = readFileSync(sessionPath, 'utf8').split('\n').filter((line) => line.trim());
+  for (const line of lines) {
+    let entry;
+    try {
+      entry = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    summary.eventCount++;
+
+    const ts = entry.timestamp || entry.message?.timestamp || null;
+    if (ts) {
+      if (!summary.startedAt || ts < summary.startedAt) summary.startedAt = ts;
+      if (!summary.lastActivityAt || ts > summary.lastActivityAt) summary.lastActivityAt = ts;
+    }
+
+    if (entry.type === 'model_change' && entry.modelId && summary.primaryModel === 'unknown') {
+      summary.primaryModel = normalizeModel(entry.modelId);
+    }
+
+    if (entry.type === 'message' && entry.message) {
+      const msg = entry.message;
+      const usage = msg.usage || {};
+      summary.inputTokens += Number(usage.input || 0);
+      summary.outputTokens += Number(usage.output || 0);
+      summary.cacheTokens += Number(usage.cacheRead || 0);
+      if (msg.role === 'user') {
+        summary.turnCount++;
+        if (!summary.firstUserMessage) summary.firstUserMessage = msg.content?.[0]?.text || '';
+        summary.latestUserMessage = msg.content?.[0]?.text || summary.latestUserMessage;
+      }
+      if (msg.role === 'assistant') {
+        summary.latestAssistantMessage = msg.content?.[0]?.text || summary.latestAssistantMessage;
+      }
+      if (msg.stopReason === 'error') {
+        summary.errorCount++;
+        summary.hasToolErrors = true;
+      }
+      if (msg.model && summary.primaryModel === 'unknown') {
+        summary.primaryModel = normalizeModel(msg.model);
+      }
+      if (!summary.endedAt || (ts && ts > summary.endedAt)) summary.endedAt = ts || summary.endedAt;
+
+      for (const chunk of Array.isArray(msg.content) ? msg.content : []) {
+        if (chunk?.type === 'toolCall') summary.toolCallCount++;
+        if (chunk?.type === 'toolResult' && chunk?.isError) {
+          summary.errorCount++;
+          summary.hasToolErrors = true;
+        }
+      }
+    }
+
+    if (entry.type === 'tool_result' && (entry.is_error || entry.isError)) {
+      summary.errorCount++;
+      summary.hasToolErrors = true;
+    }
+  }
+
+  return summary;
+}
+
+function computeSessionStatus(base) {
+  const now = Date.now();
+  const lastActivityMs = base.lastActivityAt ? new Date(base.lastActivityAt).getTime() : 0;
+  const activeInRegistry = Boolean(base.active || base.sessionMeta?.active);
+  const staleBoundary = now - SESSION_STALE_WINDOW_MS;
+
+  if (activeInRegistry && lastActivityMs >= (now - SESSION_ACTIVE_WINDOW_MS)) return 'active';
+  if (!base.endedAt && activeInRegistry && lastActivityMs > 0 && lastActivityMs < staleBoundary) return 'stale';
+  if (base.hasToolErrors && base.errorCount > 0) return 'failed';
+  return 'closed';
+}
+
+function upsertSessionSummary(summary) {
+  sessionSummaryCache.set(summary.id, summary);
+  if (sessionSummaryCache.size <= SESSION_SUMMARY_CACHE_LIMIT) return;
+  const oldest = [...sessionSummaryCache.values()]
+    .sort((a, b) => new Date(a.lastActivityAt || 0).getTime() - new Date(b.lastActivityAt || 0).getTime())
+    .slice(0, sessionSummaryCache.size - SESSION_SUMMARY_CACHE_LIMIT);
+  for (const entry of oldest) sessionSummaryCache.delete(entry.id);
+}
+
+function buildSessionSummary(agentId, sessionKey, sessionMeta = {}, parsed = {}) {
+  const sessionId = sessionMeta.sessionId;
+  if (!sessionId) return null;
+  const source = deriveSessionSource({ sessionKey, sessionMeta, firstUserMessage: parsed.firstUserMessage || '' });
+  const startedAt = parsed.startedAt || sessionMeta.createdAt || sessionMeta.updatedAt || new Date().toISOString();
+  const lastActivityAt = parsed.lastActivityAt || sessionMeta.updatedAt || startedAt;
+  const endedAt = sessionMeta.active ? null : (parsed.endedAt || sessionMeta.updatedAt || null);
+  const summary = {
+    id: sessionId,
+    agentId,
+    sourceType: source.sourceType,
+    sourceName: source.sourceName,
+    primaryModel: normalizeModel(parsed.primaryModel || sessionMeta.model || 'unknown'),
+    turnCount: Number(parsed.turnCount || 0),
+    eventCount: Number(parsed.eventCount || 0),
+    inputTokens: Number(parsed.inputTokens || 0),
+    outputTokens: Number(parsed.outputTokens || 0),
+    cacheTokens: Number(parsed.cacheTokens || 0),
+    startedAt,
+    endedAt,
+    lastActivityAt,
+    errorCount: Number(parsed.errorCount || 0),
+    hasToolErrors: Boolean(parsed.hasToolErrors),
+    sessionKey,
+    latestUserMessage: parsed.latestUserMessage || '',
+    latestAssistantMessage: parsed.latestAssistantMessage || '',
+    toolCallCount: Number(parsed.toolCallCount || 0),
+  };
+  summary.status = computeSessionStatus({ ...summary, active: sessionMeta.active, sessionMeta });
+  return summary;
+}
+
+function maybeSessionFilePath(agentId, sessionMeta) {
+  return getSafeSessionFilePath(sessionMeta?.sessionFile, agentId);
+}
+
+function warmSessionSummaryCache() {
+  const agentsDir = join(homedir(), '.openclaw', 'agents');
+  const now = Date.now();
+  try {
+    const agentIds = readdirSync(agentsDir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
+    for (const agentId of agentIds) {
+      const sessionsPath = join(agentsDir, agentId, 'sessions', 'sessions.json');
+      if (!existsSync(sessionsPath)) continue;
+      let payload = {};
+      try {
+        payload = JSON.parse(readFileSync(sessionsPath, 'utf8'));
+      } catch {
+        continue;
+      }
+      const sessionsObj = payload.sessions && typeof payload.sessions === 'object' ? payload.sessions : payload;
+      for (const [sessionKey, sessionMeta] of Object.entries(sessionsObj)) {
+        if (!sessionMeta || typeof sessionMeta !== 'object') continue;
+        const sessionId = sessionMeta.sessionId;
+        if (!sessionId) continue;
+        const updatedMs = new Date(sessionMeta.updatedAt || 0).getTime();
+        const shouldParse = Number.isFinite(updatedMs) && (now - updatedMs) <= SESSION_SUMMARY_RECENT_WINDOW_MS;
+        const parsed = shouldParse ? parseSessionJsonlSummary(maybeSessionFilePath(agentId, sessionMeta)) : {};
+        const summary = buildSessionSummary(agentId, sessionKey, sessionMeta, parsed);
+        if (summary) upsertSessionSummary(summary);
+      }
+    }
+  } catch (error) {
+    console.warn('[sessions] cache warmup failed:', error.message);
+  }
+}
+
+function updateSessionSummaryCacheFromCollector(agentId, state) {
+  const sessionsPayload = state?.sessions;
+  const list = Array.isArray(sessionsPayload?.sessions)
+    ? sessionsPayload.sessions
+    : (Array.isArray(sessionsPayload) ? sessionsPayload : []);
+  if (!list.length) return;
+
+  const sessionsPath = join(homedir(), '.openclaw', 'agents', agentId, 'sessions', 'sessions.json');
+  let payload = {};
+  try {
+    if (existsSync(sessionsPath)) payload = JSON.parse(readFileSync(sessionsPath, 'utf8'));
+  } catch {}
+  const sessionsObj = payload.sessions && typeof payload.sessions === 'object' ? payload.sessions : payload;
+
+  for (const item of list) {
+    const sessionKey = item.key;
+    if (!sessionKey) continue;
+    const sessionMeta = sessionsObj[sessionKey] || item || {};
+    const existing = sessionMeta.sessionId ? sessionSummaryCache.get(sessionMeta.sessionId) : null;
+    let parsed = {};
+    if (!existing || sessionMeta.active === false || item.active === false) {
+      parsed = parseSessionJsonlSummary(maybeSessionFilePath(agentId, sessionMeta));
+    } else if (existing) {
+      parsed = {
+        turnCount: existing.turnCount,
+        eventCount: existing.eventCount,
+        inputTokens: existing.inputTokens,
+        outputTokens: existing.outputTokens,
+        cacheTokens: existing.cacheTokens,
+        errorCount: existing.errorCount,
+        hasToolErrors: existing.hasToolErrors,
+        primaryModel: existing.primaryModel,
+        startedAt: existing.startedAt,
+        endedAt: existing.endedAt,
+        lastActivityAt: sessionMeta.updatedAt || existing.lastActivityAt,
+        latestUserMessage: existing.latestUserMessage,
+        latestAssistantMessage: existing.latestAssistantMessage,
+        toolCallCount: existing.toolCallCount,
+      };
+    }
+    const summary = buildSessionSummary(agentId, sessionKey, sessionMeta, parsed);
+    if (summary) upsertSessionSummary(summary);
+  }
+}
+
+function ensureSessionSummaryCached(sessionId) {
+  if (sessionSummaryCache.has(sessionId)) return sessionSummaryCache.get(sessionId);
+  const transcript = getSessionTranscript(sessionId, { limit: 1 });
+  if (!transcript?.session?.id) return null;
+  const agentId = transcript.session.agent;
+  const sessionsPath = join(homedir(), '.openclaw', 'agents', agentId, 'sessions', 'sessions.json');
+  let payload = {};
+  try {
+    if (existsSync(sessionsPath)) payload = JSON.parse(readFileSync(sessionsPath, 'utf8'));
+  } catch {}
+  const sessionsObj = payload.sessions && typeof payload.sessions === 'object' ? payload.sessions : payload;
+  const entry = Object.entries(sessionsObj).find(([, meta]) => meta?.sessionId === sessionId);
+  if (!entry) return null;
+  const [sessionKey, sessionMeta] = entry;
+  const parsed = parseSessionJsonlSummary(maybeSessionFilePath(agentId, sessionMeta));
+  const summary = buildSessionSummary(agentId, sessionKey, sessionMeta, parsed);
+  if (summary) upsertSessionSummary(summary);
+  return summary;
+}
+
+function getSessionSummaries({
+  from,
+  to,
+  status,
+  sourceType,
+  sourceName,
+  agentId,
+  model,
+  sort = 'lastActivityAt',
+  order = 'desc',
+  limit = 50,
+  cursor,
+} = {}) {
+  const now = Date.now();
+  const defaultFrom = new Date(now - (24 * 60 * 60 * 1000));
+  const fromTs = from ? new Date(from) : defaultFrom;
+  const toTs = to ? new Date(to) : new Date(now);
+
+  let rows = [...sessionSummaryCache.values()].filter((item) => {
+    const itemTs = new Date(item.lastActivityAt || item.startedAt || 0).getTime();
+    if (Number.isNaN(itemTs)) return false;
+    if (itemTs < fromTs.getTime() || itemTs > toTs.getTime()) return false;
+    if (status && item.status !== status) return false;
+    if (sourceType && item.sourceType !== sourceType) return false;
+    if (sourceName && item.sourceName !== sourceName) return false;
+    if (agentId && item.agentId !== agentId) return false;
+    if (model && item.primaryModel !== model) return false;
+    return true;
+  });
+
+  const sortField = new Set(['lastActivityAt', 'inputTokens', 'outputTokens', 'turnCount', 'startedAt']).has(sort) ? sort : 'lastActivityAt';
+  const direction = order === 'asc' ? 1 : -1;
+  rows.sort((a, b) => {
+    const av = sortField.endsWith('At') ? new Date(a[sortField] || 0).getTime() : Number(a[sortField] || 0);
+    const bv = sortField.endsWith('At') ? new Date(b[sortField] || 0).getTime() : Number(b[sortField] || 0);
+    if (av === bv) return String(a.id).localeCompare(String(b.id)) * direction;
+    return (av > bv ? 1 : -1) * direction;
+  });
+
+  if (cursor) {
+    const idx = rows.findIndex((item) => item.id === cursor);
+    if (idx >= 0) rows = rows.slice(idx + 1);
+  }
+
+  const cappedLimit = Math.min(Math.max(1, Number(limit) || 50), 200);
+  const pageRows = rows.slice(0, cappedLimit);
+  const hasMore = rows.length > pageRows.length;
+  const nextCursor = hasMore ? pageRows[pageRows.length - 1]?.id || null : null;
+
+  const summary = {
+    activeCount: pageRows.filter((item) => item.status === 'active').length,
+    sessionCount: pageRows.length,
+    totalInputTokens: pageRows.reduce((sum, item) => sum + Number(item.inputTokens || 0), 0),
+    totalOutputTokens: pageRows.reduce((sum, item) => sum + Number(item.outputTokens || 0), 0),
+    totalCacheTokens: pageRows.reduce((sum, item) => sum + Number(item.cacheTokens || 0), 0),
+  };
+
+  return {
+    sessions: pageRows,
+    summary,
+    pagination: {
+      hasMore,
+      cursor: nextCursor,
+    },
+  };
+}
 
 function getSessionsEvents({ range = '24h', source = 'all', page = 1, limit = EVENTS_PER_PAGE } = {}) {
   const now = Date.now();
@@ -8764,17 +9125,33 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  // ── List Sessions ──
+  // ── List Sessions (summary cache) ──
   if (path === '/api/sessions' && req.method === 'GET') {
     try {
-      const limit = parseInt(url.searchParams.get('limit') || '50');
-      const offset = parseInt(url.searchParams.get('offset') || '0');
-      const result = getAllSessions({ limit, offset });
+      const result = getSessionSummaries({
+        from: url.searchParams.get('from') || null,
+        to: url.searchParams.get('to') || null,
+        status: url.searchParams.get('status') || null,
+        sourceType: url.searchParams.get('sourceType') || null,
+        sourceName: url.searchParams.get('sourceName') || null,
+        agentId: url.searchParams.get('agentId') || null,
+        model: url.searchParams.get('model') || null,
+        sort: url.searchParams.get('sort') || 'lastActivityAt',
+        order: url.searchParams.get('order') || 'desc',
+        limit: parseInt(url.searchParams.get('limit') || '50', 10),
+        cursor: url.searchParams.get('cursor') || null,
+      });
+
+      if (url.searchParams.get('sessionId')) {
+        ensureSessionSummaryCached(url.searchParams.get('sessionId'));
+      }
+
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(result));
     } catch (e) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      console.error('[API] error:', e.message); res.end(JSON.stringify({ error: 'Internal server error' }));
+      console.error('[API] /api/sessions error:', e.message);
+      res.end(JSON.stringify({ error: 'Internal server error' }));
     }
     return;
   }
