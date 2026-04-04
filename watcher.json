@@ -1,0 +1,331 @@
+{
+  "version": 1,
+  "staleness_multiplier": 2.5,
+  "system_crons": [
+    {
+      "id": "claude-token-refresh",
+      "description": "Claude/Anthropic token refresh",
+      "cadence_minutes": 240,
+      "output_path": "/tmp/claude-token-heartbeat.json",
+      "check_method": "heartbeat_v2",
+      "heartbeat_path": "/tmp/claude-token-refresh-heartbeat.json",
+      "enabled": false
+    },
+    {
+      "id": "cli-usage-tracker",
+      "description": "CLI usage tracker",
+      "cadence_minutes": 30,
+      "output_path": "/tmp/cli-usage.json",
+      "check_method": "heartbeat_v2",
+      "heartbeat_path": "/tmp/cli-usage-tracker-heartbeat.json",
+      "validation": {
+        "type": "json",
+        "required_keys": [
+          "checked_at",
+          "providers"
+        ],
+        "timestamp_field": "checked_at",
+        "timestamp_max_age_minutes": 35,
+        "non_empty_fields": [
+          "providers"
+        ]
+      }
+    },
+    {
+      "id": "bootstrap-audit",
+      "description": "Weekly bootstrap audit",
+      "cadence_minutes": 10080,
+      "output_path": "/home/openclaw/.openclaw/workspace/bootstrap-audit.log",
+      "check_method": "heartbeat_v2",
+      "heartbeat_path": "/tmp/bootstrap-audit-heartbeat.json",
+      "validation": {
+        "type": "log_no_errors",
+        "error_patterns": [
+          "ERROR",
+          "FAIL",
+          "Traceback"
+        ],
+        "max_age_minutes": 10200,
+        "file": "/home/openclaw/.openclaw/workspace/bootstrap-audit.log"
+      }
+    },
+    {
+      "id": "cost-sentinel",
+      "description": "Daily cost sentinel",
+      "cadence_minutes": 1440,
+      "output_path": "/home/openclaw/.openclaw/workspace/cost-sentinel-status.json",
+      "check_method": "heartbeat_v2",
+      "heartbeat_path": "/tmp/cost-sentinel-heartbeat.json",
+      "validation": {
+        "type": "json",
+        "required_keys": [
+          "timestamp",
+          "overall",
+          "checks"
+        ],
+        "timestamp_field": "timestamp",
+        "timestamp_max_age_minutes": 1500
+      }
+    },
+    {
+      "id": "gemini-rate-tracker",
+      "description": "Gemini API rate limit tracker",
+      "cadence_minutes": 5,
+      "output_path": "/home/openclaw/.openclaw/workspace/gemini-rate-status.json",
+      "check_method": "heartbeat_v2",
+      "heartbeat_path": "/tmp/gemini-rate-tracker-heartbeat.json",
+      "validation": {
+        "type": "json",
+        "required_keys": [
+          "timestamp",
+          "status"
+        ],
+        "timestamp_field": "timestamp",
+        "timestamp_max_age_minutes": 8
+      }
+    },
+    {
+      "id": "system-health",
+      "description": "System health check",
+      "cadence_minutes": 5,
+      "output_path": "/home/openclaw/.openclaw/workspace/health-status.json",
+      "check_method": "heartbeat_v2",
+      "heartbeat_path": "/tmp/system-health-heartbeat.json",
+      "validation": {
+        "type": "json",
+        "required_keys": [],
+        "non_empty_fields": []
+      }
+    },
+    {
+      "id": "memory-ingest",
+      "description": "Daily memory fact extraction",
+      "cadence_minutes": 1440,
+      "output_path": "/home/openclaw/.openclaw/memory/ingest.log",
+      "check_method": "heartbeat_v2",
+      "heartbeat_path": "/tmp/memory-ingest-heartbeat.json",
+      "validation": {
+        "type": "log_no_errors",
+        "file": "/home/openclaw/.openclaw/memory/ingest.log"
+      }
+    },
+    {
+      "id": "memory-prune",
+      "description": "Hourly memory decay pruning",
+      "cadence_minutes": 60,
+      "output_path": "/home/openclaw/.openclaw/memory/prune.log",
+      "check_method": "heartbeat_v2",
+      "heartbeat_path": "/tmp/memory-prune-heartbeat.json",
+      "validation": {
+        "type": "log_no_errors",
+        "file": "/home/openclaw/.openclaw/memory/prune.log"
+      }
+    },
+    {
+      "id": "watchdog",
+      "description": "Consolidated restart watchdog",
+      "cadence_minutes": 2,
+      "output_path": "/tmp/openclaw-api-liveness.json",
+      "check_method": "heartbeat_v2",
+      "heartbeat_path": "/tmp/watchdog-heartbeat.json",
+      "validation": {
+        "type": "json",
+        "required_keys": [
+          "timestamp",
+          "api_alive",
+          "memory_status"
+        ],
+        "timestamp_field": "timestamp",
+        "timestamp_max_age_minutes": 5
+      }
+    },
+    {
+      "id": "session-ops",
+      "description": "Unified session operations",
+      "cadence_minutes": 5,
+      "output_path": "/tmp/session-ops-heartbeat.json",
+      "check_method": "heartbeat_v2",
+      "heartbeat_path": "/tmp/session-ops-heartbeat.json"
+    },
+    {
+      "id": "security-health",
+      "description": "Security health audit (38 checks, results to dashboard)",
+      "cadence_minutes": 15,
+      "output_path": "/tmp/security-health-results.json",
+      "check_method": "heartbeat_v2",
+      "heartbeat_path": "/tmp/security-health-heartbeat.json",
+      "validation": {
+        "type": "json",
+        "required_keys": [
+          "generated_at",
+          "overall_status",
+          "checks"
+        ],
+        "timestamp_field": "generated_at",
+        "timestamp_max_age_minutes": 20
+      }
+    },
+    {
+      "id": "security-hook-alert",
+      "description": "Security hook alert monitor",
+      "cadence_minutes": 5,
+      "output_path": "/tmp/security-hook-heartbeat.json",
+      "check_method": "heartbeat_v2",
+      "heartbeat_path": "/tmp/security-hook-alert-heartbeat.json"
+    },
+    {
+      "id": "version-check",
+      "description": "OpenClaw version check",
+      "cadence_minutes": 60,
+      "output_path": "/tmp/openclaw-version-check.json",
+      "check_method": "heartbeat_v2",
+      "heartbeat_path": "/tmp/version-check-heartbeat.json",
+      "validation": {
+        "type": "json",
+        "required_keys": [
+          "timestamp",
+          "status"
+        ],
+        "timestamp_field": "timestamp",
+        "timestamp_max_age_minutes": 65
+      }
+    },
+    {
+      "id": "openclaw-orphan-reaper",
+      "description": "Kill orphaned openclaw-cron, codex, and doctor processes",
+      "cadence_minutes": 5,
+      "output_path": "/var/log/openclaw-liveness.log",
+      "check_method": "heartbeat_v2",
+      "heartbeat_path": "/tmp/openclaw-orphan-reaper-heartbeat.json"
+    },
+    {
+      "id": "cortex-sentinel",
+      "description": "CORTEX routing health sentinel",
+      "cadence_minutes": 1440,
+      "output_path": "/home/openclaw/.openclaw/workspace/cortex-sentinel-status.json",
+      "check_method": "heartbeat_v2",
+      "heartbeat_path": "/tmp/cortex-sentinel-heartbeat.json",
+      "validation": {
+        "type": "json",
+        "required_keys": [
+          "timestamp",
+          "overall",
+          "checks"
+        ],
+        "timestamp_field": "timestamp",
+        "timestamp_max_age_minutes": 1500
+      }
+    },
+    {
+      "id": "proxy-sentinel",
+      "description": "Proxy balance sentinel",
+      "cadence_minutes": 60,
+      "output_path": "/home/openclaw/.openclaw/workspace/proxy-sentinel-status.json",
+      "check_method": "heartbeat_v2",
+      "heartbeat_path": "/tmp/proxy-sentinel-heartbeat.json",
+      "validation": {
+        "type": "json",
+        "required_keys": [
+          "timestamp",
+          "overall",
+          "checks"
+        ],
+        "timestamp_field": "timestamp",
+        "timestamp_max_age_minutes": 75
+      }
+    },
+    {
+      "id": "memory-root",
+      "description": "Nightly session bootstrap index generation",
+      "cron_file": "openclaw-memory-root",
+      "heartbeat_file": "/tmp/heartbeat-memory-root.json",
+      "cadence_seconds": 86400,
+      "cadence_minutes": 1440,
+      "log_file": null,
+      "auto_discovered": true,
+      "discovered_at": "2026-04-01T15:27:43Z",
+      "wrapper_path": "/usr/local/bin/memory-root-heartbeat-wrapper.sh",
+      "validation": null,
+      "output_path": "/tmp/heartbeat-memory-root.json",
+      "check_method": "heartbeat_v2",
+      "heartbeat_path": "/tmp/heartbeat-memory-root.json"
+    },
+    {
+      "id": "watcher",
+      "description": "WATCHER cron health monitor (staleness detection, gateway cron health, Telegram alerts)",
+      "cron_file": "openclaw-watcher",
+      "heartbeat_file": null,
+      "cadence_seconds": 300,
+      "cadence_minutes": 5,
+      "log_file": null,
+      "auto_discovered": true,
+      "discovered_at": "2026-04-01T15:27:43Z",
+      "monitor_method": "output_mtime",
+      "output_file": "/home/openclaw/.openclaw/workspace/watcher-status.json",
+      "needs_manual_review": true,
+      "status_unverifiable": false,
+      "validation": null,
+      "output_path": "/home/openclaw/.openclaw/workspace/watcher-status.json",
+      "check_method": "mtime",
+      "heartbeat_path": null
+    },
+    {
+      "id": "api-health",
+      "description": "External API health checks (refreshes /tmp/api-health-results.json)",
+      "cron_file": "openclaw-api-health",
+      "heartbeat_file": "/tmp/heartbeat-api-health.json",
+      "cadence_seconds": 300,
+      "cadence_minutes": 5,
+      "log_file": null,
+      "auto_discovered": true,
+      "discovered_at": "2026-04-01T15:36:26Z",
+      "wrapper_path": "/usr/local/bin/api-health-heartbeat-wrapper.sh",
+      "validation": null,
+      "output_path": "/tmp/heartbeat-api-health.json",
+      "check_method": "heartbeat_v2",
+      "heartbeat_path": "/tmp/heartbeat-api-health.json"
+    },
+    {
+      "id": "jarvis-ops-sampler",
+      "description": "Jarvis Operations Health Sampler Timer",
+      "cron_file": null,
+      "heartbeat_file": null,
+      "cadence_seconds": 86400,
+      "cadence_minutes": 1440,
+      "log_file": null,
+      "auto_discovered": true,
+      "discovered_at": "2026-04-01T15:45:43Z",
+      "monitor_method": "output_mtime",
+      "timer_unit": "jarvis-ops-sampler.timer",
+      "output_file": "/tmp/ops-health-metrics.json",
+      "needs_manual_review": true,
+      "validation": null,
+      "check_method": "mtime",
+      "output_path": "/tmp/ops-health-metrics.json"
+    },
+    {
+      "id": "decision-log-rotation",
+      "description": "Monthly decision log rotation (archives old heartbeat decisions)",
+      "cron_file": null,
+      "heartbeat_file": "/tmp/heartbeat-decision-log-rotation.json",
+      "cadence_seconds": 2592000,
+      "cadence_minutes": 43200,
+      "log_file": null,
+      "auto_discovered": true,
+      "discovered_at": "2026-04-01T16:10:00Z",
+      "monitor_method": null,
+      "output_file": null,
+      "needs_manual_review": false,
+      "validation": null,
+      "check_method": "heartbeat_v2",
+      "output_path": "/tmp/heartbeat-decision-log-rotation.json",
+      "heartbeat_path": "/tmp/heartbeat-decision-log-rotation.json",
+      "wrapper_path": "/usr/local/bin/decision-log-rotation-heartbeat-wrapper.sh"
+    }
+  ],
+  "gateway_crons": {
+    "jobs_file": "/home/openclaw/.openclaw/cron/jobs.json",
+    "alert_on_consecutive_errors": 1,
+    "alert_on_disabled_with_errors": true
+  }
+}
