@@ -269,7 +269,7 @@ export function getChatMessages({ limit = 100, after = null } = {}) {
 const IDENTITY_DIR = '/home/openclaw/.openclaw/identity';
 let _deviceIdentity = null;
 
-function loadDeviceIdentity() {
+export function loadDeviceIdentity() {
   if (_deviceIdentity !== null) return _deviceIdentity;
   try {
     const devicePath = join(IDENTITY_DIR, 'device.json');
@@ -398,22 +398,25 @@ export class ChatGatewayClient {
           const connectParams = {
             minProtocol: 3,
             maxProtocol: 3,
-            client: { id: 'clawd-control', version: '2.0.0', platform: 'linux', mode: 'operator' },
+            client: { id: 'cli', version: '2.0.0', platform: 'linux', mode: 'cli' },
             auth: { token: identity ? identity.authToken : this.token },
             role: 'operator',
             scopes: ['operator.read', 'operator.write'],
           };
           if (identity && challengeNonce) {
             const signedAt = Date.now();
-            const signaturePayload = JSON.stringify({
-              deviceId: identity.deviceId,
-              clientId: 'clawd-control',
-              role: 'operator',
-              scopes: ['operator.read', 'operator.write'],
-              token: identity.authToken,
-              nonce: challengeNonce,
-              signedAt,
-            });
+            const scopes = ['operator.read', 'operator.write'];
+            const signaturePayload = [
+              'v2',
+              identity.deviceId,
+              'cli',
+              'cli',
+              'operator',
+              scopes.join(','),
+              String(signedAt),
+              identity.authToken,
+              challengeNonce,
+            ].join('|');
             const signature = crypto.sign(null, Buffer.from(signaturePayload), identity.privateKey);
             connectParams.device = {
               id: identity.deviceId,

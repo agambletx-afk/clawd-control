@@ -10,6 +10,8 @@
  */
 
 import WebSocket from 'ws';
+import crypto from 'crypto';
+import { loadDeviceIdentity } from './chat-api.mjs';
 import { EventEmitter } from 'events';
 import { readFileSync } from 'fs';
 import { execSync } from 'child_process';
@@ -188,15 +190,38 @@ export class AgentCollector extends EventEmitter {
 
     if (msg.type === 'event') {
       if (msg.event === 'connect.challenge') {
+        const challengeNonce = msg.payload?.nonce;
+        const connectParams = {
+          minProtocol: 3, maxProtocol: 3,
+          client: { id: 'cli', version: '2.0.0', platform: 'linux', mode: 'cli' },
+          auth: { token: gw.token },
+          role: 'operator',
+          scopes: ['operator.read', 'operator.write'],
+        };
+        // Device auth signing (reuse identity from chat-api)
+        try {
+          const identity = loadDeviceIdentity();
+          if (identity && challengeNonce) {
+            const signedAt = Date.now();
+            const signaturePayload = [
+              'v2', identity.deviceId, 'cli', 'cli', 'operator',
+              'operator.read,operator.write', String(signedAt),
+              identity.authToken, challengeNonce,
+            ].join('|');
+            const signature = crypto.sign(null, Buffer.from(signaturePayload), identity.privateKey);
+            connectParams.auth = { token: identity.authToken };
+            connectParams.device = {
+              id: identity.deviceId,
+              publicKey: identity.publicKeyPem,
+              signature: signature.toString('base64'),
+              signedAt,
+              nonce: challengeNonce,
+            };
+          }
+        } catch (e) { console.warn('Collector device auth fallback:', e.message); }
         this._sendFrame(gwKey, {
           type: 'req', id: String(++this._reqCounter), method: 'connect',
-          params: {
-            minProtocol: 3, maxProtocol: 3,
-            client: { id: 'openclaw-probe', version: '2.0.0', platform: 'darwin', mode: 'probe' },
-            auth: { token: gw.token },
-            role: 'operator',
-            scopes: ['operator.read'],
-          },
+          params: connectParams,
         });
         return;
       }
