@@ -3438,6 +3438,11 @@ function getSessionTranscript(sessionId, { limit = 100, before = null } = {}) {
   const safePath = getSafeSessionFilePath(matched.session.sessionFile, matched.agentId);
   let transcriptPath = safePath && existsSync(safePath) ? safePath : null;
   if (!transcriptPath) {
+    // Fallback: construct path from sessionId when sessionFile is absent
+    const fallbackPath = join(homedir(), '.openclaw', 'agents', matched.agentId, 'sessions', sessionId + '.jsonl');
+    if (existsSync(fallbackPath)) transcriptPath = fallbackPath;
+  }
+  if (!transcriptPath) {
     const archiveDir = join(homedir(), '.openclaw', 'agents', matched.agentId, 'sessions', 'archive');
     if (existsSync(archiveDir)) {
       const files = readdirSync(archiveDir).filter((name) => name.startsWith(sessionId) && name.endsWith('.jsonl')).sort();
