@@ -1,4 +1,5 @@
 import WebSocket from 'ws';
+import crypto from 'crypto';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -264,6 +265,44 @@ export function getChatMessages({ limit = 100, after = null } = {}) {
   return { messages: finalMessages, sessionId };
 }
 
+// --- Device identity for v3 challenge-response signing ---
+const IDENTITY_DIR = '/home/openclaw/.openclaw/identity';
+let _deviceIdentity = null;
+
+function loadDeviceIdentity() {
+  if (_deviceIdentity !== null) return _deviceIdentity;
+  try {
+    const devicePath = join(IDENTITY_DIR, 'device.json');
+    const authPath = join(IDENTITY_DIR, 'device-auth.json');
+    if (!existsSync(devicePath) || !existsSync(authPath)) {
+      console.warn('⚠️ Device identity not found, connecting without device auth (scopes will be limited)');
+      _deviceIdentity = false;
+      return false;
+    }
+    const device = JSON.parse(readFileSync(devicePath, 'utf8'));
+    const auth = JSON.parse(readFileSync(authPath, 'utf8'));
+    const operatorAuth = auth?.tokens?.operator;
+    if (!device?.deviceId || !device?.privateKeyPem || !device?.publicKeyPem || !operatorAuth?.token) {
+      console.warn('⚠️ Device identity incomplete, connecting without device auth (scopes will be limited)');
+      _deviceIdentity = false;
+      return false;
+    }
+    _deviceIdentity = {
+      deviceId: device.deviceId,
+      publicKeyPem: device.publicKeyPem,
+      privateKey: crypto.createPrivateKey(device.privateKeyPem),
+      authToken: operatorAuth.token,
+      scopes: operatorAuth.scopes || ['operator.read', 'operator.write'],
+    };
+    console.log('✅ Device identity loaded:', device.deviceId.substring(0, 12) + '...');
+    return _deviceIdentity;
+  } catch (err) {
+    console.warn('⚠️ Failed to load device identity:', err.message);
+    _deviceIdentity = false;
+    return false;
+  }
+}
+
 export class ChatGatewayClient {
   constructor({ configPath, host = '127.0.0.1', port = 18789 } = {}) {
     this.configPath = configPath;
@@ -319,7 +358,7 @@ export class ChatGatewayClient {
     this.reconnectTimer = setTimeout(() => {
       this.connectPromise = null;
       this.start().catch(() => {});
-    }, 300000); // 5 min backoff — WS device auth broken on 2026.3.24
+    }, 30000);
   }
 
   _rejectPending(error) {
@@ -354,19 +393,37 @@ export class ChatGatewayClient {
         if (!msg) return;
 
         if (msg.type === 'event' && msg.event === 'connect.challenge') {
-          this._send({
-            type: 'req',
-            id: this._nextId(),
-            method: 'connect',
-            params: {
-              minProtocol: 3,
-              maxProtocol: 3,
-              client: { id: 'openclaw-probe', version: '2.0.0', platform: 'linux', mode: 'probe' },
-              auth: { token: this.token },
+          const identity = loadDeviceIdentity();
+          const challengeNonce = msg.payload?.nonce;
+          const connectParams = {
+            minProtocol: 3,
+            maxProtocol: 3,
+            client: { id: 'clawd-control', version: '2.0.0', platform: 'linux', mode: 'operator' },
+            auth: { token: identity ? identity.authToken : this.token },
+            role: 'operator',
+            scopes: ['operator.read', 'operator.write'],
+          };
+          if (identity && challengeNonce) {
+            const signedAt = Date.now();
+            const signaturePayload = JSON.stringify({
+              deviceId: identity.deviceId,
+              clientId: 'clawd-control',
               role: 'operator',
               scopes: ['operator.read', 'operator.write'],
-            },
-          });
+              token: identity.authToken,
+              nonce: challengeNonce,
+              signedAt,
+            });
+            const signature = crypto.sign(null, Buffer.from(signaturePayload), identity.privateKey);
+            connectParams.device = {
+              id: identity.deviceId,
+              publicKey: identity.publicKeyPem,
+              signature: signature.toString('base64'),
+              signedAt,
+              nonce: challengeNonce,
+            };
+          }
+          this._send({ type: 'req', id: this._nextId(), method: 'connect', params: connectParams });
           return;
         }
 
