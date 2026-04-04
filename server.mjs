@@ -3920,7 +3920,14 @@ function warmSessionSummaryCache() {
         const ageMs = now - stat.mtimeMs;
         if (ageMs > SESSION_SUMMARY_RECENT_WINDOW_MS) continue;
         const parsed = parseSessionJsonlSummary(filePath);
-        const summary = buildSessionSummary(agentId, 'agent:' + agentId + ':orphan:' + sessionId, { sessionId, active: false }, parsed);
+        // Derive source from JSONL content for orphan sessions
+        const orphanKey = 'agent:' + agentId + ':orphan:' + sessionId;
+        const firstMsg = (parsed.firstUserMessage || '').toLowerCase();
+        let inferredKey = orphanKey;
+        if (firstMsg.includes('[cron:')) inferredKey = 'agent:' + agentId + ':cron:orphan:' + sessionId;
+        else if (firstMsg.includes('heartbeat') || firstMsg.includes('HEARTBEAT')) inferredKey = 'agent:' + agentId + ':main:heartbeat';
+        else if (firstMsg.includes('telegram') || firstMsg.includes('conversation info')) inferredKey = 'agent:' + agentId + ':telegram:orphan:' + sessionId;
+        const summary = buildSessionSummary(agentId, inferredKey, { sessionId, active: false }, parsed);
         if (summary) upsertSessionSummary(summary);
       }
     }
