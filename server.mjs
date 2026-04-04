@@ -3697,7 +3697,9 @@ function parseCronSourceName(text) {
 
 function normalizeModel(model) {
   if (!model) return 'unknown';
-  return String(model).replace('anthropic/', '').replace('openai/', '').trim() || 'unknown';
+  const s = String(model).trim();
+  if (s === 'delivery-mirror' || s === 'mirror') return 'unknown';
+  return s.replace('anthropic/', '').replace('openai/', '').replace('openai-codex/', '') || 'unknown';
 }
 
 function deriveSessionSource({ sessionKey, sessionMeta, firstUserMessage }) {
