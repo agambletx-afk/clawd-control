@@ -230,10 +230,10 @@
                     <button class="pill" data-source-type="dashboard">Dashboard</button>
                 </div>
                 <div class="pill-group" id="timePills">
+                    <button class="pill" data-range="1h">1h</button>
                     <button class="pill active" data-range="24h">24h</button>
                     <button class="pill" data-range="3d">3d</button>
                     <button class="pill" data-range="7d">7d</button>
-                    <button class="pill" data-range="30d">30d</button>
                 </div>
             </div>
             <table class="event-log-table" id="eventLogTable">
@@ -343,7 +343,7 @@
             }
 
             async function fetchOverview() {
-                const map = { '24h': 1, '3d': 3, '7d': 7, '30d': 30 };
+                const map = { '1h': 1/24, '24h': 1, '3d': 3, '7d': 7 };
                 const from = new Date(Date.now() - ((map[currentRange] || 1) * 24 * 60 * 60 * 1000)).toISOString();
                 const params = new URLSearchParams({ from, sort: sortField, order: sortOrder, limit: '200' });
                 if (currentSourceType !== 'all') params.set('sourceType', currentSourceType);
