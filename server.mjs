@@ -1774,6 +1774,10 @@ function broadcast(event) {
 
 collector.start();
 warmSessionSummaryCache();
+// Periodic cache refresh: pick up isolated cron sessions that close before collector sees them
+setInterval(() => {
+  try { warmSessionSummaryCache(); } catch (e) { console.warn('[sessions] periodic refresh failed:', e.message); }
+}, 5 * 60 * 1000);
 console.log('📡 Collector started');
 
 // ── Agent Actions ──
