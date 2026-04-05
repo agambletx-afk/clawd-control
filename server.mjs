@@ -9250,7 +9250,7 @@ const server = createServer(async (req, res) => {
           req2.setTimeout(3000, () => { req2.destroy(); resolve(null); });
         });
         const tasks = tasksRes?.tasks || [];
-        const overdue = tasks.filter((t) => t.due_at && new Date(t.due_at).getTime() < now);
+        const overdue = tasks.filter((t) => t.status === 'in-progress' && t.due_at && new Date(t.due_at).getTime() < now);
         const status = overdue.length > 0 ? 'amber' : 'green';
         result.checks.push({ name: 'overdue_tasks', status, message: overdue.length > 0 ? overdue.length + ' overdue tasks' : 'ok' });
         if (status !== 'green') result.overall = result.overall === 'red' ? 'red' : 'amber';
