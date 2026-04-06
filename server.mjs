@@ -95,6 +95,9 @@ import {
   linkSessionToBrief,
   getTaskJourneyEvents,
   getTaskLineage,
+  getNudgeHistory,
+  createOperatorSummaryRequest,
+  getLatestOperatorSummary,
 } from './tasks-db.mjs';
 
 import { createHash, randomBytes, timingSafeEqual, randomUUID } from 'crypto';
@@ -1049,6 +1052,16 @@ function sanitizePlainText(value, maxLen = null) {
 
 function normalizeWorkRequestInput(value) {
   return sanitizePlainText(value).toLowerCase();
+}
+
+function getTaskColumnsMap() {
+  const conn = getDb();
+  const rows = conn.prepare('PRAGMA table_info(tasks)').all();
+  return new Set(rows.map((row) => row.name));
+}
+
+function hasTaskColumn(columns, columnName) {
+  return columns instanceof Set && columns.has(columnName);
 }
 
 function loadWorkRequestConfig() {
@@ -9876,6 +9889,316 @@ const server = createServer(async (req, res) => {
       return;
     }
   }
+
+  if (path.match(/^\/api\/tasks\/\d+\/nudge$/) && req.method === 'POST') {
+    const taskId = Number(path.split('/')[3]);
+    if (!Number.isInteger(taskId) || taskId <= 0) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid task id' }));
+      return;
+    }
+
+    readJsonBody(req).then((body) => {
+      const task = getTaskById(taskId);
+      if (!task) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Task not found' }));
+        return;
+      }
+
+      const recentNudges = getNudgeHistory(taskId, 10);
+      if (recentNudges > 0) {
+        res.writeHead(429, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Already nudged recently. Try again in a few minutes.' }));
+        return;
+      }
+
+      const note = sanitizePlainText(body?.note, 1000);
+      addHistory(taskId, 'operator', 'operator_nudge', note || '');
+
+      const conn = getDb();
+      const taskColumns = getTaskColumnsMap();
+      if (hasTaskColumn(taskColumns, 'last_progress_at')) {
+        conn.prepare("UPDATE tasks SET last_progress_at = datetime('now'), updated_at = datetime('now') WHERE id = ?").run(taskId);
+      } else if (hasTaskColumn(taskColumns, 'last_nudged_at')) {
+        conn.prepare("UPDATE tasks SET last_nudged_at = datetime('now'), updated_at = datetime('now') WHERE id = ?").run(taskId);
+      } else {
+        conn.prepare("UPDATE tasks SET updated_at = datetime('now') WHERE id = ?").run(taskId);
+      }
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        success: true,
+        task_id: taskId,
+        nudged_at: new Date().toISOString(),
+      }));
+    }).catch((e) => {
+      const code = e.message === 'Payload too large' ? 413 : 400;
+      res.writeHead(code, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message === 'Payload too large' ? 'Payload too large' : 'Invalid JSON body' }));
+    });
+    return;
+  }
+
+  if (path.match(/^\/api\/tasks\/\d+\/request-summary$/) && req.method === 'POST') {
+    const taskId = Number(path.split('/')[3]);
+    if (!Number.isInteger(taskId) || taskId <= 0) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid task id' }));
+      return;
+    }
+
+    readJsonBody(req).then((body) => {
+      const task = getTaskById(taskId);
+      if (!task) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Task not found' }));
+        return;
+      }
+      const requestedBy = sanitizePlainText(body?.requested_by, 50) || 'operator';
+      const summaryRequest = createOperatorSummaryRequest(taskId, requestedBy);
+      if (!summaryRequest) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Unable to create summary request' }));
+        return;
+      }
+      addHistory(taskId, 'operator', 'summary_requested', '');
+      res.writeHead(201, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        success: true,
+        task_id: taskId,
+        summary_request_id: summaryRequest.id,
+      }));
+    }).catch((e) => {
+      const code = e.message === 'Payload too large' ? 413 : 400;
+      res.writeHead(code, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message === 'Payload too large' ? 'Payload too large' : 'Invalid JSON body' }));
+    });
+    return;
+  }
+
+  if (path.match(/^\/api\/tasks\/\d+\/reassign$/) && req.method === 'POST') {
+    const taskId = Number(path.split('/')[3]);
+    if (!Number.isInteger(taskId) || taskId <= 0) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid task id' }));
+      return;
+    }
+
+    readJsonBody(req).then((body) => {
+      const task = getTaskById(taskId);
+      if (!task) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Task not found' }));
+        return;
+      }
+
+      const reason = sanitizePlainText(body?.reason, 1000);
+      const conn = getDb();
+      const taskColumns = getTaskColumnsMap();
+      const updates = ["updated_at = datetime('now')"];
+      const params = [];
+
+      if (hasTaskColumn(taskColumns, 'reassign_requested_at')) updates.push("reassign_requested_at = datetime('now')");
+      if (hasTaskColumn(taskColumns, 'reassign_status')) updates.push("reassign_status = 'pending'");
+
+      const claimExpiry = task.claim_expires_at ? Date.parse(task.claim_expires_at) : 0;
+      const claimExpired = !Number.isFinite(claimExpiry) || claimExpiry <= Date.now();
+      if (hasTaskColumn(taskColumns, 'claimed_by') && hasTaskColumn(taskColumns, 'claimed_at') && hasTaskColumn(taskColumns, 'claim_expires_at') && task.claimed_by && claimExpired) {
+        updates.push('claimed_by = NULL', 'claimed_at = NULL', 'claim_expires_at = NULL');
+      } else if (hasTaskColumn(taskColumns, 'claim_release_requested')) {
+        updates.push('claim_release_requested = 1');
+      }
+
+      conn.prepare(`UPDATE tasks SET ${updates.join(', ')} WHERE id = ?`).run(taskId, ...params);
+      addHistory(taskId, 'operator', 'reassign_requested', reason || '');
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        success: true,
+        task_id: taskId,
+        reassign_requested_at: new Date().toISOString(),
+      }));
+    }).catch((e) => {
+      const code = e.message === 'Payload too large' ? 413 : 400;
+      res.writeHead(code, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message === 'Payload too large' ? 'Payload too large' : 'Invalid JSON body' }));
+    });
+    return;
+  }
+
+  if (path.match(/^\/api\/tasks\/\d+\/pause$/) && req.method === 'POST') {
+    const taskId = Number(path.split('/')[3]);
+    if (!Number.isInteger(taskId) || taskId <= 0) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid task id' }));
+      return;
+    }
+
+    readJsonBody(req).then((body) => {
+      const task = getTaskById(taskId);
+      if (!task) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Task not found' }));
+        return;
+      }
+      if (task.pause_state === 'paused') {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Task is already paused' }));
+        return;
+      }
+
+      const reason = sanitizePlainText(body?.reason, 1000);
+      const conn = getDb();
+      const taskColumns = getTaskColumnsMap();
+      const updates = ["updated_at = datetime('now')"];
+      if (hasTaskColumn(taskColumns, 'pause_state')) updates.push("pause_state = 'paused'");
+      if (hasTaskColumn(taskColumns, 'paused_at')) updates.push("paused_at = datetime('now')");
+      if (hasTaskColumn(taskColumns, 'paused_by')) updates.push("paused_by = 'operator'");
+      if (hasTaskColumn(taskColumns, 'claimed_by')) updates.push('claimed_by = NULL');
+      if (hasTaskColumn(taskColumns, 'claimed_at')) updates.push('claimed_at = NULL');
+      if (hasTaskColumn(taskColumns, 'claim_expires_at')) updates.push('claim_expires_at = NULL');
+      conn.prepare(`UPDATE tasks SET ${updates.join(', ')} WHERE id = ?`).run(taskId);
+
+      addHistory(taskId, 'operator', 'paused', reason || '');
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, task_id: taskId, paused_at: new Date().toISOString() }));
+    }).catch((e) => {
+      const code = e.message === 'Payload too large' ? 413 : 400;
+      res.writeHead(code, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message === 'Payload too large' ? 'Payload too large' : 'Invalid JSON body' }));
+    });
+    return;
+  }
+
+  if (path.match(/^\/api\/tasks\/\d+\/resume$/) && req.method === 'POST') {
+    const taskId = Number(path.split('/')[3]);
+    if (!Number.isInteger(taskId) || taskId <= 0) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid task id' }));
+      return;
+    }
+
+    readJsonBody(req).then(() => {
+      const task = getTaskById(taskId);
+      if (!task) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Task not found' }));
+        return;
+      }
+      if (task.pause_state !== 'paused') {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Task is not paused' }));
+        return;
+      }
+
+      const conn = getDb();
+      const taskColumns = getTaskColumnsMap();
+      const updates = ["updated_at = datetime('now')"];
+      if (hasTaskColumn(taskColumns, 'pause_state')) updates.push("pause_state = 'active'");
+      if (hasTaskColumn(taskColumns, 'paused_at')) updates.push('paused_at = NULL');
+      if (hasTaskColumn(taskColumns, 'paused_by')) updates.push('paused_by = NULL');
+      conn.prepare(`UPDATE tasks SET ${updates.join(', ')} WHERE id = ?`).run(taskId);
+
+      addHistory(taskId, 'operator', 'resumed', '');
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, task_id: taskId, resumed_at: new Date().toISOString() }));
+    }).catch((e) => {
+      const code = e.message === 'Payload too large' ? 413 : 400;
+      res.writeHead(code, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message === 'Payload too large' ? 'Payload too large' : 'Invalid JSON body' }));
+    });
+    return;
+  }
+
+  if (path.match(/^\/api\/tasks\/\d+\/cancel-request$/) && req.method === 'POST') {
+    const taskId = Number(path.split('/')[3]);
+    if (!Number.isInteger(taskId) || taskId <= 0) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid task id' }));
+      return;
+    }
+
+    readJsonBody(req).then((body) => {
+      const task = getTaskById(taskId);
+      if (!task) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Task not found' }));
+        return;
+      }
+      if (task.cancel_requested_at) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Cancellation already requested' }));
+        return;
+      }
+
+      const reason = sanitizePlainText(body?.reason, 1000);
+      const conn = getDb();
+      const taskColumns = getTaskColumnsMap();
+      const updates = ["updated_at = datetime('now')"];
+      if (hasTaskColumn(taskColumns, 'cancel_requested_at')) updates.push("cancel_requested_at = datetime('now')");
+      if (task.claimed_by && hasTaskColumn(taskColumns, 'claim_release_requested')) updates.push('claim_release_requested = 1');
+      conn.prepare(`UPDATE tasks SET ${updates.join(', ')} WHERE id = ?`).run(taskId);
+
+      let archived = false;
+      const shouldArchiveNow = task.status === 'proposed' || task.status === 'backlog';
+      if (shouldArchiveNow) {
+        try {
+          const updated = updateTask(taskId, { status: 'archive' });
+          if (updated) {
+            const columns = getTaskColumnsMap();
+            if (hasTaskColumn(columns, 'archived_reason')) {
+              conn.prepare("UPDATE tasks SET archived_reason = 'canceled', updated_at = datetime('now') WHERE id = ?").run(taskId);
+            }
+            archived = true;
+          }
+        } catch {
+          archived = false;
+        }
+      }
+
+      addHistory(taskId, 'operator', 'cancel_requested', reason || '');
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        success: true,
+        task_id: taskId,
+        cancel_requested_at: new Date().toISOString(),
+        archived,
+      }));
+    }).catch((e) => {
+      const code = e.message === 'Payload too large' ? 413 : 400;
+      res.writeHead(code, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message === 'Payload too large' ? 'Payload too large' : 'Invalid JSON body' }));
+    });
+    return;
+  }
+
+  if (path.match(/^\/api\/tasks\/\d+\/summary$/) && req.method === 'GET') {
+    const taskId = Number(path.split('/')[3]);
+    if (!Number.isInteger(taskId) || taskId <= 0) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid task id' }));
+      return;
+    }
+
+    try {
+      const task = getTaskById(taskId);
+      if (!task) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Task not found' }));
+        return;
+      }
+      const summary = getLatestOperatorSummary(taskId);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ task_id: taskId, summary: summary || null }));
+    } catch (e) {
+      console.error('[API] /api/tasks/:id/summary error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Internal server error' }));
+    }
+    return;
+  }
+
 
   if (path.match(/^\/api\/tasks\/\d+\/journey$/) && req.method === 'GET') {
     const taskId = Number(path.split('/')[3]);

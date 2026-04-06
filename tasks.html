@@ -1128,6 +1128,35 @@
       margin-bottom: 6px;
     }
     .attention-item-stuck { color: #f59e0b; font-size: 0.75rem; margin-top: 4px; }
+    .attention-stuck-headline { font-size: 0.78rem; font-weight: 600; margin: 6px 0 4px; }
+    .attention-stuck-headline.red { color: #ef4444; }
+    .attention-stuck-headline.yellow { color: #f59e0b; }
+    .attention-stuck-headline.muted { color: #9ca3af; }
+    .attention-stuck-summary { color: #cbd5e1; font-size: 0.74rem; margin: 4px 0 0; line-height: 1.35; }
+    .attention-stuck-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+    .attention-stuck-btn {
+      font-size: 0.72rem;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: transparent;
+      border: 1px solid #363b4d;
+      color: #cbd5e1;
+      cursor: pointer;
+    }
+    .attention-stuck-btn:hover { border-color: #6366f1; }
+    .attention-stuck-btn.cancel { border-color: rgba(239, 68, 68, 0.4); color: #fca5a5; }
+    .attention-stuck-btn.pending { border-color: #363b4d; color: #8c95ad; cursor: default; }
+    .attention-inline-reassign { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
+    .attention-inline-reassign input {
+      min-width: 180px;
+      flex: 1;
+      background: #10141f;
+      border: 1px solid #363b4d;
+      color: #e5e7eb;
+      border-radius: 8px;
+      padding: 5px 8px;
+      font-size: 0.72rem;
+    }
     .attention-toggle-btn {
       background: transparent;
       color: #6366f1;
@@ -1424,6 +1453,8 @@
           workRequestEditMode: false,
           workRequestRethinkMode: false,
           workRequestRegenerating: false,
+          operatorSummaries: {},
+          reassignInputTaskId: null,
         };
 
         const cstFormatter = new Intl.DateTimeFormat('en-US', {
@@ -2340,40 +2371,119 @@
           return { text: overdue ? `${unit} overdue` : `due in ${unit}`, overdue };
         }
 
+        function isStuckTask(task) {
+          if (!task) return false;
+          const hasCancel = !!task.cancel_requested_at;
+          const reassignPending = !!task.reassign_requested_at && !task.reassign_completed_at;
+          return !!task.stuck_severity || task.pause_state === 'paused' || hasCancel || reassignPending;
+        }
+
+        function stuckHeadline(task) {
+          if (task.cancel_requested_at) return { text: 'Cancellation requested', tone: 'muted' };
+          if (task.pause_state === 'paused') return { text: 'This task is paused', tone: 'muted' };
+          if (task.stuck_severity === 'red') return { text: 'This task appears stuck', tone: 'red' };
+          if (task.stuck_severity === 'yellow') return { text: 'This task appears delayed', tone: 'yellow' };
+          if (task.reassign_requested_at && !task.reassign_completed_at) return { text: 'Reassignment in progress', tone: 'muted' };
+          return null;
+        }
+
+        function stuckActionButtons(task, usePanelActions = false) {
+          if (!isStuckTask(task)) return '';
+          const attr = usePanelActions ? '' : ` data-task-id="${task.id}"`;
+          if (task.cancel_requested_at) {
+            return `<div class="attention-stuck-actions"${attr}><span class="attention-stuck-btn pending">Cancellation pending</span></div>`;
+          }
+          if (task.pause_state === 'paused') {
+            return `<div class="attention-stuck-actions"${attr}><button class="attention-stuck-btn" type="button" data-stuck-action="resume">Resume</button><button class="attention-stuck-btn cancel" type="button" data-stuck-action="cancel">Cancel</button></div>`;
+          }
+          return `<div class="attention-stuck-actions"${attr}><button class="attention-stuck-btn" type="button" data-stuck-action="nudge">Nudge Team</button><button class="attention-stuck-btn" type="button" data-stuck-action="summary">Ask for Summary</button><button class="attention-stuck-btn" type="button" data-stuck-action="reassign">Reassign</button><button class="attention-stuck-btn" type="button" data-stuck-action="pause">Pause</button><button class="attention-stuck-btn cancel" type="button" data-stuck-action="cancel">Cancel</button></div>`;
+        }
+
+        async function runStuckAction(taskId, action, options = {}) {
+          const payload = options.payload || {};
+          const endpointMap = {
+            nudge: 'nudge',
+            summary: 'request-summary',
+            reassign: 'reassign',
+            pause: 'pause',
+            resume: 'resume',
+            cancel: 'cancel-request',
+          };
+          const endpoint = endpointMap[action];
+          if (!endpoint) return;
+          const res = await fetch(`/api/tasks/${taskId}/${endpoint}`, {
+            ...FETCH_OPTS,
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            if (action === 'nudge' && res.status === 429) {
+              notify('Already nudged recently.', 'warning');
+              return;
+            }
+            throw new Error(data.error || 'Action failed');
+          }
+          if (action === 'nudge') notify('Team nudged for an update.', 'success');
+          if (action === 'summary') notify("Summary requested. You'll see it when the team responds.", 'success');
+          if (action === 'reassign') notify('Reassignment requested.', 'success');
+          if (action === 'pause') notify('Task paused.', 'success');
+          if (action === 'resume') notify('Task resumed.', 'success');
+          if (action === 'cancel') notify(data.archived ? 'Task canceled.' : 'Cancellation requested.', 'success');
+          state.reassignInputTaskId = null;
+          await Promise.all([refreshAll(), refreshAttention()]);
+          if (state.selectedTaskId === taskId) {
+            await openPanel(taskId);
+          }
+        }
+
+        async function loadOperatorSummary(taskId) {
+          if (!Number.isInteger(Number(taskId))) return null;
+          if (Object.hasOwn(state.operatorSummaries, taskId)) return state.operatorSummaries[taskId];
+          try {
+            const res = await fetch(`/api/tasks/${taskId}/summary`, FETCH_OPTS);
+            if (!res.ok) return null;
+            const data = await res.json();
+            state.operatorSummaries[taskId] = data?.summary || null;
+            return state.operatorSummaries[taskId];
+          } catch {
+            return null;
+          }
+        }
+
         function statusActionButtons(task) {
           if (!task) return '';
           const status = normalizeStatus(task.status);
+          let base = '';
           if (status === 'proposed') {
-            return `
+            base = `
               <button class="btn btn-small" data-action="approve" data-id="${task.id}">Approve</button>
               <button class="btn btn-small btn-danger" data-action="reject" data-id="${task.id}">Reject</button>
             `;
-          }
-          if (status === 'backlog') {
-            return `<button class="btn btn-small" data-action="start" data-id="${task.id}">Start</button>`;
-          }
-          if (status === 'in_progress') {
-            return `
+          } else if (status === 'backlog') {
+            base = `<button class="btn btn-small" data-action="start" data-id="${task.id}">Start</button>`;
+          } else if (status === 'in_progress') {
+            base = `
               <button class="btn btn-small" data-action="complete" data-id="${task.id}">Complete</button>
               <button class="btn btn-small btn-warning" data-action="cancel" data-id="${task.id}">Cancel</button>
             `;
-          }
-          if (status === 'review') {
-            return `
+          } else if (status === 'review') {
+            base = `
               <button class="btn btn-small" data-action="approve-review" data-id="${task.id}">Approve</button>
               <button class="btn btn-small" data-action="return-review" data-id="${task.id}">Return</button>
             `;
+          } else if (status === 'done') {
+            base = `<button class="btn btn-small" data-action="archive" data-id="${task.id}">Archive</button>`;
+          } else if (status === 'archive') {
+            base = `<button class="btn btn-small" data-action="restore" data-id="${task.id}">Restore</button>`;
+          } else if (status === 'failed') {
+            base = `<button class="btn btn-small" data-action="reset-retries" data-id="${task.id}">Reset & Retry</button>`;
           }
-          if (status === 'done') {
-            return `<button class="btn btn-small" data-action="archive" data-id="${task.id}">Archive</button>`;
+          if (isStuckTask(task)) {
+            return `${base}${stuckActionButtons(task, true)}`;
           }
-          if (status === 'archive') {
-            return `<button class="btn btn-small" data-action="restore" data-id="${task.id}">Restore</button>`;
-          }
-          if (status === 'failed') {
-            return `<button class="btn btn-small" data-action="reset-retries" data-id="${task.id}">Reset & Retry</button>`;
-          }
-          return '';
+          return base;
         }
 
         function getBlockingTitle(task) {
@@ -2579,6 +2689,9 @@
             ${task.description ? `<div class="field"><div class="label">Description</div><div class="value">${esc(task.description)}</div></div>` : ''}
             ${intentHtml}
             ${task.goal_id ? `<div class="field"><div class="label">Goal</div><div class="value">#${task.goal_id}</div></div>` : ''}
+            ${(state.operatorSummaries[task.id] && state.operatorSummaries[task.id].summary_text)
+              ? `<div class="field"><div class="label">Operator Summary</div><div class="value">${esc(state.operatorSummaries[task.id].summary_text)}<div class="attention-item-muted">Requested ${relativeTime(state.operatorSummaries[task.id].created_at)}</div></div></div>`
+              : ''}
             <div class="field"><div class="label">Retry Status</div>
               <div class="retry-status">
                 <div class="retry-line"><span class="status-dot ${retryDot}"></span><span>${esc(retryText)}</span></div>
@@ -2851,7 +2964,7 @@
           state.journey = [];
           state.journeyShowDetails = false;
           state.lineage = null;
-          await Promise.all([loadHistory(taskId), loadFailureMeta(taskId)]);
+          await Promise.all([loadHistory(taskId), loadFailureMeta(taskId), loadOperatorSummary(taskId)]);
           renderPanel();
           document.getElementById('panelBackdrop').classList.add('open');
           document.getElementById('detailPanel').classList.add('open');
@@ -3035,6 +3148,10 @@
           const chip = attentionChipStyle(item.operator_status);
           const breadcrumb = attentionBreadcrumb(item);
           const progressTime = relativeTime(item.last_progress_at || item.updated_at);
+          const headline = bucketKey === 'stuck' ? stuckHeadline(item) : null;
+          const summary = state.operatorSummaries[item.id];
+          const showSummary = summary && summary.summary_text;
+          const showReassignInput = state.reassignInputTaskId === item.id;
           return `
             <article class="attention-item-card is-task" data-task-id="${item.id}">
               <div class="attention-item-title">${esc(item.title || `Task #${item.id}`)}</div>
@@ -3044,6 +3161,10 @@
               <div class="attention-item-muted">${esc(item.latest_milestone || 'No activity yet')}</div>
               <div class="attention-item-muted">Updated ${relativeTime(item.updated_at)}</div>
               ${bucketKey === 'stuck' ? `<div class="attention-item-stuck">No progress for ${progressTime}</div>` : ''}
+              ${headline ? `<div class="attention-stuck-headline ${headline.tone}">${esc(headline.text)}</div>` : ''}
+              ${showSummary ? `<div class="attention-stuck-summary">Latest summary: ${esc(summary.summary_text)}</div>` : ''}
+              ${bucketKey === 'stuck' ? stuckActionButtons(item, false) : ''}
+              ${bucketKey === 'stuck' && showReassignInput ? `<div class="attention-inline-reassign" data-task-id="${item.id}"><input type="text" data-reassign-reason placeholder="Optional reason"><button type="button" class="attention-stuck-btn" data-stuck-action="reassign-submit">Send</button><button type="button" class="attention-stuck-btn" data-stuck-action="reassign-cancel">Close</button></div>` : ''}
             </article>
           `;
         }
@@ -3099,6 +3220,8 @@
 
         async function refreshAttention() {
           await Promise.all([loadAttentionStats(), loadAttentionBuckets()]);
+          const stuckItems = Array.isArray(state.attentionBuckets?.stuck) ? state.attentionBuckets.stuck : [];
+          await Promise.all(stuckItems.map((item) => loadOperatorSummary(Number(item.id))));
           if (state.workRequestPreview) return;
           renderAttentionStats();
           renderAttentionSections();
@@ -3194,6 +3317,37 @@
             loadWorkRequestSession(proposalCard.dataset.sessionId).catch((err) => notify(err.message || 'Unable to load proposal preview', 'error'));
             return;
           }
+
+          const stuckBtn = e.target.closest('[data-stuck-action]');
+          if (stuckBtn) {
+            const card = e.target.closest('.attention-item-card.is-task');
+            const taskId = Number(card?.dataset?.taskId);
+            if (!Number.isInteger(taskId)) return;
+            const action = stuckBtn.getAttribute('data-stuck-action');
+            if (action === 'reassign') {
+              state.reassignInputTaskId = taskId;
+              renderAttentionSections();
+              return;
+            }
+            if (action === 'reassign-cancel') {
+              state.reassignInputTaskId = null;
+              renderAttentionSections();
+              return;
+            }
+            if (action === 'reassign-submit') {
+              const wrap = stuckBtn.closest('.attention-inline-reassign');
+              const reason = wrap?.querySelector('[data-reassign-reason]')?.value || '';
+              runStuckAction(taskId, 'reassign', { payload: { reason } }).catch((err) => notify(err.message || 'Reassignment failed', 'error'));
+              return;
+            }
+            if (action === 'cancel') {
+              const proceed = confirm('Cancel this task? It will be archived.');
+              if (!proceed) return;
+            }
+            runStuckAction(taskId, action).catch((err) => notify(err.message || 'Task action failed', 'error'));
+            return;
+          }
+
           const card = e.target.closest('.attention-item-card.is-task');
           if (!card) return;
           const taskId = Number(card.dataset.taskId);
@@ -3396,6 +3550,22 @@
         });
 
         document.getElementById('panelActions').addEventListener('click', (e) => {
+          const stuckBtn = e.target.closest('[data-stuck-action]');
+          if (stuckBtn && state.selectedTaskId) {
+            const action = stuckBtn.getAttribute('data-stuck-action');
+            if (action === 'cancel') {
+              const proceed = confirm('Cancel this task? It will be archived.');
+              if (!proceed) return;
+            }
+            if (action === 'reassign') {
+              const reason = prompt('Optional reason for reassignment:', '') || '';
+              runStuckAction(state.selectedTaskId, 'reassign', { payload: { reason } }).catch((err) => notify(err.message || 'Task action failed', 'error'));
+              return;
+            }
+            runStuckAction(state.selectedTaskId, action).catch((err) => notify(err.message || 'Task action failed', 'error'));
+            return;
+          }
+
           const btn = e.target.closest('button[data-action]');
           if (!btn || !state.selectedTaskId) return;
           runAction(state.selectedTaskId, btn.dataset.action);
