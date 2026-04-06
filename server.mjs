@@ -84,6 +84,15 @@ import {
   createImportSessionRevision,
   createImportSessionDraft,
   getDraftsByRevisionId,
+  getActiveRevision,
+  createBrief,
+  createBriefVersion,
+  getNextBriefVersionNo,
+  updateImportSessionDraftState,
+  updateAllDraftsForRevision,
+  supersedRevision,
+  createTaskDependency,
+  linkSessionToBrief,
 } from './tasks-db.mjs';
 
 import { createHash, randomBytes, timingSafeEqual, randomUUID } from 'crypto';
@@ -4793,9 +4802,16 @@ function buildIntelligenceStrip() {
   };
 }
 
-async function runWorkRequestPipeline({ inputText, titleOverride, step1Model, step2Model, validationConfig }) {
+async function runWorkRequestPipeline({
+  inputText,
+  titleOverride,
+  step1Model,
+  step2Model,
+  validationConfig,
+  step1SystemAddition = '',
+}) {
   const step1Prompt = chooseStep1TierPrompt(inputText);
-  const step1System = `You are Clawd Control's planning assistant. ${step1Prompt}`;
+  const step1System = `You are Clawd Control's planning assistant. ${step1Prompt} ${step1SystemAddition}`.trim();
   const sameModel = step1Model.id === step2Model.id;
 
   let step1Output = '';
@@ -4868,6 +4884,7 @@ function buildWorkRequestResponsePayload(sessionRow, revisionRow, draftRows, ste
     revision: revisionRow ? {
       id: revisionRow.id,
       revision_no: revisionRow.revision_no,
+      revision_reason: revisionRow.revision_reason,
       request_restatement: revisionRow.request_restatement,
       plan_title: revisionRow.plan_title,
       plan_payload_json: revisionRow.plan_payload_json,
@@ -4896,6 +4913,44 @@ function buildWorkRequestResponsePayload(sessionRow, revisionRow, draftRows, ste
       },
     },
   };
+}
+
+function canApproveWorkRequestSession(status) {
+  return ['awaiting_operator_decision', 'awaiting_operator_redecision', 'partially_approved'].includes(String(status || ''));
+}
+
+function parseRefsJson(value) {
+  const parsed = safeJsonParse(value);
+  if (!Array.isArray(parsed)) return [];
+  return parsed.map((item) => sanitizePlainText(item, 120)).filter(Boolean);
+}
+
+function normalizeEditedWorkstreams(rawWorkstreams = []) {
+  if (!Array.isArray(rawWorkstreams)) return [];
+  return rawWorkstreams.map((stream, index) => {
+    const workstreamKey = sanitizePlainText(stream?.workstream_key || stream?.key || `stream_${index + 1}`, 80)
+      || `stream_${index + 1}`;
+    const name = sanitizePlainText(stream?.name || `Workstream ${index + 1}`, 120) || `Workstream ${index + 1}`;
+    const steps = Array.isArray(stream?.steps)
+      ? stream.steps.map((step) => sanitizePlainText(step, 500)).filter(Boolean)
+      : [];
+    return { workstream_key: workstreamKey, name, steps };
+  });
+}
+
+function buildEditedPlanInput({ plan_title, request_restatement, workstreams }) {
+  const lines = [
+    `Plan title: ${plan_title}`,
+    `Request restatement: ${request_restatement}`,
+    'Workstreams:',
+  ];
+  workstreams.forEach((stream, streamIndex) => {
+    lines.push(`${streamIndex + 1}. [${stream.workstream_key}] ${stream.name}`);
+    (stream.steps || []).forEach((step, stepIndex) => {
+      lines.push(`   ${streamIndex + 1}.${stepIndex + 1} ${step}`);
+    });
+  });
+  return lines.join('\n');
 }
 
 const server = createServer(async (req, res) => {
@@ -9018,6 +9073,367 @@ const server = createServer(async (req, res) => {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(buildWorkRequestResponsePayload(updated?.session, updated?.revision, updated?.drafts || [], { id: 'unknown' }, { id: 'unknown' }, loadWorkRequestConfig() || {})));
     }).catch(() => { res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Invalid JSON body' })); });
+    return;
+  }
+
+  if (path.match(/^\/api\/tasks\/work-requests\/[0-9a-f-]+\/approve$/) && req.method === 'POST') {
+    const sessionId = path.split('/')[4];
+    readJsonBody(req).then((body) => {
+      const mode = sanitizePlainText(body?.mode, 20);
+      const selectedDraftIds = Array.isArray(body?.selected_draft_ids)
+        ? body.selected_draft_ids.map((id) => sanitizePlainText(id, 80)).filter(Boolean)
+        : [];
+      if (mode !== 'all' && mode !== 'selected') {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'mode must be "all" or "selected"' }));
+        return;
+      }
+      if (mode === 'selected' && !selectedDraftIds.length) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'selected_draft_ids is required for selected mode' }));
+        return;
+      }
+
+      const readModel = getImportSessionById(sessionId);
+      if (!readModel?.session) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Work request session not found' }));
+        return;
+      }
+      const session = readModel.session;
+      const revision = readModel.revision || getActiveRevision(sessionId);
+      const drafts = Array.isArray(readModel.drafts) ? readModel.drafts : [];
+      if (!canApproveWorkRequestSession(session.session_status) || !revision) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Session is not awaiting approval' }));
+        return;
+      }
+
+      const approvedDrafts = mode === 'all'
+        ? drafts.filter((draft) => draft.draft_state === 'pending')
+        : drafts.filter((draft) => selectedDraftIds.includes(String(draft.id)) && draft.draft_state === 'pending');
+      const approvedDraftIdSet = new Set(approvedDrafts.map((draft) => String(draft.id)));
+      const approvedDraftRefSet = new Set(approvedDrafts.map((draft) => draft.draft_ref));
+
+      let briefId = session.brief_id || null;
+      if (!briefId) {
+        briefId = randomUUID();
+        createBrief({
+          id: briefId,
+          goal_id: session.goal_id,
+          title: revision.plan_title || `Work Request ${session.id}`,
+          source_type: 'work_request',
+          created_by: 'operator',
+        });
+        linkSessionToBrief(session.id, briefId);
+      }
+
+      const briefVersionId = randomUUID();
+      createBriefVersion({
+        id: briefVersionId,
+        brief_id: briefId,
+        version_no: getNextBriefVersionNo(briefId),
+        source_import_session_id: session.id,
+        source_revision_id: revision.id,
+        request_restatement: revision.request_restatement,
+        plan_title: revision.plan_title,
+        plan_payload_json: revision.plan_payload_json,
+        open_questions_json: revision.open_questions_json,
+        approved_by: 'operator',
+        approved_at: new Date().toISOString(),
+      });
+
+      const draftRefToTaskId = new Map();
+      const approvedTaskIds = [];
+      approvedDrafts.forEach((draft) => {
+        const dependsOnRefs = parseRefsJson(draft.depends_on_refs_json);
+        const blockedByUnapprovedDependency = mode === 'selected'
+          ? dependsOnRefs.some((ref) => !approvedDraftRefSet.has(ref))
+          : false;
+        const task = createTask({
+          title: draft.title,
+          description: draft.display_summary,
+          status: 'backlog',
+          priority: draft.priority,
+          task_type: draft.task_type,
+          source: 'dashboard',
+          created_by: 'operator',
+          goal_id: session.goal_id,
+          brief_id: briefId,
+          brief_version_id: briefVersionId,
+          source_import_session_id: session.id,
+          blocked_by_unapproved_dependency: blockedByUnapprovedDependency ? 1 : 0,
+        });
+        if (task?.id) {
+          draftRefToTaskId.set(draft.draft_ref, task.id);
+          approvedTaskIds.push(task.id);
+        }
+      });
+
+      approvedDrafts.forEach((draft) => {
+        const taskId = draftRefToTaskId.get(draft.draft_ref);
+        if (!taskId) return;
+        const dependsOnRefs = parseRefsJson(draft.depends_on_refs_json);
+        dependsOnRefs.forEach((ref) => {
+          const dependsOnTaskId = draftRefToTaskId.get(ref);
+          if (dependsOnTaskId) {
+            createTaskDependency(taskId, dependsOnTaskId);
+          }
+        });
+      });
+
+      if (mode === 'all') {
+        updateAllDraftsForRevision(revision.id, 'approved');
+      } else {
+        approvedDraftIdSet.forEach((draftId) => {
+          updateImportSessionDraftState(draftId, 'approved');
+        });
+      }
+
+      const remainingDrafts = getDraftsByRevisionId(revision.id).filter((draft) => draft.draft_state !== 'approved').length;
+      const sessionStatus = mode === 'all' ? 'approved_all' : 'partially_approved';
+      if (mode === 'all') {
+        getDb().prepare(`
+          UPDATE import_sessions
+          SET session_status = ?, closed_at = datetime('now'), brief_id = ?
+          WHERE id = ?
+        `).run(sessionStatus, briefId, session.id);
+      } else {
+        getDb().prepare(`
+          UPDATE import_sessions
+          SET session_status = ?, brief_id = ?
+          WHERE id = ?
+        `).run(sessionStatus, briefId, session.id);
+      }
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        approved_task_ids: approvedTaskIds,
+        brief_id: briefId,
+        brief_version_id: briefVersionId,
+        session_status: sessionStatus,
+        remaining_drafts: remainingDrafts,
+      }));
+    }).catch(() => {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+    });
+    return;
+  }
+
+  if (path.match(/^\/api\/tasks\/work-requests\/[0-9a-f-]+\/rethink$/) && req.method === 'POST') {
+    const sessionId = path.split('/')[4];
+    readJsonBody(req).then(async (body) => {
+      const readModel = getImportSessionById(sessionId);
+      if (!readModel?.session || !readModel.revision) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Work request session not found' }));
+        return;
+      }
+      if (!canApproveWorkRequestSession(readModel.session.session_status)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Session is not awaiting approval' }));
+        return;
+      }
+
+      const config = loadWorkRequestConfig();
+      if (!config) {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Work request pipeline not configured' }));
+        return;
+      }
+      const step1Model = resolveModelFromConfig(config, config?.pipeline?.step1?.selectedModel);
+      const step2Model = resolveModelFromConfig(config, config?.pipeline?.step2?.selectedModel);
+      if (!step1Model || !step2Model) {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Work request pipeline not configured' }));
+        return;
+      }
+
+      const operatorNote = sanitizePlainText(body?.operator_note, 2000);
+      const step1SystemAddition = operatorNote
+        ? `The operator reviewed the previous plan and asked for changes. Their feedback: ${operatorNote}. The original request was: ${readModel.session.raw_input_text}. Produce an improved plan.`
+        : 'The operator reviewed the previous plan and wants a different approach. Rethink the decomposition.';
+      const rethinkInputText = operatorNote
+        ? `${readModel.session.raw_input_text}\n\nOperator feedback:\n${operatorNote}`
+        : readModel.session.raw_input_text;
+
+      supersedRevision(readModel.revision.id);
+      const nextRevisionNo = Number(readModel.revision.revision_no || readModel.session.active_revision_no || 1) + 1;
+      const { normalized } = await runWorkRequestPipeline({
+        inputText: rethinkInputText,
+        titleOverride: readModel.session.title_override,
+        step1Model,
+        step2Model,
+        validationConfig: config?.validation || {},
+        step1SystemAddition,
+      });
+
+      const revisionId = randomUUID();
+      createImportSessionRevision({
+        id: revisionId,
+        session_id: readModel.session.id,
+        revision_no: nextRevisionNo,
+        revision_reason: 'rethink_all',
+        created_by: 'operator',
+        model_name: step2Model.id,
+        request_restatement: normalized.request_restatement,
+        plan_title: normalized.plan_title,
+        plan_payload_json: JSON.stringify({
+          request_restatement: normalized.request_restatement,
+          plan_title: normalized.plan_title,
+          workstreams: normalized.workstreams,
+          what_happens_next: normalized.what_happens_next,
+        }),
+        next_steps_json: JSON.stringify(normalized.what_happens_next),
+        open_questions_json: JSON.stringify(normalized.open_questions),
+        validation_state: 'valid',
+      });
+      normalized.draft_tasks.forEach((draft, idx) => {
+        createImportSessionDraft({
+          id: randomUUID(),
+          revision_id: revisionId,
+          draft_ref: draft.draft_ref,
+          title: draft.title,
+          display_summary: draft.display_summary,
+          workstream_key: draft.workstream_key,
+          priority: draft.priority,
+          task_type: draft.task_type,
+          acceptance_criteria_json: JSON.stringify(draft.acceptance_criteria),
+          depends_on_refs_json: JSON.stringify(draft.depends_on_refs),
+          sort_order: idx + 1,
+        });
+      });
+      getDb().prepare(`
+        UPDATE import_sessions
+        SET active_revision_no = ?, session_status = ?
+        WHERE id = ?
+      `).run(nextRevisionNo, 'awaiting_operator_redecision', readModel.session.id);
+      const updated = getImportSessionById(readModel.session.id);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(buildWorkRequestResponsePayload(
+        updated?.session,
+        updated?.revision,
+        updated?.drafts || [],
+        step1Model,
+        step2Model,
+        config,
+      )));
+    }).catch((error) => {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: error?.message || 'Invalid JSON body' }));
+    });
+    return;
+  }
+
+  if (path.match(/^\/api\/tasks\/work-requests\/[0-9a-f-]+\/edit$/) && req.method === 'POST') {
+    const sessionId = path.split('/')[4];
+    readJsonBody(req).then(async (body) => {
+      const readModel = getImportSessionById(sessionId);
+      if (!readModel?.session || !readModel.revision) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Work request session not found' }));
+        return;
+      }
+      if (!canApproveWorkRequestSession(readModel.session.session_status)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Session is not awaiting approval' }));
+        return;
+      }
+
+      const editedTitle = sanitizePlainText(body?.plan_title, 100);
+      const editedRestatement = sanitizePlainText(body?.request_restatement, 500);
+      const editedWorkstreams = normalizeEditedWorkstreams(body?.workstreams);
+      if (!editedTitle || !editedRestatement || !editedWorkstreams.length) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'plan_title, request_restatement, and workstreams are required' }));
+        return;
+      }
+
+      const config = loadWorkRequestConfig();
+      if (!config) {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Work request pipeline not configured' }));
+        return;
+      }
+      const step1Model = resolveModelFromConfig(config, config?.pipeline?.step1?.selectedModel);
+      const step2Model = resolveModelFromConfig(config, config?.pipeline?.step2?.selectedModel);
+      if (!step1Model || !step2Model) {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Work request pipeline not configured' }));
+        return;
+      }
+
+      supersedRevision(readModel.revision.id);
+      const nextRevisionNo = Number(readModel.revision.revision_no || readModel.session.active_revision_no || 1) + 1;
+      const editedPlanInput = buildEditedPlanInput({
+        plan_title: editedTitle,
+        request_restatement: editedRestatement,
+        workstreams: editedWorkstreams,
+      });
+      const { normalized } = await runWorkRequestPipeline({
+        inputText: editedPlanInput,
+        titleOverride: editedTitle,
+        step1Model,
+        step2Model,
+        validationConfig: config?.validation || {},
+        step1SystemAddition: 'The operator edited the plan. Use their updated plan as the source of truth. Generate draft tasks that match the edited workstreams and steps. Do not add tasks beyond what the operator specified.',
+      });
+
+      const revisionId = randomUUID();
+      createImportSessionRevision({
+        id: revisionId,
+        session_id: readModel.session.id,
+        revision_no: nextRevisionNo,
+        revision_reason: 'operator_edit',
+        created_by: 'operator',
+        model_name: step2Model.id,
+        request_restatement: editedRestatement,
+        plan_title: editedTitle,
+        plan_payload_json: JSON.stringify({
+          request_restatement: editedRestatement,
+          plan_title: editedTitle,
+          workstreams: editedWorkstreams,
+          what_happens_next: normalized.what_happens_next,
+        }),
+        next_steps_json: JSON.stringify(normalized.what_happens_next),
+        open_questions_json: JSON.stringify(normalized.open_questions),
+        validation_state: 'valid',
+      });
+      normalized.draft_tasks.forEach((draft, idx) => {
+        createImportSessionDraft({
+          id: randomUUID(),
+          revision_id: revisionId,
+          draft_ref: draft.draft_ref,
+          title: draft.title,
+          display_summary: draft.display_summary,
+          workstream_key: draft.workstream_key,
+          priority: draft.priority,
+          task_type: draft.task_type,
+          acceptance_criteria_json: JSON.stringify(draft.acceptance_criteria),
+          depends_on_refs_json: JSON.stringify(draft.depends_on_refs),
+          sort_order: idx + 1,
+        });
+      });
+      getDb().prepare(`
+        UPDATE import_sessions
+        SET active_revision_no = ?, session_status = ?
+        WHERE id = ?
+      `).run(nextRevisionNo, 'awaiting_operator_redecision', readModel.session.id);
+      const updated = getImportSessionById(readModel.session.id);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(buildWorkRequestResponsePayload(
+        updated?.session,
+        updated?.revision,
+        updated?.drafts || [],
+        step1Model,
+        step2Model,
+        config,
+      )));
+    }).catch((error) => {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: error?.message || 'Invalid JSON body' }));
+    });
     return;
   }
 
