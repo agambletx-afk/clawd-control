@@ -8,7 +8,8 @@
       "cadence_minutes": 240,
       "output_path": "/tmp/claude-token-heartbeat.json",
       "check_method": "heartbeat_v2",
-      "heartbeat_path": "/tmp/claude-token-refresh-heartbeat.json"
+      "heartbeat_path": "/tmp/claude-token-refresh-heartbeat.json",
+      "enabled": false
     },
     {
       "id": "cli-usage-tracker",
@@ -44,7 +45,8 @@
           "FAIL",
           "Traceback"
         ],
-        "max_age_minutes": 10200
+        "max_age_minutes": 10200,
+        "file": "/home/openclaw/.openclaw/workspace/bootstrap-audit.log"
       }
     },
     {
@@ -147,7 +149,7 @@
     },
     {
       "id": "security-health",
-      "description": "Security health audit (38 checks)",
+      "description": "Security health audit (38 checks, results to dashboard)",
       "cadence_minutes": 15,
       "output_path": "/tmp/security-health-results.json",
       "check_method": "heartbeat_v2",
@@ -231,11 +233,119 @@
         "timestamp_field": "timestamp",
         "timestamp_max_age_minutes": 75
       }
+    },
+    {
+      "id": "memory-root",
+      "description": "Nightly session bootstrap index generation",
+      "cron_file": "openclaw-memory-root",
+      "heartbeat_file": "/tmp/heartbeat-memory-root.json",
+      "cadence_seconds": 86400,
+      "cadence_minutes": 1440,
+      "log_file": null,
+      "auto_discovered": true,
+      "discovered_at": "2026-04-01T15:27:43Z",
+      "wrapper_path": "/usr/local/bin/memory-root-heartbeat-wrapper.sh",
+      "validation": null,
+      "output_path": "/tmp/heartbeat-memory-root.json",
+      "check_method": "heartbeat_v2",
+      "heartbeat_path": "/tmp/heartbeat-memory-root.json"
+    },
+    {
+      "id": "watcher",
+      "description": "WATCHER cron health monitor (staleness detection, gateway cron health, Telegram alerts)",
+      "cron_file": "openclaw-watcher",
+      "heartbeat_file": null,
+      "cadence_seconds": 300,
+      "cadence_minutes": 5,
+      "log_file": null,
+      "auto_discovered": true,
+      "discovered_at": "2026-04-01T15:27:43Z",
+      "monitor_method": "output_mtime",
+      "output_file": "/home/openclaw/.openclaw/workspace/watcher-status.json",
+      "needs_manual_review": true,
+      "status_unverifiable": false,
+      "validation": null,
+      "output_path": "/home/openclaw/.openclaw/workspace/watcher-status.json",
+      "check_method": "mtime",
+      "heartbeat_path": null
+    },
+    {
+      "id": "api-health",
+      "description": "External API health checks (refreshes /tmp/api-health-results.json)",
+      "cron_file": "openclaw-api-health",
+      "heartbeat_file": "/tmp/heartbeat-api-health.json",
+      "cadence_seconds": 300,
+      "cadence_minutes": 5,
+      "log_file": null,
+      "auto_discovered": true,
+      "discovered_at": "2026-04-01T15:36:26Z",
+      "wrapper_path": "/usr/local/bin/api-health-heartbeat-wrapper.sh",
+      "validation": null,
+      "output_path": "/tmp/heartbeat-api-health.json",
+      "check_method": "heartbeat_v2",
+      "heartbeat_path": "/tmp/heartbeat-api-health.json"
+    },
+    {
+      "id": "jarvis-ops-sampler",
+      "description": "Jarvis Operations Health Sampler Timer",
+      "cron_file": null,
+      "heartbeat_file": null,
+      "cadence_seconds": 86400,
+      "cadence_minutes": 1440,
+      "log_file": null,
+      "auto_discovered": true,
+      "discovered_at": "2026-04-01T15:45:43Z",
+      "monitor_method": "output_mtime",
+      "timer_unit": "jarvis-ops-sampler.timer",
+      "output_file": "/tmp/ops-health-metrics.json",
+      "needs_manual_review": true,
+      "validation": null,
+      "check_method": "mtime",
+      "output_path": "/tmp/ops-health-metrics.json"
+    },
+    {
+      "id": "decision-log-rotation",
+      "description": "Monthly decision log rotation (archives old heartbeat decisions)",
+      "cron_file": null,
+      "heartbeat_file": "/tmp/heartbeat-decision-log-rotation.json",
+      "cadence_seconds": 2592000,
+      "cadence_minutes": 43200,
+      "log_file": null,
+      "auto_discovered": true,
+      "discovered_at": "2026-04-01T16:10:00Z",
+      "monitor_method": null,
+      "output_file": null,
+      "needs_manual_review": false,
+      "validation": null,
+      "check_method": "heartbeat_v2",
+      "output_path": "/tmp/heartbeat-decision-log-rotation.json",
+      "heartbeat_path": "/tmp/heartbeat-decision-log-rotation.json",
+      "wrapper_path": "/usr/local/bin/decision-log-rotation-heartbeat-wrapper.sh"
     }
   ],
   "gateway_crons": {
     "jobs_file": "/home/openclaw/.openclaw/cron/jobs.json",
     "alert_on_consecutive_errors": 1,
     "alert_on_disabled_with_errors": true
-  }
+  },
+  "services": [
+    {
+      "id": "claude-max-proxy",
+      "name": "Claude Max API Proxy",
+      "provider": "Local",
+      "description": "OpenAI-compatible proxy wrapping Claude Code CLI for Max subscription access.",
+      "capabilities": [
+        "Claude Sonnet 4.6",
+        "Claude Opus 4.6",
+        "Claude Haiku 4.5"
+      ],
+      "status": "unknown",
+      "health_check": {
+        "method": "GET",
+        "url": "http://localhost:3456/health",
+        "timeout_ms": 5000,
+        "expected_status": 200
+      }
+    }
+  ]
 }

@@ -3708,7 +3708,7 @@ function normalizeModel(model) {
   if (!model) return 'unknown';
   const s = String(model).trim();
   if (s === 'delivery-mirror' || s === 'mirror') return 'unknown';
-  return s.replace('anthropic/', '').replace('openai/', '').replace('openai-codex/', '') || 'unknown';
+  return s.replace('anthropic/', '').replace('openai/', '').replace('openai-codex/', '').replace('claude-max-proxy/', '') || 'unknown';
 }
 
 function deriveSessionSource({ sessionKey, sessionMeta, firstUserMessage }) {
@@ -9259,6 +9259,20 @@ const server = createServer(async (req, res) => {
         result.checks.push({ name: 'overdue_tasks', status, message: overdue.length > 0 ? overdue.length + ' overdue tasks' : 'ok' });
         if (status !== 'green') result.overall = result.overall === 'red' ? 'red' : 'amber';
       } catch (e) { result.checks.push({ name: 'overdue_tasks', status: 'error', message: e.message }); }
+
+      // 6. Claude Max Proxy
+      try {
+        const proxyRes = await new Promise((resolve) => {
+          const req2 = require('http').get('http://127.0.0.1:3456/health', (r) => {
+            let body = ''; r.on('data', (c) => body += c); r.on('end', () => { try { resolve(JSON.parse(body)); } catch { resolve(null); } });
+          });
+          req2.on('error', () => resolve(null));
+          req2.setTimeout(3000, () => { req2.destroy(); resolve(null); });
+        });
+        const proxyOk = proxyRes && proxyRes.status === 'ok';
+        result.checks.push({ name: 'claude_max_proxy', status: proxyOk ? 'green' : 'red', message: proxyOk ? 'ok' : 'Proxy not responding' });
+        if (!proxyOk) result.overall = result.overall === 'red' ? 'red' : 'amber';
+      } catch (e) { result.checks.push({ name: 'claude_max_proxy', status: 'error', message: e.message }); }
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(result));
