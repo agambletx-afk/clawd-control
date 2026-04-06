@@ -861,6 +861,7 @@
     }
     .work-request-preview-head { display:flex; align-items:center; justify-content:space-between; gap:10px; }
     .work-request-preview-title { font-size:1.1rem; font-weight:700; color:#e4e8f1; }
+    .work-request-revision-note { color:#8c95ad; font-size:0.74rem; margin-top:4px; }
     .work-request-back-link { background:none; border:none; color:#8ea2ff; font-size:0.78rem; cursor:pointer; text-decoration:underline; }
     .work-request-section {
       background: #161b26;
@@ -890,9 +891,50 @@
     }
     .work-request-task-title { color:#e4e8f1; font-weight:600; font-size:0.82rem; margin-bottom:4px; }
     .work-request-task-meta { color:#8c95ad; font-size:0.74rem; margin-top:5px; }
+    .work-request-task-select { margin-right: 8px; transform: translateY(1px); }
+    .work-request-task-head { display:flex; align-items:flex-start; gap:8px; }
     .work-request-pipeline-strip { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
     .work-request-pipeline-pill { border:1px solid #363b4d; background:#1e2535; border-radius:999px; color:#cdd5e9; font-size:0.72rem; padding:4px 8px; }
     .work-request-actions { position: sticky; bottom: 0; background:#161b26; border-top:1px solid #363b4d; padding-top:12px; display:flex; gap:8px; flex-wrap:wrap; }
+    .work-request-floating-select {
+      position: sticky;
+      bottom: 12px;
+      margin-top: 10px;
+      border: 1px solid #363b4d;
+      background: #1e2535;
+      border-radius: 8px;
+      padding: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .work-request-loading-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(22, 27, 38, 0.82);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #cdd5e9;
+      font-size: 0.84rem;
+      gap: 8px;
+      z-index: 4;
+    }
+    .work-request-preview-wrap { position: relative; }
+    .work-request-edit-input, .work-request-edit-textarea {
+      width: 100%;
+      background: #1e2535;
+      border: 1px solid #4a5268;
+      color: #e4e8f1;
+      border-radius: 6px;
+      padding: 8px;
+      font-size: 0.82rem;
+      margin-bottom: 6px;
+    }
+    .work-request-edit-textarea { min-height: 70px; resize: vertical; }
+    .work-request-rethink-box { margin-top: 8px; border-top: 1px dashed #363b4d; padding-top: 10px; }
 
     .toast-wrap {
       position: fixed;
@@ -1314,6 +1356,11 @@
           workRequestPreview: false,
           workRequestGoals: [],
           workRequestOriginalOpen: false,
+          workRequestSelectionMode: false,
+          workRequestSelectedDraftIds: new Set(),
+          workRequestEditMode: false,
+          workRequestRethinkMode: false,
+          workRequestRegenerating: false,
         };
 
         const cstFormatter = new Intl.DateTimeFormat('en-US', {
@@ -1499,6 +1546,7 @@
           state.workRequestSession = sessionPayload;
           state.workRequestPreview = true;
           state.workRequestOriginalOpen = false;
+          if (!state.workRequestSelectionMode) state.workRequestSelectedDraftIds = new Set();
           const revision = sessionPayload?.revision || {};
           const session = sessionPayload?.session || {};
           const drafts = Array.isArray(sessionPayload?.drafts) ? sessionPayload.drafts : [];
@@ -1512,20 +1560,38 @@
             map[key].push(draft);
             return map;
           }, {});
+          const revisionReasonLabels = {
+            rethink_all: 'Rethought based on your feedback',
+            rethink_partial: 'Partially rethought',
+            operator_edit: 'Edited by you',
+            retry: 'Regenerated after error',
+          };
+          const revisionIndicator = Number(revision?.revision_no || 1) > 1 && revision?.revision_reason && revision?.revision_reason !== 'initial'
+            ? `<div class="work-request-revision-note">Revision ${esc(revision.revision_no)} · ${esc(revisionReasonLabels[revision.revision_reason] || 'Updated')}</div>`
+            : '';
           const workstreamsHtml = workstreams.map((stream, index) => {
             const key = stream.key || stream.workstream_key || `stream-${index + 1}`;
             const streamDrafts = draftsByStream[key] || [];
             const stepList = Array.isArray(stream.steps) ? stream.steps : [];
+            const streamName = state.workRequestEditMode
+              ? `<input class="work-request-edit-input" data-edit-stream-name="${index}" value="${esc(stream.name || `Workstream ${index + 1}`)}">`
+              : esc(stream.name || `Workstream ${index + 1}`);
+            const stepListHtml = state.workRequestEditMode
+              ? stepList.map((step, stepIndex) => `<textarea class="work-request-edit-textarea" data-edit-step="${index}:${stepIndex}">${esc(step)}</textarea>`).join('')
+              : stepList.map((step) => `<li>${esc(step)}</li>`).join('');
             return `
-              <div class="work-request-workstream-title">${esc(stream.name || `Workstream ${index + 1}`)}</div>
-              <ol class="work-request-section-body" style="padding-left:16px;margin:0">
-                ${stepList.map((step) => `<li>${esc(step)}</li>`).join('')}
-              </ol>
+              <div class="work-request-workstream-title">${streamName}</div>
+              ${state.workRequestEditMode
+                ? `<div class="work-request-section-body">${stepListHtml || '<div>No steps</div>'}</div>`
+                : `<ol class="work-request-section-body" style="padding-left:16px;margin:0">${stepListHtml}</ol>`}
               ${streamDrafts.map((draft) => {
                 const deps = safeJsonParse(draft.depends_on_refs_json, []);
                 return `
                   <article class="work-request-task-card">
-                    <div class="work-request-task-title">${esc(draft.title || draft.draft_ref || 'Untitled draft')}</div>
+                    <div class="work-request-task-head">
+                      ${state.workRequestSelectionMode ? `<input type="checkbox" class="work-request-task-select" data-draft-checkbox="${esc(draft.id)}" ${state.workRequestSelectedDraftIds.has(String(draft.id)) ? 'checked' : ''}>` : ''}
+                      <div class="work-request-task-title">${esc(draft.title || draft.draft_ref || 'Untitled draft')}</div>
+                    </div>
                     <div class="work-request-section-body">${esc(draft.display_summary || 'No summary provided')}</div>
                     <div class="work-request-task-meta">
                       <span class="attention-status-chip" style="background:${workRequestPriorityStyle(draft.priority)}">${esc(draft.priority || 'low')}</span>
@@ -1539,15 +1605,25 @@
 
           const nextStages = ['Research', 'Build', 'Check', 'Approval'];
           const pipelineInfo = sessionPayload?.pipeline_info || {};
+          const selectedCount = state.workRequestSelectedDraftIds.size;
+          const allButtonsDisabled = state.workRequestRegenerating;
           document.getElementById('workRequestPreview').innerHTML = `
-            <div class="work-request-preview">
+            <div class="work-request-preview-wrap">
+            <div class="work-request-preview ${allButtonsDisabled ? 'is-busy' : ''}">
               <div class="work-request-preview-head">
-                <div class="work-request-preview-title">${esc(revision?.plan_title || 'Generated Plan')}</div>
+                <div>
+                  ${state.workRequestEditMode
+                    ? `<input id="workRequestEditPlanTitle" class="work-request-edit-input" value="${esc(revision?.plan_title || 'Generated Plan')}">`
+                    : `<div class="work-request-preview-title">${esc(revision?.plan_title || 'Generated Plan')}</div>`}
+                  ${revisionIndicator}
+                </div>
                 <button type="button" class="work-request-back-link" id="workRequestBackBtn">Back to Attention</button>
               </div>
               <section class="work-request-section">
                 <div class="work-request-section-title"><span class="tasks-domain-capsule"></span>Your Request</div>
-                <div class="work-request-section-body" style="font-size:0.86rem">${esc(revision?.request_restatement || 'No restatement available')}</div>
+                ${state.workRequestEditMode
+                  ? `<textarea id="workRequestEditRestatement" class="work-request-edit-textarea" style="min-height:92px">${esc(revision?.request_restatement || 'No restatement available')}</textarea>`
+                  : `<div class="work-request-section-body" style="font-size:0.86rem">${esc(revision?.request_restatement || 'No restatement available')}</div>`}
                 <button type="button" class="work-request-original-toggle" id="workRequestToggleOriginalBtn">Original input</button>
                 <pre id="workRequestOriginalInput" style="display:none;white-space:pre-wrap;background:#1e2535;border:1px solid #363b4d;border-radius:8px;padding:8px;color:#8c95ad;font-size:0.74rem;margin-top:8px">${esc(inputText)}</pre>
               </section>
@@ -1570,11 +1646,30 @@
               ` : ''}
               <div class="work-request-muted">Plan generated by: ${esc(pipelineInfo?.step1?.label || 'Understand & Plan')} (${esc(pipelineInfo?.step1?.model || 'unknown')}) → ${esc(pipelineInfo?.step2?.label || 'Structure & Validate')} (${esc(pipelineInfo?.step2?.model || 'unknown')})</div>
               <div class="work-request-actions">
-                <button type="button" class="btn btn-primary" disabled>Approve All</button>
-                <button type="button" class="btn" disabled>Edit</button>
-                <button type="button" class="btn" disabled>Ask Agents to Rethink</button>
-                <button type="button" class="btn" id="workRequestCancelSessionBtn">Cancel</button>
+                ${state.workRequestEditMode
+                  ? '<button type="button" class="btn btn-primary" id="workRequestSaveEditBtn">Save &amp; Regenerate</button><button type="button" class="btn" id="workRequestCancelEditBtn">Cancel Edit</button>'
+                  : '<button type="button" class="btn btn-primary" id="workRequestApproveAllBtn">Approve All</button><button type="button" class="btn" id="workRequestToggleSelectBtn">Approve Selected</button><button type="button" class="btn" id="workRequestEditBtn">Edit</button><button type="button" class="btn" id="workRequestRethinkBtn">Ask Agents to Rethink</button><button type="button" class="btn" id="workRequestCancelSessionBtn">Cancel</button>'}
               </div>
+              ${state.workRequestSelectionMode && !state.workRequestEditMode ? `
+                <div class="work-request-floating-select">
+                  <div class="work-request-section-body">${selectedCount} selected</div>
+                  <div style="display:flex;gap:8px">
+                    <button type="button" class="btn btn-primary" id="workRequestApproveSelectedBtn" ${selectedCount ? '' : 'disabled'}>Approve Selected</button>
+                    <button type="button" class="btn" id="workRequestCancelSelectionBtn">Cancel Selection</button>
+                  </div>
+                </div>
+              ` : ''}
+              ${state.workRequestRethinkMode && !state.workRequestEditMode ? `
+                <div class="work-request-rethink-box">
+                  <textarea id="workRequestRethinkNote" class="work-request-edit-textarea" placeholder="What would you like changed?" style="min-height:90px"></textarea>
+                  <div style="display:flex;gap:8px;margin-top:8px">
+                    <button type="button" class="btn btn-primary" id="workRequestSubmitRethinkBtn">Rethink</button>
+                    <button type="button" class="btn" id="workRequestCancelRethinkBtn">Cancel</button>
+                  </div>
+                </div>
+              ` : ''}
+            </div>
+            ${state.workRequestRegenerating ? '<div class="work-request-loading-overlay"><span class="work-request-spinner"></span>Regenerating plan...</div>' : ''}
             </div>
           `;
           document.getElementById('attentionStats').style.display = 'none';
@@ -1585,6 +1680,11 @@
 
         function hideWorkRequestPreview() {
           state.workRequestPreview = false;
+          state.workRequestSelectionMode = false;
+          state.workRequestSelectedDraftIds = new Set();
+          state.workRequestEditMode = false;
+          state.workRequestRethinkMode = false;
+          state.workRequestRegenerating = false;
           document.getElementById('workRequestPreview').style.display = 'none';
           document.getElementById('workRequestPreview').innerHTML = '';
           renderAttentionStats();
@@ -1618,6 +1718,108 @@
           state.workRequestSession = data;
           notify('Work request canceled.', 'success');
           await refreshAttention();
+        }
+
+        async function approveWorkRequest(mode, selectedDraftIds = []) {
+          const sessionId = state.workRequestSession?.session?.id;
+          if (!sessionId || state.workRequestRegenerating) return;
+          const res = await fetch(`/api/tasks/work-requests/${encodeURIComponent(sessionId)}/approve`, {
+            ...FETCH_OPTS,
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode, selected_draft_ids: selectedDraftIds }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Unable to approve plan');
+          const createdCount = Array.isArray(data.approved_task_ids) ? data.approved_task_ids.length : 0;
+          notify(`Plan approved! ${createdCount} tasks created.`, 'success');
+          state.workRequestSelectionMode = false;
+          state.workRequestSelectedDraftIds = new Set();
+          hideWorkRequestPreview();
+          await refreshAttention();
+        }
+
+        function collectEditedPlanPayload() {
+          const planTitle = document.getElementById('workRequestEditPlanTitle')?.value || '';
+          const requestRestatement = document.getElementById('workRequestEditRestatement')?.value || '';
+          const currentWorkstreams = Array.isArray(safeJsonParse(state.workRequestSession?.revision?.plan_payload_json, {})?.workstreams)
+            ? safeJsonParse(state.workRequestSession?.revision?.plan_payload_json, {}).workstreams
+            : [];
+          const streamNameMap = new Map();
+          document.querySelectorAll('[data-edit-stream-name]').forEach((input) => {
+            const idx = Number(input.getAttribute('data-edit-stream-name'));
+            streamNameMap.set(idx, input.value || '');
+          });
+          const stepMap = new Map();
+          document.querySelectorAll('[data-edit-step]').forEach((input) => {
+            const token = String(input.getAttribute('data-edit-step') || '');
+            const [streamIdxRaw, stepIdxRaw] = token.split(':');
+            const streamIdx = Number(streamIdxRaw);
+            const stepIdx = Number(stepIdxRaw);
+            if (!stepMap.has(streamIdx)) stepMap.set(streamIdx, new Map());
+            stepMap.get(streamIdx).set(stepIdx, input.value || '');
+          });
+          const workstreams = currentWorkstreams.map((stream, streamIdx) => {
+            const steps = Array.isArray(stream?.steps) ? stream.steps : [];
+            return {
+              workstream_key: stream?.key || stream?.workstream_key || `stream-${streamIdx + 1}`,
+              name: streamNameMap.get(streamIdx) ?? stream?.name ?? `Workstream ${streamIdx + 1}`,
+              steps: steps.map((_, stepIdx) => stepMap.get(streamIdx)?.get(stepIdx) ?? ''),
+            };
+          });
+          return { plan_title: planTitle, request_restatement: requestRestatement, workstreams };
+        }
+
+        async function runWorkRequestEdit() {
+          const sessionId = state.workRequestSession?.session?.id;
+          if (!sessionId || state.workRequestRegenerating) return;
+          state.workRequestRegenerating = true;
+          renderWorkRequestPreview(state.workRequestSession);
+          try {
+            const payload = collectEditedPlanPayload();
+            const res = await fetch(`/api/tasks/work-requests/${encodeURIComponent(sessionId)}/edit`, {
+              ...FETCH_OPTS,
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Unable to regenerate edited plan');
+            state.workRequestEditMode = false;
+            state.workRequestRethinkMode = false;
+            state.workRequestSelectionMode = false;
+            state.workRequestSelectedDraftIds = new Set();
+            renderWorkRequestPreview(data);
+            notify('Plan regenerated from your edits.', 'success');
+          } finally {
+            state.workRequestRegenerating = false;
+          }
+        }
+
+        async function runWorkRequestRethink() {
+          const sessionId = state.workRequestSession?.session?.id;
+          if (!sessionId || state.workRequestRegenerating) return;
+          const operatorNote = document.getElementById('workRequestRethinkNote')?.value || '';
+          state.workRequestRegenerating = true;
+          renderWorkRequestPreview(state.workRequestSession);
+          try {
+            const res = await fetch(`/api/tasks/work-requests/${encodeURIComponent(sessionId)}/rethink`, {
+              ...FETCH_OPTS,
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ operator_note: operatorNote }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Unable to rethink plan');
+            state.workRequestRethinkMode = false;
+            state.workRequestEditMode = false;
+            state.workRequestSelectionMode = false;
+            state.workRequestSelectedDraftIds = new Set();
+            renderWorkRequestPreview(data);
+            notify('Plan rethought with your feedback.', 'success');
+          } finally {
+            state.workRequestRegenerating = false;
+          }
         }
 
         async function submitWorkRequest(e) {
@@ -2816,6 +3018,7 @@
           }
         });
         document.getElementById('workRequestPreview').addEventListener('click', (e) => {
+          if (state.workRequestRegenerating) return;
           if (e.target.id === 'workRequestBackBtn') {
             hideWorkRequestPreview();
             return;
@@ -2828,6 +3031,76 @@
           }
           if (e.target.id === 'workRequestCancelSessionBtn') {
             cancelWorkRequestSession().catch((err) => notify(err.message || 'Unable to cancel work request', 'error'));
+            return;
+          }
+          if (e.target.id === 'workRequestApproveAllBtn') {
+            approveWorkRequest('all').catch((err) => notify(err.message || 'Unable to approve plan', 'error'));
+            return;
+          }
+          if (e.target.id === 'workRequestToggleSelectBtn') {
+            state.workRequestSelectionMode = true;
+            state.workRequestRethinkMode = false;
+            renderWorkRequestPreview(state.workRequestSession);
+            return;
+          }
+          if (e.target.id === 'workRequestApproveSelectedBtn') {
+            approveWorkRequest('selected', [...state.workRequestSelectedDraftIds]).catch((err) => notify(err.message || 'Unable to approve selected drafts', 'error'));
+            return;
+          }
+          if (e.target.id === 'workRequestCancelSelectionBtn') {
+            state.workRequestSelectionMode = false;
+            state.workRequestSelectedDraftIds = new Set();
+            renderWorkRequestPreview(state.workRequestSession);
+            return;
+          }
+          if (e.target.id === 'workRequestEditBtn') {
+            state.workRequestEditMode = true;
+            state.workRequestRethinkMode = false;
+            state.workRequestSelectionMode = false;
+            renderWorkRequestPreview(state.workRequestSession);
+            return;
+          }
+          if (e.target.id === 'workRequestSaveEditBtn') {
+            runWorkRequestEdit().catch((err) => {
+              state.workRequestRegenerating = false;
+              notify(err.message || 'Unable to save edits', 'error');
+              renderWorkRequestPreview(state.workRequestSession);
+            });
+            return;
+          }
+          if (e.target.id === 'workRequestCancelEditBtn') {
+            state.workRequestEditMode = false;
+            renderWorkRequestPreview(state.workRequestSession);
+            return;
+          }
+          if (e.target.id === 'workRequestRethinkBtn') {
+            state.workRequestRethinkMode = true;
+            state.workRequestEditMode = false;
+            renderWorkRequestPreview(state.workRequestSession);
+            return;
+          }
+          if (e.target.id === 'workRequestSubmitRethinkBtn') {
+            runWorkRequestRethink().catch((err) => {
+              state.workRequestRegenerating = false;
+              notify(err.message || 'Unable to rethink plan', 'error');
+              renderWorkRequestPreview(state.workRequestSession);
+            });
+            return;
+          }
+          if (e.target.id === 'workRequestCancelRethinkBtn') {
+            state.workRequestRethinkMode = false;
+            renderWorkRequestPreview(state.workRequestSession);
+            return;
+          }
+          if (e.target.matches('[data-draft-checkbox]')) {
+            const draftId = String(e.target.getAttribute('data-draft-checkbox') || '');
+            if (!draftId) return;
+            if (e.target.checked) {
+              state.workRequestSelectedDraftIds.add(draftId);
+            } else {
+              state.workRequestSelectedDraftIds.delete(draftId);
+            }
+            renderWorkRequestPreview(state.workRequestSession);
             return;
           }
         });

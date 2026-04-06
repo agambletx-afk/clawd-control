@@ -118,6 +118,18 @@ function sanitizeCreateData(data = {}) {
     const goalId = data.goal_id == null ? null : Number.parseInt(data.goal_id, 10);
     out.goal_id = Number.isInteger(goalId) && goalId > 0 ? goalId : null;
   }
+  if (Object.hasOwn(data, 'brief_id')) {
+    out.brief_id = data.brief_id == null ? null : String(data.brief_id).trim() || null;
+  }
+  if (Object.hasOwn(data, 'brief_version_id')) {
+    out.brief_version_id = data.brief_version_id == null ? null : String(data.brief_version_id).trim() || null;
+  }
+  if (Object.hasOwn(data, 'source_import_session_id')) {
+    out.source_import_session_id = data.source_import_session_id == null ? null : String(data.source_import_session_id).trim() || null;
+  }
+  if (Object.hasOwn(data, 'blocked_by_unapproved_dependency')) {
+    out.blocked_by_unapproved_dependency = Number(data.blocked_by_unapproved_dependency) ? 1 : 0;
+  }
   if (Object.hasOwn(data, 'due_at')) {
     out.due_at = data.due_at == null ? null : String(data.due_at);
   }
@@ -494,6 +506,10 @@ export function getDb() {
   try { db.exec('ALTER TABLE tasks ADD COLUMN parent_checkpoint_id TEXT'); } catch {}
   try { db.exec('ALTER TABLE tasks ADD COLUMN parent_intent_version INTEGER'); } catch {}
   try { db.exec('ALTER TABLE tasks ADD COLUMN stale_dependency INTEGER DEFAULT 0'); } catch {}
+  try { db.exec('ALTER TABLE tasks ADD COLUMN brief_id TEXT'); } catch {}
+  try { db.exec('ALTER TABLE tasks ADD COLUMN brief_version_id TEXT'); } catch {}
+  try { db.exec('ALTER TABLE tasks ADD COLUMN source_import_session_id TEXT'); } catch {}
+  try { db.exec('ALTER TABLE tasks ADD COLUMN blocked_by_unapproved_dependency INTEGER DEFAULT 0'); } catch {}
 
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_tasks_last_activity ON tasks(last_activity_at);
@@ -659,6 +675,7 @@ export function createTask(data) {
       INSERT INTO tasks (
         title, description, status, priority, assigned_agent, depends_on,
         handoff_payload, created_by, source, token_estimate, token_actual, max_retries, last_activity_at, goal_id,
+        brief_id, brief_version_id, source_import_session_id, blocked_by_unapproved_dependency,
         due_at, delivery_channel, execution_mode, requested_via, accepted_at, user_notified_at,
         task_type, original_intent, active_intent, acceptance_criteria, scoped_contribution, non_goals
       ) VALUES (
@@ -676,6 +693,10 @@ export function createTask(data) {
         @max_retries,
         @last_activity_at,
         @goal_id,
+        @brief_id,
+        @brief_version_id,
+        @source_import_session_id,
+        @blocked_by_unapproved_dependency,
         @due_at,
         @delivery_channel,
         @execution_mode,
@@ -706,6 +727,10 @@ export function createTask(data) {
       max_retries: Number.isInteger(payload.max_retries) && payload.max_retries >= 0 ? payload.max_retries : 2,
       last_activity_at: nowEpochSeconds(),
       goal_id: Number.isInteger(payload.goal_id) && payload.goal_id > 0 ? payload.goal_id : null,
+      brief_id: payload.brief_id ?? null,
+      brief_version_id: payload.brief_version_id ?? null,
+      source_import_session_id: payload.source_import_session_id ?? null,
+      blocked_by_unapproved_dependency: Number(payload.blocked_by_unapproved_dependency) ? 1 : 0,
       due_at: payload.due_at ?? null,
       delivery_channel: payload.delivery_channel ?? null,
       execution_mode: payload.execution_mode ?? null,
@@ -2701,4 +2726,129 @@ export function createImportSessionDraft({
     Number(sort_order),
   );
   return conn.prepare('SELECT * FROM import_session_drafts WHERE id = ?').get(String(id)) || null;
+}
+
+export function createBrief({ id, goal_id, title, source_type, created_by }) {
+  const conn = getDb();
+  conn.prepare(`
+    INSERT INTO briefs (
+      id,
+      goal_id,
+      title,
+      source_type,
+      created_by
+    ) VALUES (?, ?, ?, ?, ?)
+  `).run(
+    String(id),
+    goal_id == null ? null : Number(goal_id),
+    String(title),
+    String(source_type),
+    created_by == null ? null : String(created_by),
+  );
+  return conn.prepare('SELECT * FROM briefs WHERE id = ?').get(String(id)) || null;
+}
+
+export function createBriefVersion({
+  id,
+  brief_id,
+  version_no,
+  source_import_session_id,
+  source_revision_id,
+  request_restatement,
+  plan_title,
+  plan_payload_json,
+  open_questions_json,
+  approved_by,
+  approved_at,
+}) {
+  const conn = getDb();
+  conn.prepare(`
+    INSERT INTO brief_versions (
+      id,
+      brief_id,
+      version_no,
+      source_import_session_id,
+      source_revision_id,
+      request_restatement,
+      plan_title,
+      plan_payload_json,
+      open_questions_json,
+      approved_by,
+      approved_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    String(id),
+    String(brief_id),
+    Number(version_no),
+    source_import_session_id == null ? null : String(source_import_session_id),
+    source_revision_id == null ? null : String(source_revision_id),
+    request_restatement == null ? null : String(request_restatement),
+    plan_title == null ? null : String(plan_title),
+    plan_payload_json == null ? null : String(plan_payload_json),
+    open_questions_json == null ? null : String(open_questions_json),
+    approved_by == null ? null : String(approved_by),
+    approved_at == null ? null : String(approved_at),
+  );
+  return conn.prepare('SELECT * FROM brief_versions WHERE id = ?').get(String(id)) || null;
+}
+
+export function getNextBriefVersionNo(brief_id) {
+  const conn = getDb();
+  const row = conn.prepare('SELECT COALESCE(MAX(version_no), 0) AS max_no FROM brief_versions WHERE brief_id = ?')
+    .get(String(brief_id));
+  return Number(row?.max_no || 0) + 1;
+}
+
+export function updateImportSessionDraftState(draft_id, new_state) {
+  const conn = getDb();
+  conn.prepare(`
+    UPDATE import_session_drafts
+    SET draft_state = ?
+    WHERE id = ?
+  `).run(String(new_state), String(draft_id));
+  return conn.prepare('SELECT * FROM import_session_drafts WHERE id = ?').get(String(draft_id)) || null;
+}
+
+export function updateAllDraftsForRevision(revision_id, new_state) {
+  const conn = getDb();
+  const result = conn.prepare(`
+    UPDATE import_session_drafts
+    SET draft_state = ?
+    WHERE revision_id = ?
+  `).run(String(new_state), String(revision_id));
+  return result.changes;
+}
+
+export function supersedRevision(revision_id) {
+  const conn = getDb();
+  conn.prepare(`
+    UPDATE import_session_revisions
+    SET superseded_at = datetime('now')
+    WHERE id = ?
+  `).run(String(revision_id));
+  return conn.prepare('SELECT * FROM import_session_revisions WHERE id = ?').get(String(revision_id)) || null;
+}
+
+export function createTaskDependency(task_id, depends_on_task_id) {
+  const conn = getDb();
+  conn.prepare(`
+    INSERT INTO task_dependencies (task_id, depends_on_task_id)
+    VALUES (?, ?)
+  `).run(Number(task_id), Number(depends_on_task_id));
+  return conn.prepare(`
+    SELECT * FROM task_dependencies
+    WHERE task_id = ? AND depends_on_task_id = ?
+    ORDER BY id DESC
+    LIMIT 1
+  `).get(Number(task_id), Number(depends_on_task_id)) || null;
+}
+
+export function linkSessionToBrief(session_id, brief_id) {
+  const conn = getDb();
+  conn.prepare(`
+    UPDATE import_sessions
+    SET brief_id = ?
+    WHERE id = ?
+  `).run(String(brief_id), String(session_id));
+  return conn.prepare('SELECT * FROM import_sessions WHERE id = ?').get(String(session_id)) || null;
 }
