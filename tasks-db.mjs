@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import { existsSync, readFileSync, statSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
-import { createHash, randomBytes } from 'crypto';
+import { createHash, randomBytes, randomUUID } from 'crypto';
 
 const DB_PATH = join(new URL('.', import.meta.url).pathname, 'tasks.db');
 
@@ -3130,4 +3130,83 @@ export function getTaskLineage(taskId) {
     siblings,
     import_session_id: tasksColumns.has('source_import_session_id') ? (task.source_import_session_id || null) : null,
   };
+}
+
+export function getNudgeHistory(taskId, minutes = 10) {
+  const conn = getDb();
+  const id = Number(taskId);
+  const windowMinutes = Number(minutes);
+  if (!Number.isInteger(id) || id <= 0) return 0;
+  if (!tableExists(conn, 'task_history')) return 0;
+  const historyColumns = getTableColumns(conn, 'task_history');
+  if (!historyColumns.has('task_id') || !historyColumns.has('action') || !historyColumns.has('created_at')) return 0;
+  const lookback = Number.isFinite(windowMinutes) && windowMinutes > 0 ? Math.floor(windowMinutes) : 10;
+  const row = conn.prepare(`
+    SELECT COUNT(*) AS count
+    FROM task_history
+    WHERE task_id = ?
+      AND action = 'operator_nudge'
+      AND datetime(created_at) >= datetime('now', ?)
+  `).get(id, `-${lookback} minutes`);
+  return Number(row?.count || 0);
+}
+
+export function createOperatorSummaryRequest(taskId, requestedBy = 'operator') {
+  const conn = getDb();
+  const id = Number(taskId);
+  if (!Number.isInteger(id) || id <= 0) return null;
+  if (!tableExists(conn, 'task_operator_summaries')) return null;
+
+  const summaryColumns = getTableColumns(conn, 'task_operator_summaries');
+  if (!summaryColumns.has('id') || !summaryColumns.has('task_id') || !summaryColumns.has('requested_by')) {
+    return null;
+  }
+
+  const record = {
+    id: randomUUID(),
+    task_id: id,
+    requested_by: requestedBy == null ? 'operator' : String(requestedBy).trim() || 'operator',
+    summary_text: null,
+    created_at: new Date().toISOString(),
+  };
+
+  const fields = [];
+  const placeholders = [];
+  const values = [];
+
+  for (const key of ['id', 'task_id', 'requested_by', 'summary_text', 'created_at']) {
+    if (!summaryColumns.has(key)) continue;
+    fields.push(key);
+    placeholders.push('?');
+    values.push(record[key]);
+  }
+
+  if (!fields.length) return null;
+
+  conn.prepare(`INSERT INTO task_operator_summaries (${fields.join(', ')}) VALUES (${placeholders.join(', ')})`).run(...values);
+
+  return conn.prepare('SELECT * FROM task_operator_summaries WHERE id = ? LIMIT 1').get(record.id) || null;
+}
+
+export function getLatestOperatorSummary(taskId) {
+  const conn = getDb();
+  const id = Number(taskId);
+  if (!Number.isInteger(id) || id <= 0) return null;
+  if (!tableExists(conn, 'task_operator_summaries')) return null;
+
+  const summaryColumns = getTableColumns(conn, 'task_operator_summaries');
+  if (!summaryColumns.has('task_id')) return null;
+
+  const selectFields = ['id', 'task_id', 'requested_by', 'summary_text', 'created_at']
+    .filter((field) => summaryColumns.has(field));
+  if (!selectFields.length) return null;
+
+  const orderField = summaryColumns.has('created_at') ? 'datetime(created_at)' : 'id';
+  return conn.prepare(`
+    SELECT ${selectFields.join(', ')}
+    FROM task_operator_summaries
+    WHERE task_id = ?
+    ORDER BY ${orderField} DESC, id DESC
+    LIMIT 1
+  `).get(id) || null;
 }
