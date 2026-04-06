@@ -796,6 +796,103 @@
     }
     .form-field textarea { min-height: 90px; resize: vertical; }
     .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+    .work-request-modal {
+      width: min(640px, 100%);
+      background: #161b26;
+      border: 1px solid #363b4d;
+      border-radius: 12px;
+      padding: 24px;
+    }
+    .work-request-modal .form-field label { color: #a8b0c5; }
+    .work-request-modal .form-field input,
+    .work-request-modal .form-field textarea,
+    .work-request-modal .form-field select {
+      background: #1e2535;
+      border: 1px solid #363b4d;
+      border-radius: 6px;
+      color: #e4e8f1;
+      font-size: 0.85rem;
+      padding: 10px 12px;
+    }
+    .work-request-modal .form-field textarea { min-height: 120px; resize: vertical; }
+    .work-request-char-count { text-align: right; margin-top: 4px; color: #8c95ad; font-size: 0.72rem; }
+    .work-request-inline-link {
+      background: transparent;
+      border: none;
+      color: #8ea2ff;
+      text-decoration: underline;
+      padding: 0;
+      font-size: 0.76rem;
+      cursor: pointer;
+      width: fit-content;
+    }
+    .work-request-model-meta { color: #8c95ad; font-size: 0.72rem; margin-top: 4px; line-height: 1.4; }
+    .work-request-muted { color: #8c95ad; font-size: 0.72rem; }
+    .work-request-error {
+      margin-top: 10px;
+      border: 1px solid rgba(239, 68, 68, 0.45);
+      background: rgba(239, 68, 68, 0.12);
+      border-radius: 8px;
+      padding: 8px 10px;
+      color: #fecaca;
+      font-size: 0.76rem;
+    }
+    .work-request-spinner {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      border: 2px solid rgba(12, 15, 20, 0.35);
+      border-top-color: #0c0f14;
+      animation: work-request-spin 900ms linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes work-request-spin { to { transform: rotate(360deg); } }
+
+    .work-request-preview {
+      background: #161b26;
+      border: 1px solid #363b4d;
+      border-radius: 12px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .work-request-preview-head { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .work-request-preview-title { font-size:1.1rem; font-weight:700; color:#e4e8f1; }
+    .work-request-back-link { background:none; border:none; color:#8ea2ff; font-size:0.78rem; cursor:pointer; text-decoration:underline; }
+    .work-request-section {
+      background: #161b26;
+      border: 1px solid #363b4d;
+      border-radius: 10px;
+      padding: 12px;
+    }
+    .work-request-section-title { display:flex; align-items:center; gap:6px; color:#e4e8f1; font-size:0.86rem; font-weight:600; margin-bottom:8px; }
+    .work-request-section-body { color:#8c95ad; font-size:0.8rem; line-height:1.5; }
+    .work-request-original-toggle {
+      margin-top: 8px;
+      border: none;
+      background: transparent;
+      color: #8ea2ff;
+      font-size: 0.75rem;
+      text-decoration: underline;
+      padding: 0;
+      cursor: pointer;
+    }
+    .work-request-workstream-title { color: #cdd5e9; font-size: 0.8rem; font-weight: 600; margin: 10px 0 6px; }
+    .work-request-task-card {
+      border: 1px solid #363b4d;
+      background: #1e2535;
+      border-radius: 8px;
+      padding: 10px;
+      margin-top: 8px;
+    }
+    .work-request-task-title { color:#e4e8f1; font-weight:600; font-size:0.82rem; margin-bottom:4px; }
+    .work-request-task-meta { color:#8c95ad; font-size:0.74rem; margin-top:5px; }
+    .work-request-pipeline-strip { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .work-request-pipeline-pill { border:1px solid #363b4d; background:#1e2535; border-radius:999px; color:#cdd5e9; font-size:0.72rem; padding:4px 8px; }
+    .work-request-actions { position: sticky; bottom: 0; background:#161b26; border-top:1px solid #363b4d; padding-top:12px; display:flex; gap:8px; flex-wrap:wrap; }
 
     .toast-wrap {
       position: fixed;
@@ -965,7 +1062,10 @@
         <h1>Tasks</h1>
         <p class="subtitle">What needs your attention.</p>
       </div>
-      <button class="btn btn-primary" id="newTaskBtn">+ New Work Request</button>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn" id="addTaskBtn" style="display:none">+ Add Task</button>
+        <button class="btn btn-primary" id="newTaskBtn">+ New Work Request</button>
+      </div>
     </div>
 
     <div class="sub-nav" id="tasksSubNav">
@@ -976,6 +1076,7 @@
     </div>
 
     <div id="attentionView" class="attention-view">
+      <div id="workRequestPreview" style="display:none"></div>
       <section class="attention-stats" id="attentionStats"></section>
       <div id="attentionEmptyState" class="attention-panel attention-empty-state" style="display:none">
         <div>You're all caught up. No tasks need your attention.</div>
@@ -1135,6 +1236,51 @@
       </div>
     </div>
 
+    <div class="modal-backdrop" id="workRequestModalBackdrop">
+      <div class="modal work-request-modal">
+        <h2 style="margin-bottom:4px">New Work Request</h2>
+        <p style="margin:0 0 14px 0;color:#8c95ad;font-size:0.8rem">Describe what you want the system to do.</p>
+        <form id="workRequestForm">
+          <div class="form-field full">
+            <label for="workRequestInput">Request</label>
+            <textarea id="workRequestInput" placeholder="What do you need? Describe it in your own words, or paste a brief..." maxlength="8000"></textarea>
+            <div class="work-request-char-count" id="workRequestCharCount">0 characters</div>
+          </div>
+          <div class="form-field full">
+            <label for="workRequestGoal">Link to a goal (optional)</label>
+            <select id="workRequestGoal">
+              <option value="">No goal</option>
+            </select>
+          </div>
+          <button type="button" id="toggleTitleOverrideBtn" class="work-request-inline-link">Add custom title</button>
+          <div class="form-field full" id="workRequestTitleWrap" style="display:none;margin-top:8px">
+            <label for="workRequestTitleOverride">Title override (optional)</label>
+            <input id="workRequestTitleOverride" placeholder="Custom title (optional — the system will generate one)" maxlength="100">
+          </div>
+          <button type="button" id="toggleWorkRequestAdvancedBtn" class="work-request-inline-link" style="margin-top:10px">Advanced: Model Selection</button>
+          <section id="workRequestAdvancedPanel" style="display:none">
+            <div class="form-field full" style="margin-top:8px">
+              <label for="workRequestStep1Model">Understand &amp; Plan</label>
+              <select id="workRequestStep1Model"></select>
+              <div class="work-request-model-meta" id="workRequestStep1Meta"></div>
+            </div>
+            <div class="form-field full">
+              <label for="workRequestStep2Model">Structure &amp; Validate</label>
+              <select id="workRequestStep2Model"></select>
+              <div class="work-request-model-meta" id="workRequestStep2Meta"></div>
+            </div>
+            <div id="workRequestConfigSaved" style="display:none;color:#22c55e;font-size:0.72rem;margin-top:4px">Saved</div>
+          </section>
+          <div id="workRequestLoadingHint" class="work-request-muted" style="display:none;margin-top:8px">This usually takes 10-20 seconds</div>
+          <div id="workRequestError" class="work-request-error" style="display:none"></div>
+          <div class="modal-actions">
+            <button type="button" class="btn" id="cancelWorkRequestBtn">Cancel</button>
+            <button type="submit" class="btn btn-primary" id="submitWorkRequestBtn" disabled>Generate Plan</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <div class="toast-wrap" id="toastWrap"></div>
 
     <script>
@@ -1161,6 +1307,13 @@
           attentionCollapsedCompleted: true,
           activeView: 'attention',
           attentionPollTimer: null,
+          workRequestModal: false,
+          workRequestLoading: false,
+          workRequestConfig: null,
+          workRequestSession: null,
+          workRequestPreview: false,
+          workRequestGoals: [],
+          workRequestOriginalOpen: false,
         };
 
         const cstFormatter = new Intl.DateTimeFormat('en-US', {
@@ -1180,6 +1333,13 @@
           return String(value);
         };
         const esc = (s) => String(s ?? '').replace(/[&<>\"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+        const safeJsonParse = (value, fallback) => {
+          try {
+            return value ? JSON.parse(value) : fallback;
+          } catch {
+            return fallback;
+          }
+        };
         function normalizeStatus(s) { return (s || '').toLowerCase().replace(/[- ]/g, '_'); }
         function relativeTime(iso) {
           if (!iso) return 'just now';
@@ -1209,7 +1369,304 @@
           if (item.brief_title) return item.brief_title;
           return '';
         }
+        function normalizeWorkRequestInput(input) {
+          return String(input || '').trim().replace(/\s+/g, ' ').toLowerCase();
+        }
+        function hashWorkRequestInput(input, goalId) {
+          const text = `${normalizeWorkRequestInput(input)}|${goalId || ''}`;
+          let hash = 5381;
+          for (let i = 0; i < text.length; i += 1) {
+            hash = ((hash << 5) + hash) + text.charCodeAt(i);
+            hash |= 0;
+          }
+          return `djb2-${Math.abs(hash)}`;
+        }
+        function workRequestPriorityStyle(priority) {
+          const key = String(priority || '').toLowerCase();
+          if (key === 'critical') return '#ef4444';
+          if (key === 'high') return '#f59e0b';
+          if (key === 'medium') return '#6366f1';
+          return '#6b7280';
+        }
 
+
+        function setWorkRequestFormDisabled(disabled) {
+          ['workRequestInput', 'workRequestGoal', 'workRequestTitleOverride', 'workRequestStep1Model', 'workRequestStep2Model',
+            'cancelWorkRequestBtn', 'toggleWorkRequestAdvancedBtn', 'toggleTitleOverrideBtn']
+            .forEach((id) => {
+              const el = document.getElementById(id);
+              if (el) el.disabled = !!disabled;
+            });
+          const submit = document.getElementById('submitWorkRequestBtn');
+          if (!submit) return;
+          const hasInput = document.getElementById('workRequestInput').value.trim().length > 0;
+          submit.disabled = disabled || !hasInput;
+          submit.innerHTML = disabled ? '<span class="work-request-spinner"></span>Generating plan...' : 'Generate Plan';
+          document.getElementById('workRequestLoadingHint').style.display = disabled ? '' : 'none';
+        }
+
+        function renderWorkRequestCharCount() {
+          const input = document.getElementById('workRequestInput');
+          const count = input.value.length;
+          document.getElementById('workRequestCharCount').textContent = `${count.toLocaleString('en-US')} characters`;
+          if (!state.workRequestLoading) {
+            document.getElementById('submitWorkRequestBtn').disabled = input.value.trim().length === 0;
+          }
+        }
+
+        async function loadWorkRequestGoals() {
+          const res = await fetch('/api/goals', FETCH_OPTS);
+          if (!res.ok) throw new Error('Failed to load goals');
+          const data = await res.json();
+          state.workRequestGoals = Array.isArray(data?.goals) ? data.goals : [];
+          const select = document.getElementById('workRequestGoal');
+          const current = select.value;
+          const options = ['<option value="">No goal</option>']
+            .concat(state.workRequestGoals.map((goal) => `<option value="${esc(goal.id)}">${esc(goal.title || `Goal #${goal.id}`)} · ${esc(goal.status || 'unknown')}</option>`));
+          select.innerHTML = options.join('');
+          if (current) select.value = current;
+        }
+
+        function renderWorkRequestModelMeta() {
+          const cfg = state.workRequestConfig;
+          if (!cfg) return;
+          const lookup = new Map((cfg.availableModels || []).map((m) => [m.id, m]));
+          const step1Selected = document.getElementById('workRequestStep1Model').value;
+          const step2Selected = document.getElementById('workRequestStep2Model').value;
+          const s1 = lookup.get(step1Selected);
+          const s2 = lookup.get(step2Selected);
+          document.getElementById('workRequestStep1Meta').textContent = [cfg?.pipeline?.step1?.description || '', s1?.notes || ''].filter(Boolean).join(' · ');
+          document.getElementById('workRequestStep2Meta').textContent = [cfg?.pipeline?.step2?.description || '', s2?.notes || ''].filter(Boolean).join(' · ');
+        }
+
+        async function loadWorkRequestConfig(force = false) {
+          if (state.workRequestConfig && !force) return state.workRequestConfig;
+          const res = await fetch('/api/work-request-config', FETCH_OPTS);
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Failed to load work request config');
+          state.workRequestConfig = data;
+          const models = Array.isArray(data.availableModels) ? data.availableModels : [];
+          const step1 = document.getElementById('workRequestStep1Model');
+          const step2 = document.getElementById('workRequestStep2Model');
+          const options = models.map((model) => `<option value="${esc(model.id)}">${esc(model.label || model.id)}</option>`).join('');
+          step1.innerHTML = options;
+          step2.innerHTML = options;
+          step1.value = data?.pipeline?.step1?.selectedModel || '';
+          step2.value = data?.pipeline?.step2?.selectedModel || '';
+          renderWorkRequestModelMeta();
+          return data;
+        }
+
+        function toggleWorkRequestModal(open) {
+          state.workRequestModal = !!open;
+          document.getElementById('workRequestModalBackdrop').classList.toggle('open', !!open);
+          if (open) {
+            document.getElementById('workRequestError').style.display = 'none';
+            renderWorkRequestCharCount();
+          }
+        }
+
+        async function openWorkRequestModal() {
+          toggleWorkRequestModal(true);
+          state.workRequestLoading = false;
+          document.getElementById('workRequestForm').reset();
+          document.getElementById('workRequestTitleWrap').style.display = 'none';
+          document.getElementById('toggleTitleOverrideBtn').textContent = 'Add custom title';
+          document.getElementById('workRequestAdvancedPanel').style.display = 'none';
+          document.getElementById('workRequestConfigSaved').style.display = 'none';
+          setWorkRequestFormDisabled(false);
+          await Promise.allSettled([loadWorkRequestGoals(), loadWorkRequestConfig()]);
+        }
+
+        async function saveWorkRequestConfigStep(stepKey, selectedModel) {
+          const payload = { [stepKey]: { selectedModel } };
+          const res = await fetch('/api/work-request-config', {
+            ...FETCH_OPTS,
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Failed to save model configuration');
+          state.workRequestConfig = data;
+          renderWorkRequestModelMeta();
+          const saved = document.getElementById('workRequestConfigSaved');
+          saved.style.display = '';
+          setTimeout(() => { saved.style.display = 'none'; }, 1400);
+        }
+
+        function renderWorkRequestPreview(sessionPayload) {
+          state.workRequestSession = sessionPayload;
+          state.workRequestPreview = true;
+          state.workRequestOriginalOpen = false;
+          const revision = sessionPayload?.revision || {};
+          const session = sessionPayload?.session || {};
+          const drafts = Array.isArray(sessionPayload?.drafts) ? sessionPayload.drafts : [];
+          const planPayload = safeJsonParse(revision?.plan_payload_json, {});
+          const workstreams = Array.isArray(planPayload?.workstreams) ? planPayload.workstreams : [];
+          const openQuestions = safeJsonParse(revision?.open_questions_json, []);
+          const inputText = session?.raw_input_text || document.getElementById('workRequestInput').value || '';
+          const draftsByStream = drafts.reduce((map, draft) => {
+            const key = draft.workstream_key || 'other';
+            if (!map[key]) map[key] = [];
+            map[key].push(draft);
+            return map;
+          }, {});
+          const workstreamsHtml = workstreams.map((stream, index) => {
+            const key = stream.key || stream.workstream_key || `stream-${index + 1}`;
+            const streamDrafts = draftsByStream[key] || [];
+            const stepList = Array.isArray(stream.steps) ? stream.steps : [];
+            return `
+              <div class="work-request-workstream-title">${esc(stream.name || `Workstream ${index + 1}`)}</div>
+              <ol class="work-request-section-body" style="padding-left:16px;margin:0">
+                ${stepList.map((step) => `<li>${esc(step)}</li>`).join('')}
+              </ol>
+              ${streamDrafts.map((draft) => {
+                const deps = safeJsonParse(draft.depends_on_refs_json, []);
+                return `
+                  <article class="work-request-task-card">
+                    <div class="work-request-task-title">${esc(draft.title || draft.draft_ref || 'Untitled draft')}</div>
+                    <div class="work-request-section-body">${esc(draft.display_summary || 'No summary provided')}</div>
+                    <div class="work-request-task-meta">
+                      <span class="attention-status-chip" style="background:${workRequestPriorityStyle(draft.priority)}">${esc(draft.priority || 'low')}</span>
+                    </div>
+                    <div class="work-request-task-meta">${deps.length ? `Depends on: ${deps.map((dep) => esc(dep)).join(', ')}` : 'No dependencies'}</div>
+                  </article>
+                `;
+              }).join('')}
+            `;
+          }).join('') || '<div class="work-request-section-body">No plan steps yet.</div>';
+
+          const nextStages = ['Research', 'Build', 'Check', 'Approval'];
+          const pipelineInfo = sessionPayload?.pipeline_info || {};
+          document.getElementById('workRequestPreview').innerHTML = `
+            <div class="work-request-preview">
+              <div class="work-request-preview-head">
+                <div class="work-request-preview-title">${esc(revision?.plan_title || 'Generated Plan')}</div>
+                <button type="button" class="work-request-back-link" id="workRequestBackBtn">Back to Attention</button>
+              </div>
+              <section class="work-request-section">
+                <div class="work-request-section-title"><span class="tasks-domain-capsule"></span>Your Request</div>
+                <div class="work-request-section-body" style="font-size:0.86rem">${esc(revision?.request_restatement || 'No restatement available')}</div>
+                <button type="button" class="work-request-original-toggle" id="workRequestToggleOriginalBtn">Original input</button>
+                <pre id="workRequestOriginalInput" style="display:none;white-space:pre-wrap;background:#1e2535;border:1px solid #363b4d;border-radius:8px;padding:8px;color:#8c95ad;font-size:0.74rem;margin-top:8px">${esc(inputText)}</pre>
+              </section>
+              <section class="work-request-section">
+                <div class="work-request-section-title"><span class="tasks-domain-capsule"></span>Proposed Plan</div>
+                ${workstreamsHtml}
+              </section>
+              <section class="work-request-section">
+                <div class="work-request-section-title"><span class="tasks-domain-capsule"></span>What Happens Next</div>
+                <div class="work-request-pipeline-strip">
+                  ${nextStages.map((stage, idx) => `<span class="work-request-pipeline-pill">${stage}</span>${idx < nextStages.length - 1 ? '<span style="color:#8c95ad">→</span>' : ''}`).join('')}
+                </div>
+              </section>
+              ${openQuestions.length ? `
+                <section class="work-request-section">
+                  <div class="work-request-section-title"><span class="tasks-domain-capsule"></span>Open Questions</div>
+                  <div class="work-request-section-body" style="margin-bottom:8px">The system flagged these questions. Answer them and regenerate for a better plan.</div>
+                  ${openQuestions.map((question) => `<div class="work-request-task-meta">• ${esc(question)}</div>`).join('')}
+                </section>
+              ` : ''}
+              <div class="work-request-muted">Plan generated by: ${esc(pipelineInfo?.step1?.label || 'Understand & Plan')} (${esc(pipelineInfo?.step1?.model || 'unknown')}) → ${esc(pipelineInfo?.step2?.label || 'Structure & Validate')} (${esc(pipelineInfo?.step2?.model || 'unknown')})</div>
+              <div class="work-request-actions">
+                <button type="button" class="btn btn-primary" disabled>Approve All</button>
+                <button type="button" class="btn" disabled>Edit</button>
+                <button type="button" class="btn" disabled>Ask Agents to Rethink</button>
+                <button type="button" class="btn" id="workRequestCancelSessionBtn">Cancel</button>
+              </div>
+            </div>
+          `;
+          document.getElementById('attentionStats').style.display = 'none';
+          document.getElementById('attentionSections').style.display = 'none';
+          document.getElementById('attentionEmptyState').style.display = 'none';
+          document.getElementById('workRequestPreview').style.display = '';
+        }
+
+        function hideWorkRequestPreview() {
+          state.workRequestPreview = false;
+          document.getElementById('workRequestPreview').style.display = 'none';
+          document.getElementById('workRequestPreview').innerHTML = '';
+          renderAttentionStats();
+          renderAttentionSections();
+          renderAttentionEmptyState();
+          document.getElementById('attentionStats').style.display = '';
+          document.getElementById('attentionSections').style.display = '';
+        }
+
+        async function loadWorkRequestSession(sessionId) {
+          const res = await fetch(`/api/tasks/work-requests/${encodeURIComponent(sessionId)}`, FETCH_OPTS);
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Failed to load work request');
+          renderWorkRequestPreview(data);
+        }
+
+        async function cancelWorkRequestSession() {
+          const sessionId = state.workRequestSession?.session?.id;
+          if (!sessionId) return;
+          const confirmed = self.confirm('Cancel this work request? The plan will be discarded.');
+          if (!confirmed) return;
+          const res = await fetch(`/api/tasks/work-requests/${encodeURIComponent(sessionId)}`, {
+            ...FETCH_OPTS,
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_status: 'canceled' }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Failed to cancel work request');
+          hideWorkRequestPreview();
+          state.workRequestSession = data;
+          notify('Work request canceled.', 'success');
+          await refreshAttention();
+        }
+
+        async function submitWorkRequest(e) {
+          e.preventDefault();
+          if (state.workRequestLoading) return;
+          const inputText = document.getElementById('workRequestInput').value.trim();
+          if (!inputText) return;
+          const goalIdRaw = document.getElementById('workRequestGoal').value;
+          const goalId = goalIdRaw ? Number(goalIdRaw) : null;
+          const titleOverrideRaw = document.getElementById('workRequestTitleOverride').value.trim();
+          const payload = {
+            input_text: inputText,
+            goal_id: goalId || null,
+            title_override: titleOverrideRaw || null,
+            idempotency_key: self.crypto?.randomUUID ? self.crypto.randomUUID() : `uuid-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+            input_hash: hashWorkRequestInput(inputText, goalId),
+          };
+          const errorEl = document.getElementById('workRequestError');
+          errorEl.style.display = 'none';
+          state.workRequestLoading = true;
+          setWorkRequestFormDisabled(true);
+          try {
+            const res = await fetch('/api/tasks/work-requests', {
+              ...FETCH_OPTS,
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Unable to generate plan');
+            if (data?.session?.session_status === 'awaiting_operator_decision') {
+              toggleWorkRequestModal(false);
+              renderWorkRequestPreview(data);
+              return;
+            }
+            if (data?.session?.session_status === 'failed') {
+              errorEl.style.display = '';
+              errorEl.innerHTML = `We couldn't turn this into a plan yet. Please try again or edit your request.<div style="margin-top:6px"><button type="button" class="btn btn-small" id="workRequestRetryBtn">Retry</button></div>`;
+              return;
+            }
+            throw new Error('Connection error. Please try again.');
+          } catch (err) {
+            errorEl.style.display = '';
+            errorEl.textContent = err.message === 'Failed to fetch' ? 'Connection error. Please try again.' : (err.message || 'Connection error. Please try again.');
+          } finally {
+            state.workRequestLoading = false;
+            setWorkRequestFormDisabled(false);
+          }
+        }
 
         async function loadTaskTypes() {
           try {
@@ -1233,6 +1690,7 @@
           document.getElementById('pipelinesView').style.display = resolvedView === 'pipelines' ? '' : 'none';
           document.getElementById('queueView').style.display = resolvedView === 'queue' ? '' : 'none';
           document.getElementById('tasks-templates-view').style.display = 'none';
+          document.getElementById('addTaskBtn').style.display = resolvedView === 'workboard' ? '' : 'none';
           if (location.hash !== `#${resolvedView}`) {
             location.hash = resolvedView;
           }
@@ -1241,6 +1699,7 @@
             startAttentionPolling();
           } else {
             stopAttentionPolling();
+            if (state.workRequestPreview) hideWorkRequestPreview();
           }
           if (resolvedView === 'workboard') {
             refreshAll().catch((err) => console.error('Workboard refresh failed:', err));
@@ -2179,7 +2638,7 @@
         function renderAttentionItem(item, bucketKey) {
           if (item.item_type === 'proposal') {
             return `
-              <article class="attention-item-card is-proposal">
+              <article class="attention-item-card is-proposal" data-session-id="${esc(item.session_id || '')}" style="cursor:pointer">
                 <div class="attention-item-title">${esc(item.plan_title || 'Untitled Plan')}</div>
                 <div class="attention-item-muted">${esc(item.request_restatement || 'No description')}</div>
                 <div class="attention-status-chip" style="background:#6366f1">Needs Approval</div>
@@ -2254,6 +2713,7 @@
 
         async function refreshAttention() {
           await Promise.all([loadAttentionStats(), loadAttentionBuckets()]);
+          if (state.workRequestPreview) return;
           renderAttentionStats();
           renderAttentionSections();
           renderAttentionEmptyState();
@@ -2284,12 +2744,45 @@
           renderColumns();
         });
 
-        document.getElementById('newTaskBtn').addEventListener('click', () => toggleCreateModal(true));
+        document.getElementById('newTaskBtn').addEventListener('click', () => {
+          openWorkRequestModal().catch((err) => {
+            notify(err.message || 'Unable to open work request modal', 'error');
+          });
+        });
+        document.getElementById('addTaskBtn').addEventListener('click', () => toggleCreateModal(true));
         document.getElementById('cancelTaskBtn').addEventListener('click', () => toggleCreateModal(false));
         document.getElementById('taskModalBackdrop').addEventListener('click', (e) => {
           if (e.target.id === 'taskModalBackdrop') toggleCreateModal(false);
         });
         document.getElementById('taskForm').addEventListener('submit', submitCreateTask);
+        document.getElementById('workRequestForm').addEventListener('submit', submitWorkRequest);
+        document.getElementById('cancelWorkRequestBtn').addEventListener('click', () => toggleWorkRequestModal(false));
+        document.getElementById('workRequestModalBackdrop').addEventListener('click', (e) => {
+          if (e.target.id === 'workRequestModalBackdrop' && !state.workRequestLoading) toggleWorkRequestModal(false);
+        });
+        document.getElementById('workRequestForm').addEventListener('click', (e) => {
+          if (e.target.id === 'workRequestRetryBtn') {
+            submitWorkRequest(e).catch((err) => notify(err.message || 'Retry failed', 'error'));
+          }
+        });
+        document.getElementById('workRequestInput').addEventListener('input', renderWorkRequestCharCount);
+        document.getElementById('toggleTitleOverrideBtn').addEventListener('click', () => {
+          const wrap = document.getElementById('workRequestTitleWrap');
+          const isOpen = wrap.style.display !== 'none';
+          wrap.style.display = isOpen ? 'none' : '';
+          document.getElementById('toggleTitleOverrideBtn').textContent = isOpen ? 'Add custom title' : 'Hide custom title';
+        });
+        document.getElementById('toggleWorkRequestAdvancedBtn').addEventListener('click', () => {
+          const panel = document.getElementById('workRequestAdvancedPanel');
+          const isOpen = panel.style.display !== 'none';
+          panel.style.display = isOpen ? 'none' : '';
+        });
+        document.getElementById('workRequestStep1Model').addEventListener('change', (e) => {
+          saveWorkRequestConfigStep('step1', e.target.value).catch((err) => notify(err.message, 'error'));
+        });
+        document.getElementById('workRequestStep2Model').addEventListener('change', (e) => {
+          saveWorkRequestConfigStep('step2', e.target.value).catch((err) => notify(err.message, 'error'));
+        });
 
         document.getElementById('tasksSubNav').addEventListener('click', (e) => {
           const btn = e.target.closest('.sub-nav-btn');
@@ -2310,11 +2803,32 @@
             renderAttentionEmptyState();
             return;
           }
+          const proposalCard = e.target.closest('.attention-item-card.is-proposal');
+          if (proposalCard?.dataset?.sessionId) {
+            loadWorkRequestSession(proposalCard.dataset.sessionId).catch((err) => notify(err.message || 'Unable to load proposal preview', 'error'));
+            return;
+          }
           const card = e.target.closest('.attention-item-card.is-task');
           if (!card) return;
           const taskId = Number(card.dataset.taskId);
           if (Number.isInteger(taskId)) {
             openPanel(taskId).catch((err) => alert(err.message));
+          }
+        });
+        document.getElementById('workRequestPreview').addEventListener('click', (e) => {
+          if (e.target.id === 'workRequestBackBtn') {
+            hideWorkRequestPreview();
+            return;
+          }
+          if (e.target.id === 'workRequestToggleOriginalBtn') {
+            state.workRequestOriginalOpen = !state.workRequestOriginalOpen;
+            const block = document.getElementById('workRequestOriginalInput');
+            if (block) block.style.display = state.workRequestOriginalOpen ? '' : 'none';
+            return;
+          }
+          if (e.target.id === 'workRequestCancelSessionBtn') {
+            cancelWorkRequestSession().catch((err) => notify(err.message || 'Unable to cancel work request', 'error'));
+            return;
           }
         });
 
