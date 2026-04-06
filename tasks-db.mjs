@@ -2528,3 +2528,177 @@ export function getAttentionStats() {
     generated_at: new Date().toISOString(),
   };
 }
+
+export function createImportSession({
+  id,
+  created_by,
+  goal_id,
+  session_status,
+  input_type,
+  raw_input_text,
+  input_hash,
+  idempotency_key,
+  title_override,
+}) {
+  const conn = getDb();
+  conn.prepare(`
+    INSERT INTO import_sessions (
+      id,
+      created_by,
+      goal_id,
+      session_status,
+      input_type,
+      raw_input_text,
+      input_hash,
+      idempotency_key,
+      title_override
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    String(id),
+    created_by == null ? null : String(created_by),
+    goal_id == null ? null : Number(goal_id),
+    String(session_status),
+    String(input_type),
+    raw_input_text == null ? null : String(raw_input_text),
+    String(input_hash),
+    String(idempotency_key),
+    title_override == null ? null : String(title_override),
+  );
+  return conn.prepare('SELECT * FROM import_sessions WHERE id = ?').get(String(id)) || null;
+}
+
+export function getImportSessionByIdempotencyKey(idempotency_key) {
+  return getDb()
+    .prepare('SELECT * FROM import_sessions WHERE idempotency_key = ? ORDER BY datetime(created_at) DESC, id DESC LIMIT 1')
+    .get(String(idempotency_key)) || null;
+}
+
+export function getActiveRevision(session_id) {
+  const conn = getDb();
+  return conn.prepare(`
+    SELECT r.*
+    FROM import_session_revisions r
+    JOIN import_sessions s ON s.id = r.session_id
+    WHERE s.id = ?
+      AND r.revision_no = s.active_revision_no
+    LIMIT 1
+  `).get(String(session_id)) || null;
+}
+
+export function getDraftsByRevisionId(revision_id) {
+  return getDb()
+    .prepare('SELECT * FROM import_session_drafts WHERE revision_id = ? ORDER BY sort_order ASC, draft_ref ASC')
+    .all(String(revision_id));
+}
+
+export function getImportSessionById(id) {
+  const conn = getDb();
+  const session = conn.prepare('SELECT * FROM import_sessions WHERE id = ?').get(String(id));
+  if (!session) return null;
+  const revision = getActiveRevision(id);
+  const drafts = revision ? getDraftsByRevisionId(revision.id) : [];
+  return { session, revision: revision || null, drafts };
+}
+
+export function updateImportSessionStatus(id, status, error_code = null, error_message = null) {
+  const conn = getDb();
+  conn.prepare(`
+    UPDATE import_sessions
+    SET session_status = ?,
+        last_error_code = ?,
+        last_error_message = ?
+    WHERE id = ?
+  `).run(String(status), error_code == null ? null : String(error_code), error_message == null ? null : String(error_message), String(id));
+  return conn.prepare('SELECT * FROM import_sessions WHERE id = ?').get(String(id)) || null;
+}
+
+export function createImportSessionRevision({
+  id,
+  session_id,
+  revision_no,
+  revision_reason,
+  created_by,
+  model_name,
+  request_restatement,
+  plan_title,
+  plan_payload_json,
+  next_steps_json,
+  open_questions_json,
+  validation_state,
+}) {
+  const conn = getDb();
+  conn.prepare(`
+    INSERT INTO import_session_revisions (
+      id,
+      session_id,
+      revision_no,
+      revision_reason,
+      created_by,
+      model_name,
+      request_restatement,
+      plan_title,
+      plan_payload_json,
+      next_steps_json,
+      open_questions_json,
+      validation_state
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    String(id),
+    String(session_id),
+    Number(revision_no),
+    String(revision_reason),
+    created_by == null ? null : String(created_by),
+    model_name == null ? null : String(model_name),
+    request_restatement == null ? null : String(request_restatement),
+    plan_title == null ? null : String(plan_title),
+    plan_payload_json == null ? null : String(plan_payload_json),
+    next_steps_json == null ? null : String(next_steps_json),
+    open_questions_json == null ? null : String(open_questions_json),
+    validation_state == null ? null : String(validation_state),
+  );
+  return conn.prepare('SELECT * FROM import_session_revisions WHERE id = ?').get(String(id)) || null;
+}
+
+export function createImportSessionDraft({
+  id,
+  revision_id,
+  draft_ref,
+  title,
+  display_summary,
+  workstream_key,
+  priority,
+  task_type,
+  acceptance_criteria_json,
+  depends_on_refs_json,
+  sort_order,
+}) {
+  const conn = getDb();
+  conn.prepare(`
+    INSERT INTO import_session_drafts (
+      id,
+      revision_id,
+      draft_ref,
+      title,
+      display_summary,
+      workstream_key,
+      priority,
+      task_type,
+      acceptance_criteria_json,
+      depends_on_refs_json,
+      sort_order
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    String(id),
+    String(revision_id),
+    String(draft_ref),
+    String(title),
+    display_summary == null ? null : String(display_summary),
+    workstream_key == null ? null : String(workstream_key),
+    String(priority),
+    String(task_type),
+    acceptance_criteria_json == null ? null : String(acceptance_criteria_json),
+    depends_on_refs_json == null ? null : String(depends_on_refs_json),
+    Number(sort_order),
+  );
+  return conn.prepare('SELECT * FROM import_session_drafts WHERE id = ?').get(String(id)) || null;
+}
