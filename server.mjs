@@ -6568,57 +6568,29 @@ const server = createServer(async (req, res) => {
       args.push('--section', section);
     }
 
-    try {
-      const proc = spawnSync(VERIFY_SCRIPT_PATH, args, { encoding: 'utf8', timeout: 120000, stdio: ['ignore', 'pipe', 'pipe'] });
+    // Async spawn: return immediately, don't block event loop
+    res.writeHead(202, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: 'started', message: 'Verification running. Poll GET /api/ops/verification for results.' }));
+    const proc = spawn(VERIFY_SCRIPT_PATH, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    let stderr = '';
+    proc.stderr.on('data', (chunk) => { stderr += chunk.toString().slice(0, 2000); });
+    proc.on('close', (code) => {
       const duration = Date.now() - started;
-
-      // The script writes JSON results to VERIFY_RESULTS_PATH even on non-zero exit
-      // (non-zero typically means some checks failed, which is a valid result)
-      let payload;
       try {
-        payload = getVerificationEnvelope();
-      } catch {
-        // Results file missing or unparseable — treat as a real failure
-        const errorDetail = truncateOutput((proc.stderr || '') + (proc.stdout || '') || `Exit code ${proc.status}`);
-        logAction({ category: 'verification', action: 'run', target: 'verify-deployment.sh', status: 'failed', detail: errorDetail, duration_ms: duration });
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: `Verification failed: ${errorDetail}` }));
-        verificationRunning = false;
-        return;
+        const payload = getVerificationEnvelope();
+        const summary = payload?.results?.summary || {};
+        const detail = `pass=${summary.pass ?? 0}, fail=${summary.fail ?? 0}, warn=${summary.warn ?? 0}, skip=${summary.skip ?? 0}, total=${summary.total ?? 0}`;
+        const logStatus = (summary.fail ?? 0) > 0 ? 'completed_with_failures' : 'success';
+        logAction({ category: 'verification', action: 'run', target: 'verify-deployment.sh', status: logStatus, detail, duration_ms: duration });
+      } catch (e) {
+        logAction({ category: 'verification', action: 'run', target: 'verify-deployment.sh', status: 'failed', detail: stderr || 'Exit code ' + code, duration_ms: duration });
       }
-
-      const summary = payload?.results?.summary || {};
-      const detail = `pass=${summary.pass ?? 0}, fail=${summary.fail ?? 0}, warn=${summary.warn ?? 0}, skip=${summary.skip ?? 0}, total=${summary.total ?? 0}`;
-      const logStatus = (summary.fail ?? 0) > 0 ? 'completed_with_failures' : 'success';
-
-      logAction({
-        category: 'verification',
-        action: 'run',
-        target: 'verify-deployment.sh',
-        status: logStatus,
-        detail,
-        duration_ms: duration,
-      });
-
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(payload));
-    } catch (e) {
-      const duration = Date.now() - started;
-      const errorDetail = truncateOutput(e.stderr || e.message);
-      logAction({
-        category: 'verification',
-        action: 'run',
-        target: 'verify-deployment.sh',
-        status: 'failed',
-        detail: errorDetail,
-        duration_ms: duration,
-      });
-
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: `Verification failed: ${errorDetail}` }));
-    } finally {
       verificationRunning = false;
-    }
+    });
+    proc.on('error', (err) => {
+      logAction({ category: 'verification', action: 'run', target: 'verify-deployment.sh', status: 'failed', detail: err.message, duration_ms: Date.now() - started });
+      verificationRunning = false;
+    });
     return;
   }
 
