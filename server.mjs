@@ -9700,7 +9700,18 @@ const server = createServer(async (req, res) => {
       const requestedLimit = parseInt(url.searchParams.get('limit') || '20', 10);
       const limit = Math.max(1, Math.min(Number.isFinite(requestedLimit) ? requestedLimit : 20, 200));
       const { lines, total } = tailJsonLines(CORTEX_LOG_PATH, limit * 3);
-      const decisions = lines.filter(l => !l.event && (l.modelSelected || l.selectedModel || l.model));
+      const raw = lines.filter(l => !l.event && (l.modelSelected || l.selectedModel || l.model));
+      // Dedupe: if a "resolved" entry exists for a sessionId, drop the recommendation entry within 60s
+      const resolvedSet = new Map();
+      for (const d of raw) {
+        if (d.selectionReason === 'resolved' && d.sessionId) resolvedSet.set(d.sessionId + '|' + (d.timestamp || '').slice(0, 16), true);
+      }
+      const decisions = raw.filter(d => {
+        if (d.selectionReason === 'resolved') return true;
+        if (!d.sessionId) return true;
+        const key = d.sessionId + '|' + (d.timestamp || '').slice(0, 16);
+        return !resolvedSet.has(key);
+      });
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ decisions: decisions.slice(-limit).reverse(), total }));
     } catch (e) {
