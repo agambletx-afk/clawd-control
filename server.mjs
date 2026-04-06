@@ -77,9 +77,16 @@ import {
   getKillSwitches,
   getAttentionReadModel,
   getAttentionStats,
+  createImportSession,
+  getImportSessionByIdempotencyKey,
+  getImportSessionById,
+  updateImportSessionStatus,
+  createImportSessionRevision,
+  createImportSessionDraft,
+  getDraftsByRevisionId,
 } from './tasks-db.mjs';
 
-import { createHash, randomBytes, timingSafeEqual } from 'crypto';
+import { createHash, randomBytes, timingSafeEqual, randomUUID } from 'crypto';
 
 import { logAction, getLog, getLogStats, pruneLog } from './ops-log-db.mjs';
 import { queryLogs, getIngestHealth, pruneOldLogs, runIngestionCycle } from './logs-db.mjs';
@@ -93,6 +100,7 @@ const PORT = parseInt(process.argv.find((_, i, a) => a[i - 1] === '--port') || '
 const DIR = new URL('.', import.meta.url).pathname;
 const AUTH_DISABLED = String(process.env.AUTH_DISABLED || '').toLowerCase() === 'true';
 const APIS_CONFIG_PATH = join(DIR, 'apis-config.json');
+const WORK_REQUEST_CONFIG_PATH = join(DIR, 'work-request-config.json');
 const HEALTH_RESULTS_PATH = '/tmp/api-health-results.json';
 const CLI_USAGE_PATH = '/tmp/cli-usage.json';
 const COST_SENTINEL_STATUS_PATH = join(process.env.HOME || '/home/openclaw', '.openclaw', 'workspace', 'cost-sentinel-status.json');
@@ -814,6 +822,263 @@ function getMergedEnvMap() {
     ...parseEnvFile(SECONDARY_ENV_PATH),
     ...parseEnvFile(PRIMARY_ENV_PATH),
     ...process.env,
+  };
+}
+
+function safeJsonParse(text, fallback = null) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return fallback;
+  }
+}
+
+function stripHtmlTags(value) {
+  return String(value || '').replace(/<[^>]*>/g, '');
+}
+
+function sanitizePlainText(value, maxLen = null) {
+  const stripped = stripHtmlTags(value);
+  const compact = stripped.replace(/\s+/g, ' ').trim();
+  if (maxLen != null && compact.length > maxLen) {
+    return compact.slice(0, maxLen);
+  }
+  return compact;
+}
+
+function normalizeWorkRequestInput(value) {
+  return sanitizePlainText(value).toLowerCase();
+}
+
+function loadWorkRequestConfig() {
+  if (!existsSync(WORK_REQUEST_CONFIG_PATH)) return null;
+  const parsed = safeJsonParse(readFileSync(WORK_REQUEST_CONFIG_PATH, 'utf8'));
+  if (!parsed || typeof parsed !== 'object') return null;
+  return parsed;
+}
+
+function resolveModelFromConfig(config, modelId) {
+  const available = Array.isArray(config?.availableModels) ? config.availableModels : [];
+  return available.find((entry) => entry && entry.id === modelId) || null;
+}
+
+function getWorkRequestConfigForClient(config) {
+  const available = (Array.isArray(config?.availableModels) ? config.availableModels : [])
+    .map((entry) => ({
+      id: entry.id,
+      label: entry.label,
+      notes: entry.notes || '',
+    }));
+  const step1Model = resolveModelFromConfig(config, config?.pipeline?.step1?.selectedModel);
+  const step2Model = resolveModelFromConfig(config, config?.pipeline?.step2?.selectedModel);
+  return {
+    pipeline: {
+      step1: {
+        label: config?.pipeline?.step1?.label || 'Understand & Plan',
+        description: config?.pipeline?.step1?.description || '',
+        selectedModel: config?.pipeline?.step1?.selectedModel || null,
+        selectedModelLabel: step1Model?.label || null,
+      },
+      step2: {
+        label: config?.pipeline?.step2?.label || 'Structure & Validate',
+        description: config?.pipeline?.step2?.description || '',
+        selectedModel: config?.pipeline?.step2?.selectedModel || null,
+        selectedModelLabel: step2Model?.label || null,
+      },
+    },
+    availableModels: available,
+  };
+}
+
+function writeWorkRequestConfigAtomically(config) {
+  const tmpPath = `${WORK_REQUEST_CONFIG_PATH}.tmp`;
+  writeFileSync(tmpPath, JSON.stringify(config, null, 2), 'utf8');
+  renameSync(tmpPath, WORK_REQUEST_CONFIG_PATH);
+}
+
+function chooseStep1TierPrompt(inputText) {
+  const wordCount = sanitizePlainText(inputText).split(/\s+/).filter(Boolean).length;
+  const hasHeaders = /(^|\n)\s*#{1,6}\s+\S+/m.test(String(inputText || ''));
+  if (wordCount > 1000 || hasHeaders) {
+    return 'This is a detailed brief. Decompose precisely. Open questions only if genuinely ambiguous.';
+  }
+  if (wordCount >= 200) {
+    return 'The operator provided a description with some detail. Decompose into workstreams and tasks. Flag any gaps as open questions.';
+  }
+  return 'The operator gave a brief description. Produce a preliminary plan AND list 3-5 clarifying questions that would improve the plan. Be explicit about what you are assuming.';
+}
+
+async function callOpenAiCompatChat(modelConfig, body) {
+  const baseUrl = String(modelConfig?.baseUrl || '').trim().replace(/\/+$/, '');
+  if (!baseUrl) throw new Error(`Missing baseUrl for model: ${modelConfig?.id || 'unknown'}`);
+  const apiKeyEnv = String(modelConfig?.apiKeyEnv || '').trim();
+  const env = getMergedEnvMap();
+  const headers = { 'Content-Type': 'application/json' };
+  if (apiKeyEnv) {
+    const key = String(env[apiKeyEnv] || '').trim();
+    if (!key) throw new Error(`Missing API key env: ${apiKeyEnv}`);
+    headers.Authorization = `Bearer ${key}`;
+  }
+  const response = await fetch(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`LLM HTTP ${response.status}: ${text.slice(0, 500)}`);
+  }
+  return response.json();
+}
+
+function extractAssistantContent(completion) {
+  const content = completion?.choices?.[0]?.message?.content;
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => (typeof part?.text === 'string' ? part.text : ''))
+      .join('\n')
+      .trim();
+  }
+  return '';
+}
+
+function normalizeWhatHappensNext(value) {
+  if (!Array.isArray(value)) return ['Research', 'Build', 'Check', 'Approval'];
+  const cleaned = value.map((item) => sanitizePlainText(item, 60)).filter(Boolean);
+  return cleaned.length ? cleaned.slice(0, 4) : ['Research', 'Build', 'Check', 'Approval'];
+}
+
+function validateAndNormalizeWorkRequestResult(raw, validationConfig = {}) {
+  const maxDraftTasks = Number(validationConfig.maxDraftTasks || 15);
+  const maxOpenQuestions = Number(validationConfig.maxOpenQuestions || 5);
+  const maxTitleLength = Number(validationConfig.maxTitleLength || 100);
+  const maxSummaryLength = Number(validationConfig.maxSummaryLength || 500);
+  const data = raw && typeof raw === 'object' ? raw : {};
+  const result = {
+    request_restatement: sanitizePlainText(data.request_restatement, 200),
+    plan_title: sanitizePlainText(data.plan_title, maxTitleLength),
+    workstreams: [],
+    what_happens_next: normalizeWhatHappensNext(data.what_happens_next),
+    open_questions: (Array.isArray(data.open_questions) ? data.open_questions : [])
+      .map((q) => sanitizePlainText(q, 240))
+      .filter(Boolean)
+      .slice(0, maxOpenQuestions),
+    draft_tasks: [],
+  };
+
+  if (!result.request_restatement) result.request_restatement = 'Operator submitted a new work request.';
+  if (!result.plan_title) result.plan_title = 'New Work Request Plan';
+
+  const ws = Array.isArray(data.workstreams) ? data.workstreams : [];
+  result.workstreams = ws.map((entry, idx) => ({
+    workstream_key: sanitizePlainText(entry?.workstream_key || `ws-${idx + 1}`, 50) || `ws-${idx + 1}`,
+    name: sanitizePlainText(entry?.name || `Workstream ${idx + 1}`, 100) || `Workstream ${idx + 1}`,
+    steps: (Array.isArray(entry?.steps) ? entry.steps : []).map((s) => sanitizePlainText(s, 200)).filter(Boolean),
+  })).filter((entry) => entry.steps.length > 0);
+
+  const tasks = Array.isArray(data.draft_tasks) ? data.draft_tasks : [];
+  const allowedPriority = new Set(['critical', 'high', 'medium', 'low']);
+  const allowedType = new Set(['investigation', 'feature', 'bug_fix', 'operational', 'maintenance']);
+  result.draft_tasks = tasks.slice(0, maxDraftTasks).map((entry, idx) => ({
+    draft_ref: sanitizePlainText(entry?.draft_ref || `T${idx + 1}`, 20) || `T${idx + 1}`,
+    title: sanitizePlainText(entry?.title || `Draft task ${idx + 1}`, maxTitleLength) || `Draft task ${idx + 1}`,
+    display_summary: sanitizePlainText(entry?.display_summary || '', maxSummaryLength),
+    workstream_key: sanitizePlainText(entry?.workstream_key || result.workstreams[0]?.workstream_key || 'ws-1', 50) || 'ws-1',
+    priority: allowedPriority.has(String(entry?.priority || '').trim()) ? String(entry.priority).trim() : 'medium',
+    task_type: allowedType.has(String(entry?.task_type || '').trim()) ? String(entry.task_type).trim() : 'feature',
+    acceptance_criteria: (Array.isArray(entry?.acceptance_criteria) ? entry.acceptance_criteria : [])
+      .map((item) => sanitizePlainText(item, 200)).filter(Boolean),
+    depends_on_refs: (Array.isArray(entry?.depends_on_refs) ? entry.depends_on_refs : [])
+      .map((item) => sanitizePlainText(item, 20)).filter(Boolean),
+  }));
+
+  const totalSteps = result.workstreams.reduce((count, item) => count + item.steps.length, 0);
+  if (result.workstreams.length < 1 || totalSteps < 3 || totalSteps > 7) {
+    throw new Error('workstreams must include between 3 and 7 total steps');
+  }
+  if (result.draft_tasks.length < 1) {
+    throw new Error('draft_tasks must include at least one task');
+  }
+
+  const refs = new Set(result.draft_tasks.map((t) => t.draft_ref));
+  for (const task of result.draft_tasks) {
+    task.depends_on_refs = task.depends_on_refs.filter((ref) => ref !== task.draft_ref && refs.has(ref));
+  }
+
+  const graph = new Map(result.draft_tasks.map((t) => [t.draft_ref, [...t.depends_on_refs]]));
+  const visiting = new Set();
+  const visited = new Set();
+  function dfs(node) {
+    if (visited.has(node)) return;
+    if (visiting.has(node)) return;
+    visiting.add(node);
+    const deps = graph.get(node) || [];
+    for (let i = deps.length - 1; i >= 0; i -= 1) {
+      const dep = deps[i];
+      if (visiting.has(dep)) deps.splice(i, 1);
+      else dfs(dep);
+    }
+    visiting.delete(node);
+    visited.add(node);
+  }
+  for (const ref of graph.keys()) dfs(ref);
+  for (const task of result.draft_tasks) {
+    task.depends_on_refs = graph.get(task.draft_ref) || [];
+  }
+  return result;
+}
+
+function buildStep2ResponseFormat() {
+  return {
+    type: 'json_schema',
+    json_schema: {
+      name: 'work_request_plan',
+      strict: true,
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['request_restatement', 'plan_title', 'workstreams', 'what_happens_next', 'open_questions', 'draft_tasks'],
+        properties: {
+          request_restatement: { type: 'string', maxLength: 200 },
+          plan_title: { type: 'string', maxLength: 100 },
+          workstreams: {
+            type: 'array',
+            minItems: 1,
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['workstream_key', 'name', 'steps'],
+              properties: {
+                workstream_key: { type: 'string' },
+                name: { type: 'string' },
+                steps: { type: 'array', items: { type: 'string' } },
+              },
+            },
+          },
+          what_happens_next: { type: 'array', items: { type: 'string' } },
+          open_questions: { type: 'array', items: { type: 'string' } },
+          draft_tasks: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['draft_ref', 'title', 'display_summary', 'workstream_key', 'priority', 'task_type', 'acceptance_criteria', 'depends_on_refs'],
+              properties: {
+                draft_ref: { type: 'string' },
+                title: { type: 'string', maxLength: 100 },
+                display_summary: { type: 'string', maxLength: 500 },
+                workstream_key: { type: 'string' },
+                priority: { type: 'string', enum: ['critical', 'high', 'medium', 'low'] },
+                task_type: { type: 'string', enum: ['investigation', 'feature', 'bug_fix', 'operational', 'maintenance'] },
+                acceptance_criteria: { type: 'array', items: { type: 'string' } },
+                depends_on_refs: { type: 'array', items: { type: 'string' } },
+              },
+            },
+          },
+        },
+      },
+    },
   };
 }
 
@@ -4525,6 +4790,108 @@ function buildIntelligenceStrip() {
     tokenBurn1h,
     topConsumer1h,
     worstPressure,
+  };
+}
+
+async function runWorkRequestPipeline({ inputText, titleOverride, step1Model, step2Model, validationConfig }) {
+  const step1Prompt = chooseStep1TierPrompt(inputText);
+  const step1System = `You are Clawd Control's planning assistant. ${step1Prompt}`;
+  const sameModel = step1Model.id === step2Model.id;
+
+  let step1Output = '';
+  if (!sameModel) {
+    const step1Response = await callOpenAiCompatChat(step1Model, {
+      model: step1Model.id,
+      messages: [
+        { role: 'system', content: step1System },
+        { role: 'user', content: inputText },
+      ],
+      temperature: 0.3,
+    });
+    step1Output = extractAssistantContent(step1Response);
+  }
+
+  const step2System = [
+    'You are Clawd Control\'s structured planning formatter.',
+    'Return only JSON that matches the required shape.',
+    sameModel ? step1Prompt : 'Use the planning context to build structured tasks with dependencies and acceptance criteria.',
+  ].join(' ');
+
+  const step2User = sameModel
+    ? `Operator request:\n${inputText}\n\nProduce a complete plan JSON response.`
+    : `Operator request:\n${inputText}\n\nStep 1 planning notes:\n${step1Output}\n\nProduce a complete plan JSON response.`;
+
+  let lastError = null;
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      const requestBody = {
+        model: step2Model.id,
+        messages: [
+          { role: 'system', content: step2System },
+          { role: 'user', content: step2User },
+        ],
+        temperature: 0.2,
+      };
+      if (step2Model.supportsStructuredOutputs) {
+        requestBody.response_format = buildStep2ResponseFormat();
+      }
+      const step2Response = await callOpenAiCompatChat(step2Model, requestBody);
+      const rawContent = extractAssistantContent(step2Response);
+      const parsed = safeJsonParse(rawContent);
+      if (!parsed) throw new Error('Invalid JSON from model');
+      const normalized = validateAndNormalizeWorkRequestResult(parsed, validationConfig);
+      if (titleOverride) {
+        normalized.plan_title = sanitizePlainText(titleOverride, Number(validationConfig?.maxTitleLength || 100))
+          || normalized.plan_title;
+      }
+      return { normalized, step1Output };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw new Error(lastError?.message || 'validation_failed');
+}
+
+function buildWorkRequestResponsePayload(sessionRow, revisionRow, draftRows, step1Model, step2Model, config) {
+  return {
+    session: sessionRow ? {
+      id: sessionRow.id,
+      session_status: sessionRow.session_status,
+      goal_id: sessionRow.goal_id ?? null,
+      active_revision_no: sessionRow.active_revision_no ?? null,
+      created_at: sessionRow.created_at,
+      last_error_code: sessionRow.last_error_code ?? null,
+      last_error_message: sessionRow.last_error_message ?? null,
+    } : null,
+    revision: revisionRow ? {
+      id: revisionRow.id,
+      revision_no: revisionRow.revision_no,
+      request_restatement: revisionRow.request_restatement,
+      plan_title: revisionRow.plan_title,
+      plan_payload_json: revisionRow.plan_payload_json,
+      open_questions_json: revisionRow.open_questions_json,
+      model_name: revisionRow.model_name,
+    } : null,
+    drafts: Array.isArray(draftRows) ? draftRows.map((d) => ({
+      id: d.id,
+      draft_ref: d.draft_ref,
+      title: d.title,
+      display_summary: d.display_summary,
+      priority: d.priority,
+      task_type: d.task_type,
+      depends_on_refs_json: d.depends_on_refs_json,
+      draft_state: d.draft_state || 'pending',
+    })) : [],
+    pipeline_info: {
+      step1: {
+        label: config?.pipeline?.step1?.label || 'Understand & Plan',
+        model: step1Model.id,
+      },
+      step2: {
+        label: config?.pipeline?.step2?.label || 'Structure & Validate',
+        model: step2Model.id,
+      },
+    },
   };
 }
 
@@ -8377,6 +8744,255 @@ const server = createServer(async (req, res) => {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Internal server error' }));
     }
+    return;
+  }
+
+  if (path === '/api/work-request-config' && req.method === 'GET') {
+    try {
+      const config = loadWorkRequestConfig();
+      if (!config) {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Work request pipeline not configured' }));
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(getWorkRequestConfigForClient(config)));
+    } catch {
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Work request pipeline not configured' }));
+    }
+    return;
+  }
+
+  if (path === '/api/work-request-config' && req.method === 'PATCH') {
+    readJsonBody(req).then((body) => {
+      const config = loadWorkRequestConfig();
+      if (!config) {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Work request pipeline not configured' }));
+        return;
+      }
+      const updates = [['step1', body?.step1], ['step2', body?.step2]];
+      for (const [stepKey, stepValue] of updates) {
+        if (!stepValue || typeof stepValue !== 'object' || !Object.hasOwn(stepValue, 'selectedModel')) continue;
+        const selectedModel = String(stepValue.selectedModel || '').trim();
+        if (!resolveModelFromConfig(config, selectedModel)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: `Unknown model: ${selectedModel}` }));
+          return;
+        }
+        if (!config.pipeline[stepKey]) config.pipeline[stepKey] = {};
+        config.pipeline[stepKey].selectedModel = selectedModel;
+      }
+      writeWorkRequestConfigAtomically(config);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(getWorkRequestConfigForClient(config)));
+    }).catch(() => {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+    });
+    return;
+  }
+
+  if (path === '/api/tasks/work-requests' && req.method === 'POST') {
+    readJsonBody(req).then(async (body) => {
+      const inputTextRaw = body?.input_text;
+      const sanitizedInput = sanitizePlainText(inputTextRaw);
+      const inputBytes = Buffer.byteLength(sanitizedInput, 'utf8');
+      const idempotencyKey = sanitizePlainText(body?.idempotency_key, 200);
+      const inputHash = sanitizePlainText(body?.input_hash, 200);
+      const goalId = body?.goal_id == null ? null : Number.parseInt(body.goal_id, 10);
+      const titleOverride = body?.title_override == null ? null : sanitizePlainText(body.title_override, 100);
+
+      if (!sanitizedInput) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'input_text is required' }));
+        return;
+      }
+      if (!idempotencyKey || !inputHash) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'idempotency_key and input_hash are required' }));
+        return;
+      }
+      if (inputBytes > 51200) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'input_text exceeds 50KB limit' }));
+        return;
+      }
+      if (goalId != null && (!Number.isInteger(goalId) || goalId <= 0 || !getGoalById(goalId))) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'goal_id not found' }));
+        return;
+      }
+
+      const existingByKey = getImportSessionByIdempotencyKey(idempotencyKey);
+      if (existingByKey) {
+        if (String(existingByKey.input_hash || '') !== inputHash) {
+          res.writeHead(409, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Idempotency conflict: input hash mismatch' }));
+          return;
+        }
+        const readModel = getImportSessionById(existingByKey.id);
+        const config = loadWorkRequestConfig();
+        if (!config) {
+          res.writeHead(503, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Work request pipeline not configured' }));
+          return;
+        }
+        const step1Model = resolveModelFromConfig(config, config?.pipeline?.step1?.selectedModel);
+        const step2Model = resolveModelFromConfig(config, config?.pipeline?.step2?.selectedModel);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(buildWorkRequestResponsePayload(
+          readModel?.session,
+          readModel?.revision,
+          readModel?.drafts || [],
+          step1Model || { id: 'unknown' },
+          step2Model || { id: 'unknown' },
+          config,
+        )));
+        return;
+      }
+
+      const config = loadWorkRequestConfig();
+      if (!config) {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Work request pipeline not configured' }));
+        return;
+      }
+      const step1Model = resolveModelFromConfig(config, config?.pipeline?.step1?.selectedModel);
+      const step2Model = resolveModelFromConfig(config, config?.pipeline?.step2?.selectedModel);
+      if (!step1Model || !step2Model) {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Work request pipeline not configured' }));
+        return;
+      }
+
+      const sessionId = randomUUID();
+      createImportSession({
+        id: sessionId,
+        created_by: 'operator',
+        goal_id: goalId,
+        session_status: 'processing',
+        input_type: 'free_text',
+        raw_input_text: sanitizedInput,
+        input_hash: inputHash || createHash('sha256').update(`${normalizeWorkRequestInput(sanitizedInput)}|${goalId || ''}`).digest('hex'),
+        idempotency_key: idempotencyKey,
+        title_override: titleOverride,
+      });
+
+      try {
+        const { normalized } = await runWorkRequestPipeline({
+          inputText: sanitizedInput,
+          titleOverride,
+          step1Model,
+          step2Model,
+          validationConfig: config?.validation || {},
+        });
+
+        const revisionId = randomUUID();
+        createImportSessionRevision({
+          id: revisionId,
+          session_id: sessionId,
+          revision_no: 1,
+          revision_reason: 'initial',
+          created_by: 'operator',
+          model_name: step2Model.id,
+          request_restatement: normalized.request_restatement,
+          plan_title: normalized.plan_title,
+          plan_payload_json: JSON.stringify({
+            request_restatement: normalized.request_restatement,
+            plan_title: normalized.plan_title,
+            workstreams: normalized.workstreams,
+            what_happens_next: normalized.what_happens_next,
+          }),
+          next_steps_json: JSON.stringify(normalized.what_happens_next),
+          open_questions_json: JSON.stringify(normalized.open_questions),
+          validation_state: 'valid',
+        });
+
+        normalized.draft_tasks.forEach((draft, idx) => {
+          createImportSessionDraft({
+            id: randomUUID(),
+            revision_id: revisionId,
+            draft_ref: draft.draft_ref,
+            title: draft.title,
+            display_summary: draft.display_summary,
+            workstream_key: draft.workstream_key,
+            priority: draft.priority,
+            task_type: draft.task_type,
+            acceptance_criteria_json: JSON.stringify(draft.acceptance_criteria),
+            depends_on_refs_json: JSON.stringify(draft.depends_on_refs),
+            sort_order: idx + 1,
+          });
+        });
+
+        getDb().prepare('UPDATE import_sessions SET active_revision_no = ?, session_status = ? WHERE id = ?')
+          .run(1, 'awaiting_operator_decision', sessionId);
+
+        const readModel = getImportSessionById(sessionId);
+        const responsePayload = buildWorkRequestResponsePayload(
+          readModel?.session,
+          readModel?.revision,
+          readModel?.drafts || [],
+          step1Model,
+          step2Model,
+          config,
+        );
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(responsePayload));
+      } catch (error) {
+        const message = 'LLM output failed schema validation after 2 attempts';
+        updateImportSessionStatus(sessionId, 'failed', 'validation_failed', message);
+        const failedSession = getImportSessionById(sessionId)?.session;
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          session: {
+            id: failedSession?.id || sessionId,
+            session_status: 'failed',
+            last_error_code: 'validation_failed',
+            last_error_message: message,
+          },
+          revision: null,
+          drafts: [],
+          pipeline_info: {
+            step1: { label: config?.pipeline?.step1?.label || 'Understand & Plan', model: step1Model.id },
+            step2: { label: config?.pipeline?.step2?.label || 'Structure & Validate', model: step2Model.id },
+          },
+        }));
+      }
+    }).catch((e) => {
+      const code = e.message === 'Payload too large' ? 413 : 400;
+      res.writeHead(code, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message === 'Payload too large' ? 'Payload too large' : 'Invalid JSON body' }));
+    });
+    return;
+  }
+
+  if (path.match(/^\/api\/tasks\/work-requests\/[0-9a-f-]+$/) && req.method === 'GET') {
+    const sessionId = path.split('/').pop();
+    const config = loadWorkRequestConfig();
+    if (!config) {
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Work request pipeline not configured' }));
+      return;
+    }
+    const step1Model = resolveModelFromConfig(config, config?.pipeline?.step1?.selectedModel) || { id: 'unknown' };
+    const step2Model = resolveModelFromConfig(config, config?.pipeline?.step2?.selectedModel) || { id: 'unknown' };
+    const readModel = getImportSessionById(sessionId);
+    if (!readModel?.session) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Work request session not found' }));
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(buildWorkRequestResponsePayload(
+      readModel.session,
+      readModel.revision,
+      readModel.drafts,
+      step1Model,
+      step2Model,
+      config,
+    )));
     return;
   }
 
