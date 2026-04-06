@@ -576,6 +576,66 @@
       color: var(--text-tertiary);
       font-size: 0.78rem;
     }
+    .journey-timeline { position: relative; padding-left: 24px; }
+    .journey-event { position: relative; padding-bottom: 16px; }
+    .journey-event::before {
+      content: '';
+      position: absolute;
+      left: -18px;
+      top: 8px;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--journey-node, #6366f1);
+    }
+    .journey-event::after {
+      content: '';
+      position: absolute;
+      left: -15px;
+      top: 16px;
+      bottom: -8px;
+      width: 2px;
+      background: #363b4d;
+    }
+    .journey-event:last-child::after { display: none; }
+    .journey-label { color: #e4e8f1; font-size: 0.82rem; font-weight: 500; }
+    .journey-detail { color: #8c95ad; font-size: 0.74rem; margin-top: 2px; }
+    .journey-meta { color: #6b7280; font-size: 0.7rem; margin-top: 2px; }
+    .journey-toggle {
+      border: 1px solid #363b4d;
+      background: #1f2432;
+      color: #cbd5e1;
+      border-radius: 6px;
+      padding: 5px 9px;
+      font-size: 0.72rem;
+      cursor: pointer;
+      margin-top: 6px;
+    }
+    .lineage-crumbs {
+      font-size: 0.78rem;
+      color: var(--text-secondary);
+      margin-bottom: 10px;
+    }
+    .lineage-section {
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 9px;
+      margin-bottom: 10px;
+      background: rgba(15, 19, 30, 0.45);
+    }
+    .lineage-sibling {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 7px 8px;
+      margin-top: 6px;
+      background: rgba(8, 10, 16, 0.4);
+      cursor: pointer;
+    }
+    .lineage-sibling:hover { border-color: #6366f1; }
 
     .panel-backdrop {
       position: fixed;
@@ -1342,6 +1402,9 @@
           failureMeta: null,
           failureReasonExpanded: false,
           panelTab: 'overview',
+          journey: [],
+          journeyShowDetails: false,
+          lineage: null,
           templates: [],
           templateEditor: null,
           attentionStats: null,
@@ -2425,6 +2488,19 @@
           state.failureMeta = await res.json();
         }
 
+        async function loadJourney(taskId) {
+          const res = await fetch(`/api/tasks/${taskId}/journey`, FETCH_OPTS);
+          if (!res.ok) throw new Error('Failed to load journey');
+          const data = await res.json();
+          state.journey = Array.isArray(data.milestones) ? data.milestones : [];
+        }
+
+        async function loadLineage(taskId) {
+          const res = await fetch(`/api/tasks/${taskId}/lineage`, FETCH_OPTS);
+          if (!res.ok) throw new Error('Failed to load lineage');
+          state.lineage = await res.json();
+        }
+
         function renderPanel() {
           const task = state.tasks.find((item) => item.id === state.selectedTaskId);
           if (!task) return;
@@ -2436,6 +2512,8 @@
           const tabsHtml = `
             <div class="panel-tabs">
               <button class="panel-tab ${activeTab === 'overview' ? 'active' : ''}" data-panel-tab="overview">Overview</button>
+              <button class="panel-tab ${activeTab === 'journey' ? 'active' : ''}" data-panel-tab="journey">Journey</button>
+              <button class="panel-tab ${activeTab === 'lineage' ? 'active' : ''}" data-panel-tab="lineage">Lineage</button>
               <button class="panel-tab ${activeTab === 'artifacts' ? 'active' : ''}" data-panel-tab="artifacts">Artifacts</button>
               <button class="panel-tab ${activeTab === 'audit' ? 'active' : ''}" data-panel-tab="audit">Audit</button>
             </div>
@@ -2444,6 +2522,10 @@
           let contentHtml = '';
           if (activeTab === 'overview') {
             contentHtml = renderPanelOverview(task, typeConfig);
+          } else if (activeTab === 'journey') {
+            contentHtml = '<div id="journeyContent"><div class="panel-loading">Loading journey...</div></div>';
+          } else if (activeTab === 'lineage') {
+            contentHtml = '<div id="lineageContent"><div class="panel-loading">Loading lineage...</div></div>';
           } else if (activeTab === 'artifacts') {
             contentHtml = '<div id="artifactsContent"><div class="panel-loading">Loading artifacts...</div></div>';
           } else if (activeTab === 'audit') {
@@ -2453,6 +2535,8 @@
           document.getElementById('panelBody').innerHTML = tabsHtml + contentHtml;
           document.getElementById('panelActions').innerHTML = statusActionButtons(task);
 
+          if (activeTab === 'journey') loadPanelJourney(task);
+          if (activeTab === 'lineage') loadPanelLineage(task);
           if (activeTab === 'artifacts') loadPanelArtifacts(task);
           if (activeTab === 'audit') loadPanelAudit(task);
         }
@@ -2577,6 +2661,103 @@
           }
         }
 
+        function journeyNodeColor(entry) {
+          if (entry.type === 'stuck') return '#f59e0b';
+          if (entry.type === 'status_change' && String(entry.label || '').toLowerCase().includes('completed')) return '#22c55e';
+          if (entry.type === 'status_change') return '#6366f1';
+          return '#6b7280';
+        }
+
+        async function loadPanelJourney(task) {
+          const container = document.getElementById('journeyContent');
+          if (!container) return;
+          try {
+            await loadJourney(task.id);
+            const all = Array.isArray(state.journey) ? state.journey : [];
+            if (all.length === 0) {
+              container.innerHTML = '<div class="panel-loading">No journey events yet.</div>';
+              return;
+            }
+            const milestones = all.filter((m) => m?.is_milestone !== false);
+            const details = all.filter((m) => m?.is_milestone === false);
+            const visible = state.journeyShowDetails ? [...milestones, ...details] : milestones;
+            const sorted = visible.slice().sort((a, b) => Date.parse(a.timestamp || 0) - Date.parse(b.timestamp || 0));
+            container.innerHTML = `
+              <div class="journey-timeline">
+                ${sorted.map((entry) => `
+                  <div class="journey-event" style="--journey-node:${journeyNodeColor(entry)}">
+                    <div class="journey-label">${esc(entry.label || 'Update')}</div>
+                    ${entry.detail ? `<div class="journey-detail">${esc(entry.detail)}</div>` : ''}
+                    <div class="journey-meta">${esc(entry.actor || 'System')} · ${esc(relativeTime(entry.timestamp))}</div>
+                  </div>
+                `).join('')}
+              </div>
+              ${details.length > 0 ? `<button type="button" class="journey-toggle" data-action="toggle-journey-details">${state.journeyShowDetails ? 'Hide technical details' : 'Show technical details'}</button>` : ''}
+            `;
+          } catch {
+            container.innerHTML = '<div class="panel-loading">Unable to load journey.</div>';
+          }
+        }
+
+        function lineageChipStyle(status) {
+          const key = String(status || '').toLowerCase();
+          if (key === 'done') return '#22c55e';
+          if (key === 'needs review') return '#f59e0b';
+          if (key === 'stuck') return '#ef4444';
+          return '#3b82f6';
+        }
+
+        async function loadPanelLineage(task) {
+          const container = document.getElementById('lineageContent');
+          if (!container) return;
+          try {
+            await loadLineage(task.id);
+            const lineage = state.lineage;
+            if (!lineage || (!lineage.goal && !lineage.brief && !lineage.brief_version && (!lineage.import_session_id))) {
+              container.innerHTML = '<div class="panel-loading">This task was created manually and isn\'t linked to a plan.</div>';
+              return;
+            }
+            const crumbs = [];
+            if (lineage.goal?.title) crumbs.push(esc(lineage.goal.title));
+            if (lineage.brief?.title) crumbs.push(esc(lineage.brief.title));
+            crumbs.push(esc(lineage.task_title || task.title || 'This task'));
+
+            let html = `<div class="lineage-crumbs">${crumbs.join(' &gt; ')}</div>`;
+            if (lineage.goal) {
+              html += `
+                <div class="lineage-section">
+                  <div class="label">Goal</div>
+                  <div class="value">${esc(lineage.goal.title || `Goal #${lineage.goal.id}`)}</div>
+                  <div class="journey-meta">Status: ${esc(lineage.goal.status || 'unknown')}</div>
+                </div>
+              `;
+            }
+            if (lineage.brief || lineage.brief_version) {
+              html += `
+                <div class="lineage-section">
+                  <div class="label">Brief</div>
+                  <div class="value">${esc(lineage.brief?.title || lineage.brief_version?.plan_title || 'Linked brief')}</div>
+                  ${lineage.brief?.source_type ? `<div class="journey-meta">Source: ${esc(lineage.brief.source_type)}</div>` : ''}
+                  ${lineage.brief_version?.version_no ? `<div class="journey-meta">Version: v${esc(lineage.brief_version.version_no)}</div>` : ''}
+                  ${lineage.brief_version?.approved_at ? `<div class="journey-meta">Approved: ${esc(cstFormatter.format(new Date(lineage.brief_version.approved_at)))} by ${esc(lineage.brief_version.approved_by || 'operator')}</div>` : ''}
+                </div>
+              `;
+            }
+            if (Array.isArray(lineage.siblings) && lineage.siblings.length > 0) {
+              html += `<div class="field"><div class="label">Other tasks from this plan:</div></div>`;
+              html += lineage.siblings.map((s) => `
+                <button type="button" class="lineage-sibling" data-lineage-task-id="${s.id}">
+                  <span class="value">${esc(s.title || `Task #${s.id}`)}</span>
+                  <span class="card-type-pill" style="background:${lineageChipStyle(s.operator_status)}20;color:${lineageChipStyle(s.operator_status)}">${esc(s.operator_status || s.status || 'Working')}</span>
+                </button>
+              `).join('');
+            }
+            container.innerHTML = html;
+          } catch {
+            container.innerHTML = '<div class="panel-loading">Unable to load lineage.</div>';
+          }
+        }
+
         async function loadPanelAudit(task) {
           const container = document.getElementById('auditContent');
           if (!container) return;
@@ -2667,6 +2848,9 @@
           state.selectedTaskId = taskId;
           state.failureReasonExpanded = false;
           state.panelTab = 'overview';
+          state.journey = [];
+          state.journeyShowDetails = false;
+          state.lineage = null;
           await Promise.all([loadHistory(taskId), loadFailureMeta(taskId)]);
           renderPanel();
           document.getElementById('panelBackdrop').classList.add('open');
@@ -3189,6 +3373,21 @@
         });
 
         document.getElementById('panelBody').addEventListener('click', (e) => {
+          const siblingBtn = e.target.closest('[data-lineage-task-id]');
+          if (siblingBtn) {
+            const taskId = Number(siblingBtn.dataset.lineageTaskId);
+            if (Number.isInteger(taskId)) {
+              openPanel(taskId).catch((err) => alert(err.message));
+            }
+            return;
+          }
+          const journeyToggle = e.target.closest('[data-action="toggle-journey-details"]');
+          if (journeyToggle) {
+            state.journeyShowDetails = !state.journeyShowDetails;
+            const task = state.tasks.find((item) => item.id === state.selectedTaskId);
+            if (task) loadPanelJourney(task);
+            return;
+          }
           const tabBtn = e.target.closest('[data-panel-tab]');
           if (tabBtn) {
             state.panelTab = tabBtn.dataset.panelTab;

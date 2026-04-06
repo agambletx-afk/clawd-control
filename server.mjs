@@ -93,6 +93,8 @@ import {
   supersedRevision,
   createTaskDependency,
   linkSessionToBrief,
+  getTaskJourneyEvents,
+  getTaskLineage,
 } from './tasks-db.mjs';
 
 import { createHash, randomBytes, timingSafeEqual, randomUUID } from 'crypto';
@@ -840,6 +842,196 @@ function safeJsonParse(text, fallback = null) {
   } catch {
     return fallback;
   }
+}
+
+function mapJourneyActorRole(actor) {
+  const raw = String(actor || '').trim().toLowerCase();
+  if (!raw) return 'System';
+  if (['adam', 'operator', 'human', 'dashboard'].includes(raw)) return 'Operator';
+  if (raw === 'system') return 'System';
+  return 'Team';
+}
+
+function parseStatusTransition(detail) {
+  const text = String(detail || '').trim();
+  if (!text) return null;
+  const match = text.match(/from\s+([a-z_]+)\s+to\s+([a-z_]+)/i)
+    || text.match(/^([a-z_]+)\s*->\s*([a-z_]+)$/i)
+    || text.match(/^([a-z_]+)\s*→\s*([a-z_]+)$/i);
+  if (!match) return null;
+  return {
+    from: String(match[1] || '').toLowerCase(),
+    to: String(match[2] || '').toLowerCase(),
+  };
+}
+
+function translateJourneyEvents(task, events = []) {
+  const milestones = [];
+  for (const event of events) {
+    const actor = mapJourneyActorRole(event.actor);
+    const rawAction = String(event.raw_action || '').toLowerCase();
+    const rawDetail = String(event.raw_detail || '');
+    const timestamp = event.timestamp || task.updated_at || task.created_at || new Date().toISOString();
+
+    if (event.type === 'created') {
+      milestones.push({
+        type: 'created',
+        label: 'This task was created.',
+        detail: rawDetail || 'Created manually.',
+        actor,
+        timestamp,
+        is_milestone: true,
+      });
+      continue;
+    }
+
+    if (event.type === 'brief_approved') {
+      milestones.push({
+        type: 'brief_approved',
+        label: 'You approved this work.',
+        detail: rawDetail || 'Work request approved.',
+        actor: 'Operator',
+        timestamp,
+        is_milestone: true,
+      });
+      continue;
+    }
+
+    if (event.type === 'handoff') {
+      const parsed = safeJsonParse(rawDetail, {});
+      const fromRole = mapJourneyActorRole(parsed?.from || event.actor);
+      const toRole = mapJourneyActorRole(parsed?.to);
+      milestones.push({
+        type: 'handoff',
+        label: `${fromRole} handed this to ${toRole}.`,
+        detail: parsed?.required_outcome || 'Handoff recorded.',
+        actor: fromRole,
+        timestamp,
+        is_milestone: true,
+      });
+      continue;
+    }
+
+    if (event.type === 'artifact') {
+      milestones.push({
+        type: 'artifact',
+        label: `Evidence submitted: ${rawDetail || 'artifact'}.`,
+        detail: 'Technical event',
+        actor,
+        timestamp,
+        is_milestone: false,
+      });
+      continue;
+    }
+
+    if (event.type === 'audit') {
+      if (rawAction.includes('claim') || rawAction.includes('release')) {
+        const isRelease = rawAction.includes('release');
+        milestones.push({
+          type: 'claim',
+          label: isRelease ? 'Claim released.' : 'An agent picked up this task.',
+          detail: rawAction,
+          actor,
+          timestamp,
+          is_milestone: false,
+        });
+      }
+      if (rawAction.includes('pause')) {
+        milestones.push({
+          type: 'pause',
+          label: 'You paused this work.',
+          detail: rawDetail || 'Pause requested.',
+          actor: 'Operator',
+          timestamp,
+          is_milestone: true,
+        });
+      }
+      if (rawAction.includes('resume')) {
+        milestones.push({
+          type: 'resume',
+          label: 'Work resumed.',
+          detail: rawDetail || 'Resume recorded.',
+          actor,
+          timestamp,
+          is_milestone: true,
+        });
+      }
+      continue;
+    }
+
+    if (event.type === 'stuck') {
+      const severity = String(rawDetail || '').toLowerCase();
+      milestones.push({
+        type: 'stuck',
+        label: severity === 'yellow' ? 'This task appears delayed.' : 'This task appears stuck.',
+        detail: severity ? `Stuck severity: ${severity}` : 'Stuck flag present.',
+        actor: 'System',
+        timestamp,
+        is_milestone: true,
+      });
+      continue;
+    }
+
+    if (event.type === 'history') {
+      if (rawAction.includes('pause') || rawAction === 'paused') {
+        milestones.push({
+          type: 'pause',
+          label: 'You paused this work.',
+          detail: rawDetail || 'Pause requested.',
+          actor: 'Operator',
+          timestamp,
+          is_milestone: true,
+        });
+        continue;
+      }
+      if (rawAction.includes('resume') || rawAction === 'resumed') {
+        milestones.push({
+          type: 'resume',
+          label: 'Work resumed.',
+          detail: rawDetail || 'Resume recorded.',
+          actor,
+          timestamp,
+          is_milestone: true,
+        });
+        continue;
+      }
+      const looksLikeStatus = rawAction.includes('status');
+      if (!looksLikeStatus) continue;
+      const transition = parseStatusTransition(rawDetail);
+      const from = transition?.from || '';
+      const to = transition?.to || '';
+      let label = 'Status updated.';
+      let isMilestone = true;
+      if (from === 'proposed' && to === 'backlog') label = 'You approved this task.';
+      else if (from === 'backlog' && to === 'in_progress') label = `${actor} started working on this.`;
+      else if (from === 'in_progress' && to === 'review') label = 'This is waiting for your review.';
+      else if (from === 'review' && to === 'done') label = 'You approved the completed work.';
+      else if (from === 'review' && to === 'backlog') label = 'You returned this for more work.';
+      else if (from === 'in_progress' && to === 'backlog') label = 'Work was paused or blocked.';
+      else if (to === 'archive') label = 'This work was archived.';
+      else if (to === 'failed') label = 'This task failed.';
+      else isMilestone = false;
+
+      milestones.push({
+        type: 'status_change',
+        label,
+        detail: transition
+          ? `Status changed from ${from} to ${to}`
+          : (rawDetail || 'Status changed.'),
+        actor,
+        timestamp,
+        is_milestone: isMilestone,
+      });
+    }
+  }
+
+  milestones.sort((a, b) => {
+    const ta = Date.parse(a.timestamp || '') || 0;
+    const tb = Date.parse(b.timestamp || '') || 0;
+    if (ta !== tb) return ta - tb;
+    return (a.is_milestone === b.is_milestone) ? 0 : (a.is_milestone ? -1 : 1);
+  });
+  return milestones;
 }
 
 function stripHtmlTags(value) {
@@ -9683,6 +9875,60 @@ const server = createServer(async (req, res) => {
       });
       return;
     }
+  }
+
+  if (path.match(/^\/api\/tasks\/\d+\/journey$/) && req.method === 'GET') {
+    const taskId = Number(path.split('/')[3]);
+    if (!Number.isInteger(taskId) || taskId <= 0) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid task id' }));
+      return;
+    }
+    try {
+      const task = getTaskById(taskId);
+      if (!task) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Task not found' }));
+        return;
+      }
+      const rawEvents = getTaskJourneyEvents(taskId);
+      const milestones = translateJourneyEvents(task, rawEvents);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        task_id: taskId,
+        milestones,
+        generated_at: new Date().toISOString(),
+      }));
+    } catch (e) {
+      console.error('[API] /api/tasks/:id/journey error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Internal server error' }));
+    }
+    return;
+  }
+
+  if (path.match(/^\/api\/tasks\/\d+\/lineage$/) && req.method === 'GET') {
+    const taskId = Number(path.split('/')[3]);
+    if (!Number.isInteger(taskId) || taskId <= 0) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid task id' }));
+      return;
+    }
+    try {
+      const lineage = getTaskLineage(taskId);
+      if (!lineage) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Task not found' }));
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(lineage));
+    } catch (e) {
+      console.error('[API] /api/tasks/:id/lineage error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Internal server error' }));
+    }
+    return;
   }
 
 

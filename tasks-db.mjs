@@ -2852,3 +2852,282 @@ export function linkSessionToBrief(session_id, brief_id) {
   `).run(String(brief_id), String(session_id));
   return conn.prepare('SELECT * FROM import_sessions WHERE id = ?').get(String(session_id)) || null;
 }
+
+export function getTaskJourneyEvents(taskId) {
+  const conn = getDb();
+  const id = Number(taskId);
+  if (!Number.isInteger(id) || id <= 0) return [];
+
+  const tasksColumns = getTableColumns(conn, 'tasks');
+  if (!tasksColumns.size) return [];
+
+  const task = conn.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+  if (!task) return [];
+
+  const events = [];
+  const pushEvent = ({
+    type,
+    raw_action = null,
+    raw_detail = null,
+    actor = null,
+    timestamp = null,
+  }) => {
+    if (!timestamp) return;
+    events.push({
+      type,
+      raw_action,
+      raw_detail,
+      actor,
+      timestamp,
+    });
+  };
+
+  let importPlanTitle = null;
+  if (tasksColumns.has('source_import_session_id') && task.source_import_session_id && tableExists(conn, 'import_session_revisions')) {
+    const revisionsColumns = getTableColumns(conn, 'import_session_revisions');
+    if (revisionsColumns.has('session_id') && revisionsColumns.has('plan_title')) {
+      const orderBy = revisionsColumns.has('revision_no')
+        ? 'ORDER BY revision_no DESC'
+        : revisionsColumns.has('created_at')
+          ? 'ORDER BY datetime(created_at) DESC'
+          : '';
+      const row = conn.prepare(`
+        SELECT plan_title
+        FROM import_session_revisions
+        WHERE session_id = ?
+        ${orderBy}
+        LIMIT 1
+      `).get(String(task.source_import_session_id));
+      importPlanTitle = row?.plan_title || null;
+    }
+  }
+
+  pushEvent({
+    type: 'created',
+    raw_action: 'created',
+    raw_detail: importPlanTitle ? `Created from work request: ${importPlanTitle}` : 'Created manually.',
+    actor: task.created_by || 'system',
+    timestamp: task.created_at,
+  });
+
+  if (tasksColumns.has('brief_version_id') && task.brief_version_id && tableExists(conn, 'brief_versions')) {
+    const briefVersionColumns = getTableColumns(conn, 'brief_versions');
+    if (briefVersionColumns.has('id') && briefVersionColumns.has('approved_at')) {
+      const detailExpr = briefVersionColumns.has('plan_title') ? 'plan_title' : 'NULL AS plan_title';
+      const approvedByExpr = briefVersionColumns.has('approved_by') ? 'approved_by' : 'NULL AS approved_by';
+      const approved = conn.prepare(`
+        SELECT ${detailExpr}, ${approvedByExpr}, approved_at
+        FROM brief_versions
+        WHERE id = ?
+        LIMIT 1
+      `).get(String(task.brief_version_id));
+
+      if (approved?.approved_at) {
+        pushEvent({
+          type: 'brief_approved',
+          raw_action: 'brief_approved',
+          raw_detail: approved.plan_title ? `Approved plan: ${approved.plan_title}` : 'Work request approved.',
+          actor: approved.approved_by || 'operator',
+          timestamp: approved.approved_at,
+        });
+      }
+    }
+  }
+
+  if (tableExists(conn, 'task_history')) {
+    const historyColumns = getTableColumns(conn, 'task_history');
+    const hasRequired = historyColumns.has('task_id') && historyColumns.has('action') && historyColumns.has('created_at');
+    if (hasRequired) {
+      const actorExpr = historyColumns.has('actor') ? 'actor' : "'system' AS actor";
+      const detailExpr = historyColumns.has('detail') ? 'detail' : "'' AS detail";
+      const rows = conn.prepare(`
+        SELECT action, ${detailExpr}, ${actorExpr}, created_at
+        FROM task_history
+        WHERE task_id = ?
+        ORDER BY datetime(created_at) ASC, id ASC
+      `).all(id);
+      for (const row of rows) {
+        pushEvent({
+          type: 'history',
+          raw_action: row.action,
+          raw_detail: row.detail,
+          actor: row.actor,
+          timestamp: row.created_at,
+        });
+      }
+    }
+  }
+
+  if (tableExists(conn, 'task_handoffs')) {
+    const handoffColumns = getTableColumns(conn, 'task_handoffs');
+    if (handoffColumns.has('task_id') && handoffColumns.has('created_at')) {
+      const fromExpr = handoffColumns.has('from_agent') ? 'from_agent' : 'NULL AS from_agent';
+      const toExpr = handoffColumns.has('to_agent') ? 'to_agent' : 'NULL AS to_agent';
+      const outcomeExpr = handoffColumns.has('required_outcome') ? 'required_outcome' : 'NULL AS required_outcome';
+      const rows = conn.prepare(`
+        SELECT ${fromExpr}, ${toExpr}, ${outcomeExpr}, created_at
+        FROM task_handoffs
+        WHERE task_id = ?
+        ORDER BY datetime(created_at) ASC, id ASC
+      `).all(id);
+      for (const row of rows) {
+        pushEvent({
+          type: 'handoff',
+          raw_action: 'handoff',
+          raw_detail: JSON.stringify({ from: row.from_agent, to: row.to_agent, required_outcome: row.required_outcome }),
+          actor: row.from_agent || 'team',
+          timestamp: row.created_at,
+        });
+      }
+    }
+  }
+
+  if (tableExists(conn, 'task_artifacts')) {
+    const artifactColumns = getTableColumns(conn, 'task_artifacts');
+    if (artifactColumns.has('task_id') && artifactColumns.has('created_at')) {
+      const artifactTypeExpr = artifactColumns.has('artifact_type') ? 'artifact_type' : 'NULL AS artifact_type';
+      const createdByExpr = artifactColumns.has('created_by') ? 'created_by' : "'team' AS created_by";
+      const rows = conn.prepare(`
+        SELECT ${artifactTypeExpr}, ${createdByExpr}, created_at
+        FROM task_artifacts
+        WHERE task_id = ?
+        ORDER BY datetime(created_at) ASC, id ASC
+      `).all(id);
+      for (const row of rows) {
+        pushEvent({
+          type: 'artifact',
+          raw_action: 'artifact',
+          raw_detail: row.artifact_type || 'artifact',
+          actor: row.created_by || 'team',
+          timestamp: row.created_at,
+        });
+      }
+    }
+  }
+
+  if (tableExists(conn, 'task_audit')) {
+    const auditColumns = getTableColumns(conn, 'task_audit');
+    if (auditColumns.has('task_id') && auditColumns.has('action') && auditColumns.has('created_at')) {
+      const actorExpr = auditColumns.has('actor') ? 'actor' : "'system' AS actor";
+      const detailExpr = auditColumns.has('details') ? 'details' : 'NULL AS details';
+      const rows = conn.prepare(`
+        SELECT action, ${detailExpr}, ${actorExpr}, created_at
+        FROM task_audit
+        WHERE task_id = ?
+        ORDER BY datetime(created_at) ASC, id ASC
+      `).all(id);
+      for (const row of rows) {
+        pushEvent({
+          type: 'audit',
+          raw_action: row.action,
+          raw_detail: row.details,
+          actor: row.actor,
+          timestamp: row.created_at,
+        });
+      }
+    }
+  }
+
+  if (tasksColumns.has('stuck_severity') && task.stuck_severity) {
+    pushEvent({
+      type: 'stuck',
+      raw_action: 'stuck',
+      raw_detail: String(task.stuck_severity),
+      actor: 'system',
+      timestamp: task.updated_at || task.created_at,
+    });
+  }
+
+  return events.sort((a, b) => {
+    const ta = Date.parse(a.timestamp || '') || 0;
+    const tb = Date.parse(b.timestamp || '') || 0;
+    if (ta !== tb) return ta - tb;
+    return String(a.type || '').localeCompare(String(b.type || ''));
+  });
+}
+
+export function getTaskLineage(taskId) {
+  const conn = getDb();
+  const id = Number(taskId);
+  if (!Number.isInteger(id) || id <= 0) return null;
+
+  const tasksColumns = getTableColumns(conn, 'tasks');
+  if (!tasksColumns.size) return null;
+
+  const task = conn.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+  if (!task) return null;
+
+  let goal = null;
+  if (tasksColumns.has('goal_id') && task.goal_id && tableExists(conn, 'goals')) {
+    const goalColumns = getTableColumns(conn, 'goals');
+    if (goalColumns.has('id')) {
+      const titleExpr = goalColumns.has('title') ? 'title' : 'NULL AS title';
+      const statusExpr = goalColumns.has('status') ? 'status' : 'NULL AS status';
+      goal = conn.prepare(`SELECT id, ${titleExpr}, ${statusExpr} FROM goals WHERE id = ? LIMIT 1`).get(Number(task.goal_id)) || null;
+    }
+  }
+
+  let brief = null;
+  if (tasksColumns.has('brief_id') && task.brief_id && tableExists(conn, 'briefs')) {
+    const briefColumns = getTableColumns(conn, 'briefs');
+    if (briefColumns.has('id')) {
+      const titleExpr = briefColumns.has('title') ? 'title' : 'NULL AS title';
+      const sourceTypeExpr = briefColumns.has('source_type') ? 'source_type' : 'NULL AS source_type';
+      brief = conn.prepare(`SELECT id, ${titleExpr}, ${sourceTypeExpr} FROM briefs WHERE id = ? LIMIT 1`).get(String(task.brief_id)) || null;
+    }
+  }
+
+  let briefVersion = null;
+  if (tasksColumns.has('brief_version_id') && task.brief_version_id && tableExists(conn, 'brief_versions')) {
+    const versionColumns = getTableColumns(conn, 'brief_versions');
+    if (versionColumns.has('id')) {
+      const versionExpr = versionColumns.has('version_no') ? 'version_no' : 'NULL AS version_no';
+      const planExpr = versionColumns.has('plan_title') ? 'plan_title' : 'NULL AS plan_title';
+      const approvedByExpr = versionColumns.has('approved_by') ? 'approved_by' : 'NULL AS approved_by';
+      const approvedAtExpr = versionColumns.has('approved_at') ? 'approved_at' : 'NULL AS approved_at';
+      briefVersion = conn.prepare(`
+        SELECT id, ${versionExpr}, ${planExpr}, ${approvedByExpr}, ${approvedAtExpr}
+        FROM brief_versions
+        WHERE id = ?
+        LIMIT 1
+      `).get(String(task.brief_version_id)) || null;
+    }
+  }
+
+  const siblings = [];
+  if (tasksColumns.has('brief_version_id') && task.brief_version_id) {
+    const statusExpr = tasksColumns.has('status') ? 'status' : "'backlog' AS status";
+    const pauseExpr = tasksColumns.has('pause_state') ? 'pause_state' : "'active' AS pause_state";
+    const stuckExpr = tasksColumns.has('stuck_severity') ? 'stuck_severity' : 'NULL AS stuck_severity';
+    const cancelExpr = tasksColumns.has('cancel_requested_at') ? 'cancel_requested_at' : 'NULL AS cancel_requested_at';
+    const archivedExpr = tasksColumns.has('archived_reason') ? 'archived_reason' : 'NULL AS archived_reason';
+    const reassignExpr = tasksColumns.has('reassign_requested_at') ? 'reassign_requested_at' : 'NULL AS reassign_requested_at';
+    const reassignDoneExpr = tasksColumns.has('reassign_completed_at') ? 'reassign_completed_at' : 'NULL AS reassign_completed_at';
+    const rows = conn.prepare(`
+      SELECT id, title, ${statusExpr}, ${pauseExpr}, ${stuckExpr}, ${cancelExpr}, ${archivedExpr}, ${reassignExpr}, ${reassignDoneExpr}
+      FROM tasks
+      WHERE brief_version_id = ?
+        AND id != ?
+      ORDER BY datetime(created_at) ASC, id ASC
+    `).all(String(task.brief_version_id), id);
+
+    for (const sibling of rows) {
+      siblings.push({
+        id: sibling.id,
+        title: sibling.title,
+        status: sibling.status,
+        operator_status: computeOperatorStatus(sibling),
+      });
+    }
+  }
+
+  return {
+    task_id: task.id,
+    task_title: task.title,
+    goal,
+    brief,
+    brief_version: briefVersion,
+    siblings,
+    import_session_id: tasksColumns.has('source_import_session_id') ? (task.source_import_session_id || null) : null,
+  };
+}
