@@ -4858,6 +4858,8 @@ function buildWorkRequestResponsePayload(sessionRow, revisionRow, draftRows, ste
       id: sessionRow.id,
       session_status: sessionRow.session_status,
       goal_id: sessionRow.goal_id ?? null,
+      raw_input_text: sessionRow.raw_input_text ?? '',
+      title_override: sessionRow.title_override ?? null,
       active_revision_no: sessionRow.active_revision_no ?? null,
       created_at: sessionRow.created_at,
       last_error_code: sessionRow.last_error_code ?? null,
@@ -4877,6 +4879,7 @@ function buildWorkRequestResponsePayload(sessionRow, revisionRow, draftRows, ste
       draft_ref: d.draft_ref,
       title: d.title,
       display_summary: d.display_summary,
+      workstream_key: d.workstream_key,
       priority: d.priority,
       task_type: d.task_type,
       depends_on_refs_json: d.depends_on_refs_json,
@@ -8993,6 +8996,28 @@ const server = createServer(async (req, res) => {
       step2Model,
       config,
     )));
+    return;
+  }
+
+  if (path.match(/^\/api\/tasks\/work-requests\/[0-9a-f-]+$/) && req.method === 'PATCH') {
+    const sessionId = path.split('/').pop();
+    readJsonBody(req).then((body) => {
+      if (body?.session_status !== 'canceled') {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Only canceled status is supported' }));
+        return;
+      }
+      const existing = getImportSessionById(sessionId);
+      if (!existing?.session) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Work request session not found' }));
+        return;
+      }
+      updateImportSessionStatus(sessionId, 'canceled');
+      const updated = getImportSessionById(sessionId);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(buildWorkRequestResponsePayload(updated?.session, updated?.revision, updated?.drafts || [], { id: 'unknown' }, { id: 'unknown' }, loadWorkRequestConfig() || {})));
+    }).catch(() => { res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Invalid JSON body' })); });
     return;
   }
 
