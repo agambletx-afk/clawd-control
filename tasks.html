@@ -845,8 +845,8 @@
     .attention-stats { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
     .attention-stat-card {
       background: #1e2535;
-      border: 1px solid rgba(99, 102, 241, 0.12);
-      border-radius: 10px;
+      border: 1px solid #252835;
+      border-radius: 8px;
       padding: 12px 14px 12px 16px;
       position: relative;
       cursor: pointer;
@@ -857,8 +857,8 @@
       content: '';
       position: absolute;
       left: 0;
-      top: 10px;
-      bottom: 10px;
+      top: 6px;
+      bottom: 6px;
       width: 2px;
       border-radius: 2px;
       background: linear-gradient(to bottom, var(--tasks-domain, #6366f1), transparent);
@@ -868,8 +868,8 @@
 
     .attention-panel {
       background: #161b26;
-      border: 1px solid rgba(99, 102, 241, 0.12);
-      border-radius: 14px;
+      border: 1px solid #252835;
+      border-radius: 12px;
       padding: 18px 20px;
     }
     .attention-section-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
@@ -895,8 +895,8 @@
     .attention-empty { color: var(--text-tertiary); font-size: 0.8rem; padding: 8px 0; }
     .attention-item-card {
       background: #1e2535;
-      border: 1px solid rgba(99, 102, 241, 0.12);
-      border-radius: 10px;
+      border: 1px solid #252835;
+      border-radius: 8px;
       padding: 14px 16px;
       margin-bottom: 8px;
       position: relative;
@@ -2203,11 +2203,11 @@
         function renderAttentionSections() {
           const buckets = state.attentionBuckets || {};
           const sections = [
-            { key: 'needs_approval', id: 'attention-needs-approval', title: 'Needs Your Approval', subtitle: 'Plans and tasks waiting for your decision.' },
-            { key: 'stuck', id: 'attention-stuck', title: 'Stuck / At Risk', subtitle: 'Work that needs your attention.' },
-            { key: 'waiting_on_agents', id: 'attention-waiting-on-agents', title: 'Waiting on Agents', subtitle: 'Approved work the team is handling.' },
-            { key: 'ready_for_review', id: 'attention-ready-for-review', title: 'Ready for Review', subtitle: 'Completed work waiting for your sign-off.' },
-            { key: 'recently_completed', id: 'attention-recently-completed', title: 'Recently Completed', subtitle: 'Work finished in the last 24 hours.' },
+            { key: 'needs_approval', id: 'attention-needs-approval', title: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></svg>Needs Your Approval', subtitle: 'Plans and tasks waiting for your decision.' },
+            { key: 'stuck', id: 'attention-stuck', title: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>Stuck / At Risk', subtitle: 'Work that needs your attention.' },
+            { key: 'waiting_on_agents', id: 'attention-waiting-on-agents', title: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Waiting on Agents', subtitle: 'Approved work the team is handling.' },
+            { key: 'ready_for_review', id: 'attention-ready-for-review', title: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>Ready for Review', subtitle: 'Completed work waiting for your sign-off.' },
+            { key: 'recently_completed', id: 'attention-recently-completed', title: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>Recently Completed', subtitle: 'Work finished in the last 24 hours.' },
           ];
           const html = sections.map((section) => {
             const items = Array.isArray(buckets[section.key]) ? buckets[section.key] : [];
