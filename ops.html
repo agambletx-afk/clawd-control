@@ -2898,11 +2898,32 @@
       state.verificationError = '';
       renderVerification(window.__lastVerificationPayload || {});
       try {
-        const data = await api('/api/ops/verification/run', { method: 'POST' });
-        window.__lastVerificationPayload = data;
-        state.verificationError = '';
-        renderVerification(data);
-        toast('Verification completed');
+        const startRes = await api('/api/ops/verification/run', { method: 'POST' });
+        if (startRes.status === 'started') {
+          // Async mode: poll for results
+          for (let i = 0; i < 30; i++) {
+            await new Promise(r => setTimeout(r, 2000));
+            try {
+              const poll = await api('/api/ops/verification');
+              const ts = poll?.results?.timestamp || poll?.timestamp;
+              if (ts && (Date.now() - new Date(ts).getTime()) < 60000) {
+                window.__lastVerificationPayload = poll;
+                state.verificationError = '';
+                state.verificationRunning = false;
+                renderVerification(poll);
+                toast('Verification completed');
+                return;
+              }
+            } catch {}
+          }
+          state.verificationError = 'Verification timed out';
+          toast('Verification timed out');
+        } else {
+          window.__lastVerificationPayload = startRes;
+          state.verificationError = '';
+          renderVerification(startRes);
+          toast('Verification completed');
+        }
       } catch (error) {
         const fallback = window.__lastVerificationPayload || {};
         state.verificationError = error.message;
