@@ -2225,3 +2225,306 @@ export function getSessionTasks(session_id) {
     ORDER BY datetime(ts.created_at) ASC, ts.id ASC
   `).all(sessionId);
 }
+
+
+function tableExists(conn, tableName) {
+  const row = conn.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(tableName);
+  return !!row;
+}
+
+function getTableColumns(conn, tableName) {
+  if (!tableExists(conn, tableName)) return new Set();
+  return new Set(conn.prepare(`PRAGMA table_info(${tableName})`).all().map((row) => row.name));
+}
+
+function computeOperatorStatus(task) {
+  const hasCancelRequest = task.cancel_requested_at != null && task.archived_reason == null;
+  const hasReassignRequest = task.reassign_requested_at != null && task.reassign_completed_at == null;
+  if (task.pause_state === 'paused' || task.stuck_severity != null || hasCancelRequest || hasReassignRequest) {
+    return 'Stuck';
+  }
+  switch (task.status) {
+    case 'proposed':
+      return 'Proposed';
+    case 'backlog':
+    case 'in_progress':
+      return 'Working';
+    case 'review':
+      return 'Needs Review';
+    case 'done':
+      return 'Done';
+    case 'failed':
+      return 'Stuck';
+    default:
+      return 'Working';
+  }
+}
+
+function priorityWeight(priority) {
+  return ({ critical: 4, high: 3, medium: 2, low: 1 })[priority] || 0;
+}
+
+function statusWeight(status) {
+  return ({ in_progress: 2, backlog: 1 })[status] || 0;
+}
+
+function stuckWeight(task) {
+  if (task.stuck_severity === 'red') return 4;
+  if (task.stuck_severity === 'yellow') return 3;
+  if (task.pause_state === 'paused') return 2;
+  return 1;
+}
+
+function toEpoch(value, fallback = 0) {
+  if (!value) return fallback;
+  const n = Date.parse(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function isClaimActive(task) {
+  if (!task.claimed_by || !task.claim_expires_at) return false;
+  const expiresAt = toEpoch(task.claim_expires_at, 0);
+  return expiresAt > Date.now();
+}
+
+function mapOwnerLabel(task) {
+  if (isClaimActive(task)) return 'Team';
+  if (task.assigned_agent != null) return 'Team';
+  return 'Unassigned';
+}
+
+function normalizeTaskRows(rows) {
+  return rows.map((task) => ({
+    item_type: 'task',
+    id: task.id,
+    title: task.title,
+    status: task.status,
+    operator_status: computeOperatorStatus(task),
+    priority: task.priority,
+    task_type: task.task_type ?? null,
+    goal_title: task.goal_title ?? null,
+    brief_title: task.brief_title ?? null,
+    current_owner: mapOwnerLabel(task),
+    latest_milestone: task.latest_milestone ?? null,
+    updated_at: task.updated_at,
+    last_progress_at: task.last_progress_at,
+    stuck_severity: task.stuck_severity ?? null,
+    pause_state: task.pause_state ?? null,
+    cancel_requested_at: task.cancel_requested_at ?? null,
+    reassign_requested_at: task.reassign_requested_at ?? null,
+    archived_reason: task.archived_reason ?? null,
+    reassign_completed_at: task.reassign_completed_at ?? null,
+    entered_review_at: task.entered_review_at ?? null,
+    requires_scope_reapproval: Number(task.requires_scope_reapproval || 0),
+  }));
+}
+
+function getTaskAttentionSourceRows() {
+  const conn = getDb();
+  const tasksColumns = getTableColumns(conn, 'tasks');
+  if (!tasksColumns.size) return [];
+  const goalsColumns = getTableColumns(conn, 'goals');
+  const briefsColumns = getTableColumns(conn, 'briefs');
+  const hasGoalsTable = goalsColumns.size > 0;
+  const hasBriefsTable = briefsColumns.size > 0;
+
+  const taskField = (column, fallback = 'NULL') => (tasksColumns.has(column) ? `t.${column}` : `${fallback}`);
+  const goalTitleExpr = hasGoalsTable && goalsColumns.has('title') ? 'g.title' : 'NULL';
+  const briefTitleExpr = hasBriefsTable && briefsColumns.has('title') ? 'b.title' : 'NULL';
+  const goalsJoinClause = hasGoalsTable
+    ? `LEFT JOIN goals g ON ${tasksColumns.has('goal_id') ? 'g.id = t.goal_id' : '1=0'}`
+    : '';
+  const briefsJoinClause = hasBriefsTable
+    ? `LEFT JOIN briefs b ON ${tasksColumns.has('brief_id') ? 'b.id = t.brief_id' : '1=0'}`
+    : '';
+
+  const sql = `
+    SELECT
+      t.id,
+      t.title,
+      ${taskField('status', "'backlog'")} AS status,
+      ${taskField('priority', "'medium'")} AS priority,
+      ${taskField('task_type')} AS task_type,
+      ${taskField('assigned_agent')} AS assigned_agent,
+      ${taskField('claimed_by')} AS claimed_by,
+      ${taskField('claim_expires_at')} AS claim_expires_at,
+      ${taskField('updated_at')} AS updated_at,
+      ${taskField('last_progress_at', 't.updated_at')} AS last_progress_at,
+      ${taskField('stuck_severity')} AS stuck_severity,
+      ${taskField('pause_state', "'active'")} AS pause_state,
+      ${taskField('cancel_requested_at')} AS cancel_requested_at,
+      ${taskField('reassign_requested_at')} AS reassign_requested_at,
+      ${taskField('reassign_completed_at')} AS reassign_completed_at,
+      ${taskField('archived_reason')} AS archived_reason,
+      ${taskField('entered_review_at')} AS entered_review_at,
+      ${taskField('requires_scope_reapproval', '0')} AS requires_scope_reapproval,
+      ${taskField('latest_milestone')} AS latest_milestone,
+      ${goalTitleExpr} AS goal_title,
+      ${briefTitleExpr} AS brief_title
+    FROM tasks t
+    ${goalsJoinClause}
+    ${briefsJoinClause}
+  `;
+
+  return normalizeTaskRows(conn.prepare(sql).all());
+}
+
+function getNeedsApprovalProposals() {
+  const conn = getDb();
+  const sessionColumns = getTableColumns(conn, 'import_sessions');
+  const revisionColumns = getTableColumns(conn, 'import_session_revisions');
+  if (!sessionColumns.size || !revisionColumns.size) return [];
+
+  const hasRevisionNo = sessionColumns.has('active_revision_no') && revisionColumns.has('revision_no');
+  const hasRevisionId = sessionColumns.has('active_revision_id') && revisionColumns.has('id');
+  let revisionJoin = '1=0';
+  if (hasRevisionNo) {
+    revisionJoin = 'r.session_id = s.id AND r.revision_no = s.active_revision_no';
+  } else if (hasRevisionId) {
+    revisionJoin = 'r.id = s.active_revision_id';
+  }
+
+  return conn.prepare(`
+    SELECT
+      'proposal' AS item_type,
+      s.id AS session_id,
+      s.session_status,
+      r.plan_title,
+      r.request_restatement,
+      CAST(NULL AS TEXT) AS goal_title,
+      r.revision_no,
+      s.created_at,
+      s.updated_at
+    FROM import_sessions s
+    LEFT JOIN import_session_revisions r ON ${revisionJoin}
+    WHERE s.session_status IN ('awaiting_operator_decision', 'awaiting_operator_redecision')
+    ORDER BY datetime(s.created_at) ASC, s.id ASC
+  `).all();
+}
+
+function buildAttentionBucketsFromRows(taskRows, proposalRows) {
+  const buckets = {
+    needs_approval: [],
+    stuck: [],
+    waiting_on_agents: [],
+    ready_for_review: [],
+    recently_completed: [],
+  };
+
+  buckets.needs_approval.push(...proposalRows);
+
+  for (const task of taskRows) {
+    const hasCancelRequest = task.cancel_requested_at != null && task.archived_reason == null;
+    const hasReassignRequest = task.reassign_requested_at != null && task.reassign_completed_at == null;
+    const isStuck = task.stuck_severity != null || task.pause_state === 'paused' || hasCancelRequest || hasReassignRequest;
+
+    if (Number(task.requires_scope_reapproval || 0) === 1) {
+      buckets.needs_approval.push(task);
+    }
+
+    if (isStuck) {
+      buckets.stuck.push(task);
+    }
+
+    if ((task.status === 'backlog' || task.status === 'in_progress')
+      && task.stuck_severity == null
+      && task.pause_state === 'active'
+      && task.cancel_requested_at == null
+      && task.reassign_requested_at == null
+      && Number(task.requires_scope_reapproval || 0) === 0) {
+      buckets.waiting_on_agents.push(task);
+    }
+
+    if (task.status === 'review') {
+      buckets.ready_for_review.push(task);
+    }
+
+    if (task.status === 'done' && toEpoch(task.updated_at, 0) >= (Date.now() - (24 * 60 * 60 * 1000))) {
+      buckets.recently_completed.push(task);
+    }
+  }
+
+  buckets.needs_approval.sort((a, b) => {
+    if (a.item_type === 'proposal' && b.item_type === 'proposal') {
+      const ca = toEpoch(a.created_at, 0);
+      const cb = toEpoch(b.created_at, 0);
+      if (ca !== cb) return ca - cb;
+      return String(a.session_id).localeCompare(String(b.session_id));
+    }
+    if (a.item_type === 'proposal' && b.item_type !== 'proposal') return -1;
+    if (a.item_type !== 'proposal' && b.item_type === 'proposal') return 1;
+    const p = priorityWeight(b.priority) - priorityWeight(a.priority);
+    if (p !== 0) return p;
+    const ua = toEpoch(a.updated_at, Number.MAX_SAFE_INTEGER);
+    const ub = toEpoch(b.updated_at, Number.MAX_SAFE_INTEGER);
+    if (ua !== ub) return ua - ub;
+    return a.id - b.id;
+  });
+
+  buckets.stuck.sort((a, b) => {
+    const s = stuckWeight(b) - stuckWeight(a);
+    if (s !== 0) return s;
+    const lpa = toEpoch(a.last_progress_at, Number.MAX_SAFE_INTEGER);
+    const lpb = toEpoch(b.last_progress_at, Number.MAX_SAFE_INTEGER);
+    if (lpa !== lpb) return lpa - lpb;
+    const p = priorityWeight(b.priority) - priorityWeight(a.priority);
+    if (p !== 0) return p;
+    return a.id - b.id;
+  });
+
+  buckets.waiting_on_agents.sort((a, b) => {
+    const st = statusWeight(b.status) - statusWeight(a.status);
+    if (st !== 0) return st;
+    const p = priorityWeight(b.priority) - priorityWeight(a.priority);
+    if (p !== 0) return p;
+    const lpa = toEpoch(a.last_progress_at, 0);
+    const lpb = toEpoch(b.last_progress_at, 0);
+    if (lpa !== lpb) return lpb - lpa;
+    return a.id - b.id;
+  });
+
+  buckets.ready_for_review.sort((a, b) => {
+    const era = toEpoch(a.entered_review_at || a.updated_at, Number.MAX_SAFE_INTEGER);
+    const erb = toEpoch(b.entered_review_at || b.updated_at, Number.MAX_SAFE_INTEGER);
+    if (era !== erb) return era - erb;
+    const p = priorityWeight(b.priority) - priorityWeight(a.priority);
+    if (p !== 0) return p;
+    return a.id - b.id;
+  });
+
+  buckets.recently_completed.sort((a, b) => {
+    const ua = toEpoch(a.updated_at, 0);
+    const ub = toEpoch(b.updated_at, 0);
+    if (ua !== ub) return ub - ua;
+    return a.id - b.id;
+  });
+
+  return buckets;
+}
+
+export function getAttentionReadModel() {
+  const taskRows = getTaskAttentionSourceRows();
+  const proposalRows = getNeedsApprovalProposals();
+  const buckets = buildAttentionBucketsFromRows(taskRows, proposalRows);
+  return {
+    buckets,
+    generated_at: new Date().toISOString(),
+  };
+}
+
+export function getAttentionStats() {
+  const taskRows = getTaskAttentionSourceRows();
+  const proposalRows = getNeedsApprovalProposals();
+  const buckets = buildAttentionBucketsFromRows(taskRows, proposalRows);
+  const startOfDay = new Date();
+  startOfDay.setUTCHours(0, 0, 0, 0);
+
+  return {
+    needs_approval: buckets.needs_approval.length,
+    ready_for_review: buckets.ready_for_review.length,
+    stuck: buckets.stuck.length,
+    waiting_on_agents: buckets.waiting_on_agents.length,
+    completed_today: taskRows.filter((task) => task.status === 'done' && toEpoch(task.updated_at, 0) >= startOfDay.getTime()).length,
+    generated_at: new Date().toISOString(),
+  };
+}
