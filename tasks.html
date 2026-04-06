@@ -839,6 +839,115 @@
     .template-step-row { display:grid; grid-template-columns: 70px 1.1fr 1fr 120px 140px 40px; gap:8px; margin-top:8px; }
     .template-step-row input, .template-step-row select { width:100%; }
 
+    :root { --tasks-domain: #6366f1; }
+    .attention-view { display: flex; flex-direction: column; gap: 16px; }
+    #attentionSections { display: flex; flex-direction: column; gap: 16px; }
+    .attention-stats { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+    .attention-stat-card {
+      background: #1e2535;
+      border: 1px solid rgba(99, 102, 241, 0.12);
+      border-radius: 10px;
+      padding: 12px 14px 12px 16px;
+      position: relative;
+      cursor: pointer;
+      transition: border-color 150ms ease, transform 150ms ease;
+    }
+    .attention-stat-card:hover { border-color: rgba(99, 102, 241, 0.4); transform: translateY(-1px); }
+    .attention-stat-card::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 10px;
+      bottom: 10px;
+      width: 2px;
+      border-radius: 2px;
+      background: linear-gradient(to bottom, var(--tasks-domain, #6366f1), transparent);
+    }
+    .attention-stat-card .label { font-size: 0.72rem; color: var(--text-secondary); margin-bottom: 6px; }
+    .attention-stat-card .value { font-size: 1.35rem; font-weight: 700; color: var(--text-primary); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+    .attention-panel {
+      background: #161b26;
+      border: 1px solid rgba(99, 102, 241, 0.12);
+      border-radius: 14px;
+      padding: 18px 20px;
+    }
+    .attention-section-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+    .attention-title-wrap { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .tasks-domain-capsule { width: 14px; height: 4px; border-radius: 2px; background: var(--tasks-domain, #6366f1); flex-shrink: 0; }
+    .attention-panel-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+      text-shadow: 0 0 8px rgba(99, 102, 241, 0.45);
+    }
+    .attention-count-badge {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      border: 1px solid rgba(99, 102, 241, 0.35);
+      border-radius: 999px;
+      font-size: 0.68rem;
+      color: var(--text-secondary);
+      padding: 2px 8px;
+    }
+    .attention-subtitle { color: var(--text-tertiary); font-size: 0.75rem; margin-bottom: 12px; }
+    .attention-card-list { display: flex; flex-direction: column; }
+    .attention-empty { color: var(--text-tertiary); font-size: 0.8rem; padding: 8px 0; }
+    .attention-item-card {
+      background: #1e2535;
+      border: 1px solid rgba(99, 102, 241, 0.12);
+      border-radius: 10px;
+      padding: 14px 16px;
+      margin-bottom: 8px;
+      position: relative;
+    }
+    .attention-item-card.is-task { cursor: pointer; transition: border-color 150ms ease, transform 150ms ease; }
+    .attention-item-card.is-task:hover { border-color: rgba(99, 102, 241, 0.4); transform: translateY(-1px); }
+    .attention-item-card.is-proposal::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 12px;
+      bottom: 12px;
+      width: 2px;
+      border-radius: 2px;
+      background: #6366f1;
+    }
+    .attention-item-title { font-size: 0.9rem; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; }
+    .attention-item-breadcrumb, .attention-item-muted { color: var(--text-tertiary); font-size: 0.75rem; margin-bottom: 4px; }
+    .attention-status-chip {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 2px 8px;
+      color: #fff;
+      font-size: 0.68rem;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .attention-item-stuck { color: #f59e0b; font-size: 0.75rem; margin-top: 4px; }
+    .attention-toggle-btn {
+      background: transparent;
+      color: #6366f1;
+      border: none;
+      font-size: 0.75rem;
+      padding: 0;
+      margin-top: 6px;
+      cursor: pointer;
+      text-decoration: underline;
+    }
+    .attention-empty-state {
+      text-align: center;
+      padding: 28px 16px;
+      color: var(--text-secondary);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      align-items: center;
+      justify-content: center;
+      min-height: 180px;
+    }
+
     @media (max-width: 980px) {
       .stats-bar { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
       .page-header h1 { font-size: 1.7rem; }
@@ -857,13 +966,22 @@
     </div>
 
     <div class="sub-nav" id="tasksSubNav">
-      <button class="sub-nav-btn active" data-view="board">Board</button>
+      <button class="sub-nav-btn active" data-view="attention">Attention</button>
+      <button class="sub-nav-btn" data-view="workboard">Workboard</button>
       <button class="sub-nav-btn" data-view="pipelines">Pipelines</button>
-      <button class="sub-nav-btn" data-view="templates">Templates</button>
       <button class="sub-nav-btn" data-view="queue">My Queue</button>
     </div>
 
-    <div id="boardView">
+    <div id="attentionView" class="attention-view">
+      <section class="attention-stats" id="attentionStats"></section>
+      <div id="attentionEmptyState" class="attention-panel attention-empty-state" style="display:none">
+        <div>You're all caught up. No tasks need your attention.</div>
+        <button class="btn btn-primary" disabled>New Work Request</button>
+      </div>
+      <section id="attentionSections"></section>
+    </div>
+
+    <div id="boardView" style="display:none">
       <section class="stats-bar" id="statsBar">
         <div class="stat"><div class="k">Total Tasks</div><div class="v" id="statTotal">0</div></div>
         <div class="stat"><div class="k">Completion Rate</div><div class="v" id="statCompletion">0%</div></div>
@@ -1035,6 +1153,11 @@
           panelTab: 'overview',
           templates: [],
           templateEditor: null,
+          attentionStats: null,
+          attentionBuckets: null,
+          attentionCollapsedCompleted: true,
+          activeView: 'attention',
+          attentionPollTimer: null,
         };
 
         const cstFormatter = new Intl.DateTimeFormat('en-US', {
@@ -1055,6 +1178,34 @@
         };
         const esc = (s) => String(s ?? '').replace(/[&<>\"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
         function normalizeStatus(s) { return (s || '').toLowerCase().replace(/[- ]/g, '_'); }
+        function relativeTime(iso) {
+          if (!iso) return 'just now';
+          const ts = Date.parse(iso);
+          if (!Number.isFinite(ts)) return 'just now';
+          const diffMs = Date.now() - ts;
+          const abs = Math.abs(diffMs);
+          const minutes = Math.floor(abs / 60000);
+          const hours = Math.floor(abs / 3600000);
+          const days = Math.floor(abs / 86400000);
+          if (minutes < 1) return 'just now';
+          if (minutes < 60) return `${minutes}m ago`;
+          if (hours < 24) return `${hours}h ago`;
+          return `${days}d ago`;
+        }
+        function attentionChipStyle(operatorStatus) {
+          const status = String(operatorStatus || '').toLowerCase();
+          if (status === 'proposed') return { label: 'Proposed', color: '#6366f1' };
+          if (status === 'working') return { label: 'Working', color: '#3b82f6' };
+          if (status === 'needs review') return { label: 'Needs Review', color: '#f59e0b' };
+          if (status === 'done') return { label: 'Done', color: '#22c55e' };
+          if (status === 'stuck') return { label: 'Stuck', color: '#ef4444' };
+          return { label: operatorStatus || 'Unknown', color: '#6366f1' };
+        }
+        function attentionBreadcrumb(item) {
+          if (item.goal_title && item.brief_title) return `${item.goal_title} > ${item.brief_title}`;
+          if (item.brief_title) return item.brief_title;
+          return '';
+        }
 
 
         async function loadTaskTypes() {
@@ -1068,24 +1219,34 @@
         }
 
         function switchView(view) {
+          const allowed = new Set(['attention', 'workboard', 'pipelines', 'queue']);
+          const resolvedView = allowed.has(view) ? view : 'attention';
+          state.activeView = resolvedView;
           document.querySelectorAll('.sub-nav-btn').forEach((btn) => {
-            btn.classList.toggle('active', btn.dataset.view === view);
+            btn.classList.toggle('active', btn.dataset.view === resolvedView);
           });
-          document.getElementById('boardView').style.display = view === 'board' ? '' : 'none';
-          document.getElementById('pipelinesView').style.display = view === 'pipelines' ? '' : 'none';
-          document.getElementById('queueView').style.display = view === 'queue' ? '' : 'none';
-          document.getElementById('tasks-templates-view').style.display = view === 'templates' ? '' : 'none';
-          if (location.hash !== `#${view}`) {
-            location.hash = view;
+          document.getElementById('attentionView').style.display = resolvedView === 'attention' ? '' : 'none';
+          document.getElementById('boardView').style.display = resolvedView === 'workboard' ? '' : 'none';
+          document.getElementById('pipelinesView').style.display = resolvedView === 'pipelines' ? '' : 'none';
+          document.getElementById('queueView').style.display = resolvedView === 'queue' ? '' : 'none';
+          document.getElementById('tasks-templates-view').style.display = 'none';
+          if (location.hash !== `#${resolvedView}`) {
+            location.hash = resolvedView;
           }
-          if (view === 'pipelines') {
+          if (resolvedView === 'attention') {
+            refreshAttention().catch((err) => console.error('Attention load failed:', err));
+            startAttentionPolling();
+          } else {
+            stopAttentionPolling();
+          }
+          if (resolvedView === 'workboard') {
+            refreshAll().catch((err) => console.error('Workboard refresh failed:', err));
+          }
+          if (resolvedView === 'pipelines') {
             renderPipelines();
           }
-          if (view === 'queue') {
+          if (resolvedView === 'queue') {
             renderQueue();
-          }
-          if (view === 'templates') {
-            renderTemplates();
           }
         }
 
@@ -1369,7 +1530,7 @@
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || 'Failed to instantiate pipeline');
           await refreshAll();
-          switchView('board');
+          switchView('workboard');
           notify('Pipeline created.');
         }
 
@@ -1982,6 +2143,128 @@
           state.stats = await res.json();
         }
 
+        async function loadAttentionStats() {
+          const res = await fetch('/api/tasks/attention/stats', FETCH_OPTS);
+          if (!res.ok) throw new Error('Failed to fetch attention stats');
+          state.attentionStats = await res.json();
+        }
+
+        async function loadAttentionBuckets() {
+          const res = await fetch('/api/tasks/attention', FETCH_OPTS);
+          if (!res.ok) throw new Error('Failed to fetch attention buckets');
+          const data = await res.json();
+          state.attentionBuckets = data?.buckets || {};
+        }
+
+        function renderAttentionStats() {
+          const stats = state.attentionStats || {};
+          const cards = [
+            { label: 'Needs Approval', key: 'needs_approval', section: 'attention-needs-approval', color: '#6366f1' },
+            { label: 'Ready for Review', key: 'ready_for_review', section: 'attention-ready-for-review', color: '#6366f1' },
+            { label: 'Tasks Stuck', key: 'stuck', section: 'attention-stuck', color: Number(stats.stuck || 0) > 0 ? '#ef4444' : '#6366f1' },
+            { label: 'Waiting on Agents', key: 'waiting_on_agents', section: 'attention-waiting-on-agents', color: '#6366f1' },
+            { label: 'Completed Today', key: 'completed_today', section: 'attention-recently-completed', color: Number(stats.completed_today || 0) > 0 ? '#22c55e' : '#6366f1' },
+          ];
+          document.getElementById('attentionStats').innerHTML = cards.map((card) => `
+            <button class="attention-stat-card" type="button" data-scroll-target="${card.section}" style="--tasks-domain:${card.color}">
+              <div class="label">${card.label}</div>
+              <div class="value">${fmtNum(stats[card.key] || 0)}</div>
+            </button>
+          `).join('');
+        }
+
+        function renderAttentionItem(item, bucketKey) {
+          if (item.item_type === 'proposal') {
+            return `
+              <article class="attention-item-card is-proposal">
+                <div class="attention-item-title">${esc(item.plan_title || 'Untitled Plan')}</div>
+                <div class="attention-item-muted">${esc(item.request_restatement || 'No description')}</div>
+                <div class="attention-status-chip" style="background:#6366f1">Needs Approval</div>
+                <div class="attention-item-muted">Submitted ${relativeTime(item.created_at)}</div>
+              </article>
+            `;
+          }
+          const chip = attentionChipStyle(item.operator_status);
+          const breadcrumb = attentionBreadcrumb(item);
+          const progressTime = relativeTime(item.last_progress_at || item.updated_at);
+          return `
+            <article class="attention-item-card is-task" data-task-id="${item.id}">
+              <div class="attention-item-title">${esc(item.title || `Task #${item.id}`)}</div>
+              ${breadcrumb ? `<div class="attention-item-breadcrumb">${esc(breadcrumb)}</div>` : ''}
+              <div class="attention-status-chip" style="background:${chip.color}">${esc(chip.label)}</div>
+              <div class="attention-item-muted">Owner: ${esc(item.current_owner || 'Unassigned')}</div>
+              <div class="attention-item-muted">${esc(item.latest_milestone || 'No activity yet')}</div>
+              <div class="attention-item-muted">Updated ${relativeTime(item.updated_at)}</div>
+              ${bucketKey === 'stuck' ? `<div class="attention-item-stuck">No progress for ${progressTime}</div>` : ''}
+            </article>
+          `;
+        }
+
+        function renderAttentionSections() {
+          const buckets = state.attentionBuckets || {};
+          const sections = [
+            { key: 'needs_approval', id: 'attention-needs-approval', title: 'Needs Your Approval', subtitle: 'Plans and tasks waiting for your decision.' },
+            { key: 'stuck', id: 'attention-stuck', title: 'Stuck / At Risk', subtitle: 'Work that needs your attention.' },
+            { key: 'waiting_on_agents', id: 'attention-waiting-on-agents', title: 'Waiting on Agents', subtitle: 'Approved work the team is handling.' },
+            { key: 'ready_for_review', id: 'attention-ready-for-review', title: 'Ready for Review', subtitle: 'Completed work waiting for your sign-off.' },
+            { key: 'recently_completed', id: 'attention-recently-completed', title: 'Recently Completed', subtitle: 'Work finished in the last 24 hours.' },
+          ];
+          const html = sections.map((section) => {
+            const items = Array.isArray(buckets[section.key]) ? buckets[section.key] : [];
+            const shouldCollapse = section.key === 'recently_completed' && items.length > 10;
+            const visibleItems = shouldCollapse && state.attentionCollapsedCompleted ? items.slice(0, 10) : items;
+            const cardsHtml = visibleItems.length
+              ? visibleItems.map((item) => renderAttentionItem(item, section.key)).join('')
+              : '<div class="attention-empty">Nothing here right now.</div>';
+            return `
+              <section class="attention-panel" id="${section.id}">
+                <div class="attention-section-header">
+                  <div class="attention-title-wrap">
+                    <span class="tasks-domain-capsule"></span>
+                    <div class="attention-panel-title">${section.title}</div>
+                  </div>
+                  <div class="attention-count-badge">${fmtNum(items.length)}</div>
+                </div>
+                <div class="attention-subtitle">${section.subtitle}</div>
+                <div class="attention-card-list">${cardsHtml}</div>
+                ${shouldCollapse ? `<button type="button" class="attention-toggle-btn" id="attentionCompletedToggle">${state.attentionCollapsedCompleted ? 'Show All' : 'Show Less'}</button>` : ''}
+              </section>
+            `;
+          }).join('');
+          document.getElementById('attentionSections').innerHTML = html;
+        }
+
+        function renderAttentionEmptyState() {
+          const stats = state.attentionStats || {};
+          const buckets = state.attentionBuckets || {};
+          const totalStats = ['needs_approval', 'ready_for_review', 'stuck', 'waiting_on_agents', 'completed_today']
+            .reduce((sum, key) => sum + Number(stats[key] || 0), 0);
+          const totalBuckets = ['needs_approval', 'stuck', 'waiting_on_agents', 'ready_for_review', 'recently_completed']
+            .reduce((sum, key) => sum + (Array.isArray(buckets[key]) ? buckets[key].length : 0), 0);
+          document.getElementById('attentionEmptyState').style.display = (totalStats === 0 && totalBuckets === 0) ? '' : 'none';
+        }
+
+        async function refreshAttention() {
+          await Promise.all([loadAttentionStats(), loadAttentionBuckets()]);
+          renderAttentionStats();
+          renderAttentionSections();
+          renderAttentionEmptyState();
+        }
+
+        function startAttentionPolling() {
+          if (state.attentionPollTimer) return;
+          state.attentionPollTimer = setInterval(() => {
+            if (state.activeView !== 'attention') return;
+            refreshAttention().catch((err) => console.error('Attention auto-refresh failed:', err));
+          }, 30000);
+        }
+
+        function stopAttentionPolling() {
+          if (!state.attentionPollTimer) return;
+          clearInterval(state.attentionPollTimer);
+          state.attentionPollTimer = null;
+        }
+
         async function refreshAll() {
           await Promise.all([loadTasks(), loadStats()]);
           renderStats();
@@ -2003,6 +2286,28 @@
         document.getElementById('tasksSubNav').addEventListener('click', (e) => {
           const btn = e.target.closest('.sub-nav-btn');
           if (btn) switchView(btn.dataset.view);
+        });
+
+        document.getElementById('attentionStats').addEventListener('click', (e) => {
+          const target = e.target.closest('[data-scroll-target]');
+          if (!target) return;
+          const section = document.getElementById(target.dataset.scrollTarget);
+          if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+
+        document.getElementById('attentionSections').addEventListener('click', (e) => {
+          if (e.target.id === 'attentionCompletedToggle') {
+            state.attentionCollapsedCompleted = !state.attentionCollapsedCompleted;
+            renderAttentionSections();
+            renderAttentionEmptyState();
+            return;
+          }
+          const card = e.target.closest('.attention-item-card.is-task');
+          if (!card) return;
+          const taskId = Number(card.dataset.taskId);
+          if (Number.isInteger(taskId)) {
+            openPanel(taskId).catch((err) => alert(err.message));
+          }
         });
 
 
@@ -2102,7 +2407,13 @@
           runAction(state.selectedTaskId, btn.dataset.action);
         });
 
-        const initialView = location.hash === '#queue' ? 'queue' : (location.hash === '#templates' ? 'templates' : (location.hash === '#pipelines' ? 'pipelines' : 'board'));
+        window.addEventListener('hashchange', () => {
+          const nextView = (location.hash || '').replace(/^#/, '');
+          switchView(nextView);
+        });
+
+        const hashView = (location.hash || '').replace(/^#/, '');
+        const initialView = ['attention', 'workboard', 'pipelines', 'queue'].includes(hashView) ? hashView : 'attention';
         switchView(initialView);
 
         if (window.__tasksPollTimer) clearInterval(window.__tasksPollTimer);
@@ -2110,13 +2421,7 @@
           console.error(err);
           alert('Failed to load tasks board.');
         });
-        window.__tasksPollTimer = setInterval(() => {
-          refreshAll().then(() => {
-            if (location.hash === '#pipelines') renderPipelines();
-            if (location.hash === '#queue') renderQueue();
-            if (location.hash === '#templates') renderTemplates();
-          }).catch((err) => console.error('Tasks auto-refresh failed:', err));
-        }, 10000);
+        window.__tasksPollTimer = null;
       }
 
       initTasksTab();
