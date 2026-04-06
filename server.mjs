@@ -8873,7 +8873,7 @@ const server = createServer(async (req, res) => {
         created_by: 'operator',
         goal_id: goalId,
         session_status: 'processing',
-        input_type: 'free_text',
+        input_type: 'plain_text',
         raw_input_text: sanitizedInput,
         input_hash: inputHash || createHash('sha256').update(`${normalizeWorkRequestInput(sanitizedInput)}|${goalId || ''}`).digest('hex'),
         idempotency_key: idempotencyKey,
