@@ -1125,6 +1125,7 @@ function chooseStep1TierPrompt(inputText) {
 }
 
 async function callOpenAiCompatChat(modelConfig, body) {
+  if (modelConfig?.api === 'codex-responses') return callCodexResponses(modelConfig, body);
   const baseUrl = String(modelConfig?.baseUrl || '').trim().replace(/\/+$/, '');
   if (!baseUrl) throw new Error(`Missing baseUrl for model: ${modelConfig?.id || 'unknown'}`);
   const apiKeyEnv = String(modelConfig?.apiKeyEnv || '').trim();
@@ -1147,6 +1148,44 @@ async function callOpenAiCompatChat(modelConfig, body) {
   return response.json();
 }
 
+
+async function callCodexResponses(modelConfig, body) {
+  const authProfilePath = '/home/openclaw/.openclaw/agents/main/agent/auth-profiles.json';
+  let accessToken;
+  try {
+    const profiles = JSON.parse(readFileSync(authProfilePath, 'utf8'));
+    accessToken = profiles?.profiles?.['openai-codex:default']?.access;
+    if (!accessToken) throw new Error('No openai-codex access token');
+  } catch (err) {
+    throw new Error('OAuth token error: ' + err.message);
+  }
+  const sysMsg = (body.messages || []).find(m => m.role === 'system');
+  const otherMsgs = (body.messages || []).filter(m => m.role !== 'system');
+  const reqBody = {
+    model: body.model,
+    instructions: sysMsg?.content || 'You are a helpful assistant.',
+    input: otherMsgs.map(m => ({ role: m.role, content: m.content })),
+    store: false, stream: true,
+  };
+  const res = await fetch('https://chatgpt.com/backend-api/codex/responses', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + accessToken },
+    body: JSON.stringify(reqBody),
+  });
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error('Codex HTTP ' + res.status + ': ' + t.slice(0, 500));
+  }
+  const raw = await res.text();
+  let out = '';
+  for (const ln of raw.split('\n')) {
+    if (!ln.startsWith('data: ')) continue;
+    const p = ln.slice(6);
+    if (p === '[DONE]') break;
+    try { const e = JSON.parse(p); if (e.type === 'response.output_text.delta') out += e.delta || ''; } catch(_){}
+  }
+  return { choices: [{ message: { role: 'assistant', content: out } }] };
+}
 function extractAssistantContent(completion) {
   const content = completion?.choices?.[0]?.message?.content;
   if (typeof content === 'string') return content;
@@ -1209,9 +1248,19 @@ function validateAndNormalizeWorkRequestResult(raw, validationConfig = {}) {
       .map((item) => sanitizePlainText(item, 20)).filter(Boolean),
   }));
 
-  const totalSteps = result.workstreams.reduce((count, item) => count + item.steps.length, 0);
-  if (result.workstreams.length < 1 || totalSteps < 3 || totalSteps > 7) {
-    throw new Error('workstreams must include between 3 and 7 total steps');
+  let totalSteps = result.workstreams.reduce((count, item) => count + item.steps.length, 0);
+  if (result.workstreams.length < 1 || totalSteps < 3) {
+    throw new Error('workstreams must include at least 3 total steps');
+  }
+  if (totalSteps > 7) {
+    let budget = 7;
+    for (const ws of result.workstreams) {
+      const take = Math.max(1, Math.min(ws.steps.length, budget));
+      ws.steps = ws.steps.slice(0, take);
+      budget -= take;
+      if (budget <= 0) break;
+    }
+    result.workstreams = result.workstreams.filter(ws => ws.steps.length > 0);
   }
   if (result.draft_tasks.length < 1) {
     throw new Error('draft_tasks must include at least one task');
@@ -5036,7 +5085,7 @@ async function runWorkRequestPipeline({
 
   const step2System = [
     'You are Clawd Control\'s structured planning formatter.',
-    'Return only JSON that matches the required shape.',
+    'Return only valid JSON.' + (step2Model.supportsStructuredOutputs ? '' : ' Required JSON shape: { "request_restatement": string (max 200 chars), "plan_title": string (max 100 chars), "workstreams": [{ "workstream_key": string, "name": string, "steps": [string] }] (IMPORTANT: total steps across ALL workstreams must be between 3 and 7), "what_happens_next": [string], "open_questions": [string], "draft_tasks": [{ "draft_ref": string (e.g. "T1"), "title": string, "display_summary": string, "priority": "critical"|"high"|"medium"|"low", "task_type": "investigation"|"feature"|"bug_fix"|"operational"|"maintenance", "acceptance_criteria": [string], "workstream_key": string, "depends_on_refs": [string (refs to other draft_refs)] }] }. No markdown fences. No explanation.'),
     sameModel ? step1Prompt : 'Use the planning context to build structured tasks with dependencies and acceptance criteria.',
   ].join(' ');
 
@@ -9201,7 +9250,7 @@ const server = createServer(async (req, res) => {
           }),
           next_steps_json: JSON.stringify(normalized.what_happens_next),
           open_questions_json: JSON.stringify(normalized.open_questions),
-          validation_state: 'valid',
+          validation_state: 'draft_ready',
         });
 
         normalized.draft_tasks.forEach((draft, idx) => {
@@ -9523,7 +9572,7 @@ const server = createServer(async (req, res) => {
         }),
         next_steps_json: JSON.stringify(normalized.what_happens_next),
         open_questions_json: JSON.stringify(normalized.open_questions),
-        validation_state: 'valid',
+        validation_state: 'draft_ready',
       });
       normalized.draft_tasks.forEach((draft, idx) => {
         createImportSessionDraft({
@@ -9634,7 +9683,7 @@ const server = createServer(async (req, res) => {
         }),
         next_steps_json: JSON.stringify(normalized.what_happens_next),
         open_questions_json: JSON.stringify(normalized.open_questions),
-        validation_state: 'valid',
+        validation_state: 'draft_ready',
       });
       normalized.draft_tasks.forEach((draft, idx) => {
         createImportSessionDraft({
