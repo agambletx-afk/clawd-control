@@ -98,6 +98,8 @@ import {
   getNudgeHistory,
   createOperatorSummaryRequest,
   getLatestOperatorSummary,
+  getPipelineStats,
+  getHistoryFeed,
 } from './tasks-db.mjs';
 
 import { createHash, randomBytes, timingSafeEqual, randomUUID } from 'crypto';
@@ -8976,6 +8978,35 @@ const server = createServer(async (req, res) => {
       res.end(JSON.stringify(stats));
     } catch (e) {
       console.error('[API] /api/tasks/stats error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Internal server error' }));
+    }
+    return;
+  }
+
+
+  if (path === '/api/tasks/pipeline-stats' && req.method === 'GET') {
+    try {
+      getDb();
+      const stats = getPipelineStats();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(stats));
+    } catch (e) {
+      console.error('[API] /api/tasks/pipeline-stats error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Internal server error' }));
+    }
+    return;
+  }
+
+  if (path === '/api/tasks/history-feed' && req.method === 'GET') {
+    try {
+      getDb();
+      const feed = getHistoryFeed(100);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(feed));
+    } catch (e) {
+      console.error('[API] /api/tasks/history-feed error:', e.message);
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Internal server error' }));
     }

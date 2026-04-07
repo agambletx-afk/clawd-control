@@ -3210,3 +3210,193 @@ export function getLatestOperatorSummary(taskId) {
     LIMIT 1
   `).get(id) || null;
 }
+
+export function getPipelineStats() {
+  const conn = getDb();
+  const tasksColumns = getTableColumns(conn, 'tasks');
+  const historyColumns = getTableColumns(conn, 'task_history');
+  const importColumns = getTableColumns(conn, 'import_sessions');
+
+  const summary = {
+    total_open: 0,
+    in_review: 0,
+    avg_days_to_done: null,
+    stuck_count: 0,
+  };
+
+  if (tasksColumns.size) {
+    const openRow = conn.prepare("SELECT COUNT(*) AS c FROM tasks WHERE status NOT IN ('archive', 'done')").get();
+    const reviewRow = conn.prepare("SELECT COUNT(*) AS c FROM tasks WHERE status = 'review'").get();
+    summary.total_open = Number(openRow?.c || 0);
+    summary.in_review = Number(reviewRow?.c || 0);
+
+    const hasStuck = tasksColumns.has('stuck_severity');
+    const hasPause = tasksColumns.has('pause_state');
+    if (hasStuck || hasPause) {
+      const clauses = [];
+      if (hasStuck) clauses.push('stuck_severity IS NOT NULL');
+      if (hasPause) clauses.push("pause_state = 'paused'");
+      const stuckRow = conn.prepare(`SELECT COUNT(*) AS c FROM tasks WHERE ${clauses.join(' OR ')}`).get();
+      summary.stuck_count = Number(stuckRow?.c || 0);
+    }
+
+    if (tasksColumns.has('created_at') && tasksColumns.has('updated_at')) {
+      const avgRow = conn.prepare(`
+        SELECT AVG(julianday(updated_at) - julianday(created_at)) AS avg_days
+        FROM tasks
+        WHERE status = 'done'
+          AND created_at IS NOT NULL
+          AND updated_at IS NOT NULL
+          AND datetime(updated_at) >= datetime('now', '-30 days')
+      `).get();
+      const avg = Number(avgRow?.avg_days);
+      summary.avg_days_to_done = Number.isFinite(avg) ? Math.round(avg * 10) / 10 : null;
+    }
+  }
+
+  const proposal_conversion = {
+    submitted: 0,
+    preview_ready: 0,
+    approved: 0,
+    canceled: 0,
+    failed: 0,
+  };
+
+  if (importColumns.size && importColumns.has('session_status')) {
+    const rows = conn.prepare('SELECT session_status, COUNT(*) AS count FROM import_sessions GROUP BY session_status').all();
+    const statusMap = new Map(rows.map((row) => [String(row.session_status || ''), Number(row.count || 0)]));
+    proposal_conversion.submitted = rows.reduce((sum, row) => sum + Number(row.count || 0), 0);
+    proposal_conversion.preview_ready = ['awaiting_operator_decision', 'awaiting_operator_redecision', 'partially_approved', 'approved_all']
+      .reduce((sum, status) => sum + (statusMap.get(status) || 0), 0);
+    proposal_conversion.approved = ['approved_all', 'partially_approved']
+      .reduce((sum, status) => sum + (statusMap.get(status) || 0), 0);
+    proposal_conversion.canceled = statusMap.get('canceled') || 0;
+    proposal_conversion.failed = statusMap.get('failed') || 0;
+  }
+
+  const completionByDate = new Map();
+  if (historyColumns.size && historyColumns.has('action') && historyColumns.has('detail') && historyColumns.has('created_at')) {
+    const rows = conn.prepare(`
+      SELECT date(created_at) AS day, COUNT(*) AS count
+      FROM task_history
+      WHERE action LIKE '%status%'
+        AND lower(COALESCE(detail, '')) LIKE '%done%'
+        AND datetime(created_at) >= datetime('now', '-13 days')
+      GROUP BY date(created_at)
+    `).all();
+    rows.forEach((row) => completionByDate.set(String(row.day), Number(row.count || 0)));
+  } else if (tasksColumns.size && tasksColumns.has('status') && tasksColumns.has('updated_at')) {
+    const rows = conn.prepare(`
+      SELECT date(updated_at) AS day, COUNT(*) AS count
+      FROM tasks
+      WHERE status = 'done'
+        AND datetime(updated_at) >= datetime('now', '-13 days')
+      GROUP BY date(updated_at)
+    `).all();
+    rows.forEach((row) => completionByDate.set(String(row.day), Number(row.count || 0)));
+  }
+
+  const completion_trend = [];
+  for (let i = 13; i >= 0; i -= 1) {
+    const row = conn.prepare("SELECT date('now', ?) AS day").get(`-${i} days`);
+    const day = String(row?.day || '');
+    completion_trend.push({ date: day, count: completionByDate.get(day) || 0 });
+  }
+
+  return {
+    summary,
+    proposal_conversion,
+    completion_trend,
+    generated_at: new Date().toISOString(),
+  };
+}
+
+export function getHistoryFeed(limit = 100) {
+  const conn = getDb();
+  const maxLimit = Number.isInteger(Number(limit)) ? Math.min(Math.max(Number(limit), 1), 500) : 100;
+  const events = [];
+
+  const tasksColumns = getTableColumns(conn, 'tasks');
+  const taskHistoryColumns = getTableColumns(conn, 'task_history');
+  if (taskHistoryColumns.has('task_id') && taskHistoryColumns.has('action') && taskHistoryColumns.has('created_at') && tasksColumns.has('id')) {
+    const detailExpr = taskHistoryColumns.has('detail') ? 'h.detail' : "'' AS detail";
+    const actorExpr = taskHistoryColumns.has('actor') ? 'h.actor' : "'system' AS actor";
+    const rows = conn.prepare(`
+      SELECT h.task_id, h.action, ${detailExpr}, ${actorExpr}, h.created_at, t.title
+      FROM task_history h
+      LEFT JOIN tasks t ON t.id = h.task_id
+      ORDER BY datetime(h.created_at) DESC, h.id DESC
+      LIMIT ?
+    `).all(maxLimit);
+    rows.forEach((row) => {
+      events.push({
+        type: row.action === 'status_changed' ? 'task_status_change' : 'task_event',
+        object_type: 'task',
+        object_id: Number(row.task_id),
+        title: row.title || `Task #${row.task_id}`,
+        summary: row.detail ? String(row.detail) : String(row.action || 'Task updated'),
+        actor: row.actor || 'system',
+        timestamp: row.created_at,
+      });
+    });
+  }
+
+  const importColumns = getTableColumns(conn, 'import_sessions');
+  if (importColumns.has('id') && importColumns.has('session_status') && importColumns.has('created_at')) {
+    const titleExpr = importColumns.has('title_override') ? 'title_override' : "'Work Request' AS title_override";
+    const updatedExpr = importColumns.has('updated_at') ? 'updated_at' : 'created_at AS updated_at';
+    const rows = conn.prepare(`
+      SELECT id, session_status, ${titleExpr}, ${updatedExpr}
+      FROM import_sessions
+      ORDER BY datetime(${importColumns.has('updated_at') ? 'updated_at' : 'created_at'}) DESC, id DESC
+      LIMIT ?
+    `).all(maxLimit);
+    rows.forEach((row) => {
+      events.push({
+        type: row.session_status === 'approved_all' || row.session_status === 'partially_approved' ? 'proposal_approved' : 'proposal_status_change',
+        object_type: 'proposal',
+        object_id: String(row.id),
+        title: row.title_override || `Work request ${String(row.id).slice(0, 8)}`,
+        summary: `Proposal status: ${String(row.session_status || 'updated').replaceAll('_', ' ')}`,
+        actor: 'operator',
+        timestamp: row.updated_at,
+      });
+    });
+  }
+
+  const briefColumns = getTableColumns(conn, 'brief_versions');
+  if (briefColumns.has('id') && briefColumns.has('brief_id')) {
+    const approvedAtExpr = briefColumns.has('approved_at') ? 'approved_at' : (briefColumns.has('created_at') ? 'created_at' : "NULL AS approved_at");
+    const approvedByExpr = briefColumns.has('approved_by') ? 'approved_by' : "'operator' AS approved_by";
+    const titleExpr = briefColumns.has('plan_title') ? 'plan_title' : "'Brief approval' AS plan_title";
+    const rows = conn.prepare(`
+      SELECT id, brief_id, ${titleExpr}, ${approvedByExpr}, ${approvedAtExpr}
+      FROM brief_versions
+      WHERE ${briefColumns.has('approved_at') ? 'approved_at IS NOT NULL' : '1=1'}
+      ORDER BY datetime(${briefColumns.has('approved_at') ? 'approved_at' : 'created_at'}) DESC, id DESC
+      LIMIT ?
+    `).all(maxLimit);
+    rows.forEach((row) => {
+      if (!row.approved_at) return;
+      events.push({
+        type: 'brief_approved',
+        object_type: 'brief',
+        object_id: String(row.id),
+        title: row.plan_title || `Brief ${row.brief_id}`,
+        summary: 'Brief version approved.',
+        actor: row.approved_by || 'operator',
+        timestamp: row.approved_at,
+      });
+    });
+  }
+
+  const sorted = events
+    .filter((event) => event.timestamp)
+    .sort((a, b) => (Date.parse(b.timestamp || '') || 0) - (Date.parse(a.timestamp || '') || 0))
+    .slice(0, maxLimit);
+
+  return {
+    events: sorted,
+    generated_at: new Date().toISOString(),
+  };
+}
