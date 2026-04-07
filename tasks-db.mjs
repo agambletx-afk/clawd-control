@@ -37,6 +37,7 @@ export function validateTransition(currentStatus, newStatus, source) {
     ],
     backlog: [
       { to: 'in_progress', allowed: new Set(['human', 'non_human', 'system']) },
+      { to: 'archive', allowed: new Set(['human']) },
       { to: 'failed', allowed: new Set(['system']) },
     ],
     in_progress: [
