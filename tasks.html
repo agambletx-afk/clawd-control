@@ -1190,7 +1190,7 @@
         <p class="subtitle">What needs your attention.</p>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
-        <button class="btn" id="addTaskBtn" style="display:none">+ Add Task</button>
+        
         <button class="btn btn-primary" id="newTaskBtn">+ New Work Request</button>
       </div>
     </div>
@@ -2012,7 +2012,7 @@
           document.getElementById('pipelinesView').style.display = resolvedView === 'pipelines' ? '' : 'none';
           document.getElementById('historyView').style.display = resolvedView === 'history' ? '' : 'none';
           document.getElementById('tasks-templates-view').style.display = 'none';
-          document.getElementById('addTaskBtn').style.display = resolvedView === 'workboard' ? '' : 'none';
+          
           if (location.hash === '#queue') {
             history.replaceState(null, '', '#history');
           }
@@ -3361,7 +3361,7 @@
             notify(err.message || 'Unable to open work request modal', 'error');
           });
         });
-        document.getElementById('addTaskBtn').addEventListener('click', () => toggleCreateModal(true));
+        
         document.getElementById('cancelTaskBtn').addEventListener('click', () => toggleCreateModal(false));
         document.getElementById('taskModalBackdrop').addEventListener('click', (e) => {
           if (e.target.id === 'taskModalBackdrop') toggleCreateModal(false);
