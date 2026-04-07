@@ -39,212 +39,96 @@
     }
 
     .pipeline-section {
-      background: var(--surface);
-      border: 1px solid var(--border-subtle);
-      border-radius: var(--radius-md, 10px);
-      padding: 16px;
+      background: #161b26;
+      border: 1px solid #363b4d;
+      border-radius: 10px;
+      padding: 14px 16px;
       margin-bottom: 12px;
+    }
+    .pipeline-head { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+    .pipeline-domain {
+      border: 1px solid #3f4560;
+      background: #1e2535;
+      border-radius: 999px;
+      color: #9aa3bb;
+      font-size: 0.62rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 2px 8px;
     }
     .pipeline-title {
       font-size: 14px;
       font-weight: 700;
-      color: var(--text-primary);
-      margin-bottom: 4px;
+      color: #d8def0;
+      margin-bottom: 0;
+      display:flex;
+      align-items:center;
+      gap:6px;
     }
     .pipeline-subtitle {
-      font-size: 0.7rem;
-      color: var(--text-tertiary);
-      margin-bottom: 16px;
-    }
-    .pipeline-instance-list { display: flex; flex-direction: column; gap: 8px; }
-    .pipeline-instance-row { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--text-secondary); }
-    .pipeline-instance-name { font-weight: 600; color: var(--text-primary); }
-    .pipeline-auto-badge { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; padding: 1px 6px; border-radius: 999px; border: 1px solid rgba(74,222,128,0.45); color: #4ade80; background: rgba(74,222,128,0.12); }
-    .funnel-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 8px;
-    }
-    .funnel-label {
-      width: 90px;
       font-size: 0.72rem;
-      font-weight: 600;
-      color: var(--text-secondary);
-      text-align: right;
-      flex-shrink: 0;
+      color: #8c95ad;
+      margin-bottom: 14px;
     }
-    .funnel-bar-track {
-      flex: 1;
-      height: 24px;
-      background: var(--bg-primary);
-      border-radius: 4px;
-      overflow: hidden;
-      position: relative;
+    .pipeline-stats-grid { display:grid; grid-template-columns: repeat(4, minmax(140px, 1fr)); gap:10px; margin-bottom:12px; }
+    .pipeline-stat-card {
+      background:#1e2535;
+      border:1px solid #363b4d;
+      border-radius:6px;
+      padding:10px 12px;
+      position:relative;
+      overflow:hidden;
     }
-    .funnel-bar {
-      height: 100%;
-      border-radius: 4px;
-      transition: width 500ms ease;
-      min-width: 2px;
-    }
-    .funnel-count {
-      width: 40px;
-      font-size: 0.72rem;
-      font-weight: 700;
-      font-family: var(--font-mono);
-      font-variant-numeric: tabular-nums;
-      color: var(--text-primary);
-      text-align: right;
-      flex-shrink: 0;
-    }
-
-    .funnel-bar.proposed { background: #f59e0b; }
-    .funnel-bar.backlog { background: #6366f1; }
-    .funnel-bar.in_progress { background: #3b82f6; }
-    .funnel-bar.review { background: #a855f7; }
+    .pipeline-stat-card::before { content:''; position:absolute; top:0; left:0; width:100%; height:2px; background:linear-gradient(90deg, #6366f1 0%, #8b5cf6 100%); }
+    .pipeline-stat-k { font-size:0.68rem; color:#8c95ad; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:6px; }
+    .pipeline-stat-v { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size:1.08rem; color:#e6ebff; font-weight:700; }
+    .funnel-row { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+    .funnel-label { width:120px; font-size:0.72rem; font-weight:600; color:#b8c1da; text-align:right; flex-shrink:0; }
+    .funnel-bar-track { flex:1; height:24px; background:#1e2535; border-radius:6px; overflow:hidden; position:relative; }
+    .funnel-bar { height:100%; border-radius:6px; transition:width 500ms ease; min-width:2px; }
+    .funnel-count { width:52px; font-size:0.72rem; font-weight:700; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; color:#e6ebff; text-align:right; flex-shrink:0; }
+    .funnel-bar.proposed { background: #6366f1; }
+    .funnel-bar.backlog { background: #3b82f6; }
+    .funnel-bar.in_progress { background: #8b5cf6; }
+    .funnel-bar.review { background: #f59e0b; }
     .funnel-bar.done { background: #22c55e; }
-    .funnel-bar.archive { background: var(--text-tertiary); opacity: 0.5; }
-
-    .source-grid {
-      display: grid;
-      grid-template-columns: 90px repeat(6, 1fr);
-      gap: 1px;
-      background: var(--border-subtle);
-      border: 1px solid var(--border-subtle);
-      border-radius: 6px;
-      overflow: hidden;
-    }
-    .source-cell {
-      background: var(--bg-secondary);
-      padding: 8px;
-      font-size: 0.72rem;
-      text-align: center;
-    }
-    .source-cell.header {
-      background: var(--bg-primary);
-      font-weight: 700;
-      color: var(--text-tertiary);
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      font-size: 0.62rem;
-    }
-    .source-cell.label {
-      text-align: right;
-      font-weight: 600;
-      color: var(--text-secondary);
-    }
-    .source-cell .count {
-      font-family: var(--font-mono);
-      font-variant-numeric: tabular-nums;
-      font-weight: 700;
-      color: var(--text-primary);
-    }
-
-    .transition-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 6px 0;
-      border-bottom: 1px solid var(--border-subtle);
-    }
+    .funnel-bar.archive { background: #6b7280; }
+    .source-grid { display: grid; grid-template-columns: 90px repeat(6, 1fr); gap: 1px; background: #363b4d; border: 1px solid #363b4d; border-radius: 6px; overflow: hidden; }
+    .source-cell { background: #1e2535; padding: 8px; font-size: 0.72rem; text-align: center; color:#cdd5e9; }
+    .source-cell.header { background: #141927; font-weight: 700; color: #9aa3bb; text-transform: uppercase; letter-spacing: 0.04em; font-size: 0.62rem; }
+    .source-cell.label { text-align: right; font-weight: 600; color: #c4cde5; }
+    .source-cell .count { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-weight: 700; color: #e6ebff; }
+    .transition-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid #2a3040; }
     .transition-row:last-child { border-bottom: none; }
-    .transition-label {
-      flex: 1;
-      font-size: 0.78rem;
-      font-weight: 500;
-      color: var(--text-primary);
-    }
-    .transition-count {
-      font-size: 0.78rem;
-      font-weight: 700;
-      font-family: var(--font-mono);
-      font-variant-numeric: tabular-nums;
-      color: var(--text-secondary);
-    }
-    .transition-bar-track {
-      width: 120px;
-      height: 6px;
-      background: var(--bg-primary);
-      border-radius: 3px;
-      overflow: hidden;
-      flex-shrink: 0;
-    }
-    .transition-bar {
-      height: 100%;
-      background: var(--accent);
-      border-radius: 3px;
-    }
-
-    .queue-section {
-      margin-bottom: 16px;
-    }
-    .queue-section-title {
-      font-size: 0.72rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: var(--text-tertiary);
-      margin-bottom: 8px;
-    }
-    .queue-list {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-    .queue-item {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 12px;
-      background: var(--surface);
-      border: 1px solid var(--border-subtle);
-      border-radius: 6px;
-      cursor: pointer;
-      transition: all 150ms;
-    }
-    .queue-item:hover {
-      border-color: var(--border);
-      transform: translateY(-1px);
-    }
-    .queue-item-id {
-      font-family: var(--font-mono);
-      font-size: 0.68rem;
-      color: var(--text-tertiary);
-      font-weight: 600;
-      flex-shrink: 0;
-    }
-    .queue-item-title {
-      font-size: 0.78rem;
-      font-weight: 600;
-      color: var(--text-primary);
-      flex: 1;
-      min-width: 0;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .queue-item-age {
-      font-size: 0.65rem;
-      color: var(--text-tertiary);
-      font-family: var(--font-mono);
-      font-variant-numeric: tabular-nums;
-      flex-shrink: 0;
-    }
-    .queue-item-empty {
-      padding: 12px;
-      text-align: center;
-      font-size: 0.78rem;
-      color: var(--text-tertiary);
-      font-style: italic;
-    }
-    .queue-empty {
-      text-align: center;
-      padding: 60px 24px;
-      color: var(--text-secondary);
-      font-size: 0.85rem;
-    }
-
+    .transition-label { flex: 1; font-size: 0.78rem; font-weight: 500; color: #d8def0; }
+    .transition-count { font-size: 0.78rem; font-weight: 700; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; color: #b9c2de; }
+    .transition-bar-track { width: 120px; height: 6px; background: #1e2535; border-radius: 3px; overflow: hidden; flex-shrink: 0; }
+    .transition-bar { height: 100%; background: #6366f1; border-radius: 3px; }
+    .completion-chart { display:flex; align-items:flex-end; gap:4px; min-height:120px; padding:8px 0 2px 0; }
+    .completion-col { flex:1; min-width:0; display:flex; flex-direction:column; align-items:center; gap:4px; }
+    .completion-track { width:100%; height:88px; background:#1e2535; border-radius:6px; display:flex; align-items:flex-end; overflow:hidden; }
+    .completion-bar { width:100%; background:#6366f1; border-radius:6px 6px 0 0; min-height:2px; }
+    .completion-label { font-size:0.62rem; color:#8c95ad; }
+    .completion-count { font-size:0.62rem; color:#bfc7dd; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    .history-filter-bar { display:flex; align-items:center; gap:6px; margin-bottom:10px; flex-wrap:wrap; }
+    .history-filter-btn { border:1px solid #363b4d; background:#1e2535; color:#9aa3bb; border-radius:999px; padding:4px 10px; font-size:0.7rem; cursor:pointer; }
+    .history-filter-btn.active { background:#2a3350; color:#e6ebff; border-color:#4a58a8; }
+    .history-range-select { border:1px solid #363b4d; background:#1e2535; color:#d7ddf0; border-radius:6px; padding:4px 8px; font-size:0.72rem; margin-left:auto; }
+    .history-feed { display:flex; flex-direction:column; gap:6px; }
+    .history-item { display:flex; gap:10px; padding:10px 12px; background:#1e2535; border:1px solid #2a3040; border-radius:8px; align-items:flex-start; }
+    .history-icon { color:#8ea0e8; margin-top:1px; }
+    .history-main { flex:1; min-width:0; }
+    .history-top { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+    .history-type { font-size:0.62rem; text-transform:uppercase; letter-spacing:0.05em; padding:2px 7px; border-radius:999px; }
+    .history-type.task { color:#60a5fa; background:#60a5fa22; }
+    .history-type.proposal { color:#818cf8; background:#818cf822; }
+    .history-type.brief { color:#a78bfa; background:#a78bfa22; }
+    .history-type.goal { color:#f59e0b; background:#f59e0b22; }
+    .history-title { color:#dce4ff; font-size:0.8rem; font-weight:600; text-decoration:none; }
+    .history-title:hover { text-decoration:underline; }
+    .history-summary { color:#9ea8c2; font-size:0.74rem; }
+    .history-meta { text-align:right; color:#8c95ad; font-size:0.66rem; min-width:130px; }
+    .queue-empty { text-align: center; padding: 24px; color: #9ea8c2; font-size: 0.85rem; }
     .btn {
       border: 1px solid var(--border);
       border-radius: var(--radius-sm);
@@ -1315,7 +1199,7 @@
       <button class="sub-nav-btn active" data-view="attention">Attention</button>
       <button class="sub-nav-btn" data-view="workboard">Workboard</button>
       <button class="sub-nav-btn" data-view="pipelines">Pipelines</button>
-      <button class="sub-nav-btn" data-view="queue">My Queue</button>
+      <button class="sub-nav-btn" data-view="history">History</button>
     </div>
 
     <div id="attentionView" class="attention-view">
@@ -1383,25 +1267,31 @@
     </div>
 
     <div id="pipelinesView" style="display:none">
+      <section class="pipeline-stats-grid" id="pipelineStatsGrid"></section>
       <div class="pipeline-section">
-        <div class="pipeline-title">Status Funnel</div>
+        <div class="pipeline-head"><span class="pipeline-domain">Pipelines</span><div class="pipeline-title"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 5h18"></path><path d="M5 12h14"></path><path d="M8 19h8"></path></svg>Status Funnel</div></div>
         <div class="pipeline-subtitle">How tasks flow through the system</div>
         <div class="pipeline-funnel" id="pipelineFunnel"></div>
       </div>
       <div class="pipeline-section">
-        <div class="pipeline-title">Source Breakdown</div>
+        <div class="pipeline-head"><span class="pipeline-domain">Work Requests</span><div class="pipeline-title"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h18v4H3z"></path><path d="M6 7v14h12V7"></path></svg>Proposal Conversion</div></div>
+        <div class="pipeline-subtitle">Submitted to approved conversion from work requests</div>
+        <div class="pipeline-funnel" id="pipelineProposalConversion"></div>
+      </div>
+      <div class="pipeline-section">
+        <div class="pipeline-head"><span class="pipeline-domain">Delivery</span><div class="pipeline-title"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10"></path><path d="M10 20V4"></path><path d="M16 20v-7"></path><path d="M22 20v-3"></path></svg>Completion Trend</div></div>
+        <div class="pipeline-subtitle">Tasks completed per day over the last 14 days</div>
+        <div id="pipelineCompletionTrend"></div>
+      </div>
+      <div class="pipeline-section">
+        <div class="pipeline-head"><span class="pipeline-domain">Attribution</span><div class="pipeline-title"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 10h18"></path></svg>Source Breakdown</div></div>
         <div class="pipeline-subtitle">Where tasks originate and where they end up</div>
         <div class="pipeline-sources" id="pipelineSources"></div>
       </div>
       <div class="pipeline-section">
-        <div class="pipeline-title">Transition Activity</div>
+        <div class="pipeline-head"><span class="pipeline-domain">Activity</span><div class="pipeline-title"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4l3-8 4 16 3-8h4"></path></svg>Transition Activity</div></div>
         <div class="pipeline-subtitle">Most common state changes across all tasks</div>
         <div class="pipeline-transitions" id="pipelineTransitions"></div>
-      </div>
-      <div class="pipeline-section">
-        <div class="pipeline-title">Pipeline Instances</div>
-        <div class="pipeline-subtitle">Active instances with auto-advance indicator</div>
-        <div class="pipeline-instance-list" id="pipelineInstances"></div>
       </div>
     </div>
 
@@ -1415,25 +1305,24 @@
       <div id="templatesContainer"></div>
     </div>
 
-    <div id="queueView" style="display:none">
-      <div class="queue-section" id="queueReview">
-        <div class="queue-section-title">Awaiting Review</div>
-        <div class="queue-list" id="queueReviewList"></div>
-      </div>
-      <div class="queue-section" id="queueProposed">
-        <div class="queue-section-title">Proposals to Approve</div>
-        <div class="queue-list" id="queueProposedList"></div>
-      </div>
-      <div class="queue-section" id="queueStale">
-        <div class="queue-section-title">Stale Dependencies</div>
-        <div class="queue-list" id="queueStaleList"></div>
-      </div>
-      <div class="queue-section" id="queueIntentChanged">
-        <div class="queue-section-title">Intent Changes</div>
-        <div class="queue-list" id="queueIntentList"></div>
-      </div>
-      <div class="queue-empty" id="queueEmpty" style="display:none">
-        Nothing needs your attention.
+    <div id="historyView" style="display:none">
+      <div class="pipeline-section">
+        <div class="pipeline-head"><span class="pipeline-domain">History</span><div class="pipeline-title"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v5l3 2"></path><path d="M3.05 11a9 9 0 1 1 .5 4"></path><path d="M3 4v7h7"></path></svg>Activity Feed</div></div>
+        <div class="pipeline-subtitle">Unified timeline across task, proposal, and brief activity</div>
+        <div class="history-filter-bar">
+          <button class="history-filter-btn active" data-history-type="all">All</button>
+          <button class="history-filter-btn" data-history-type="task">Tasks</button>
+          <button class="history-filter-btn" data-history-type="proposal">Proposals</button>
+          <button class="history-filter-btn" data-history-type="brief">Briefs</button>
+          <select id="historyDateRange" class="history-range-select">
+            <option value="all">All time</option>
+            <option value="7">Last 7 days</option>
+            <option value="14">Last 14 days</option>
+            <option value="30">Last 30 days</option>
+          </select>
+        </div>
+        <div id="historyFeed"></div>
+        <div class="queue-empty" id="historyEmpty" style="display:none">No activity recorded yet.</div>
       </div>
     </div>
 
@@ -1587,6 +1476,10 @@
           selectedTaskIds: new Set(),
           workboardDragActive: false,
           advancedDetailsOpen: false,
+          pipelineStats: null,
+          historyFeed: [],
+          historyTypeFilter: 'all',
+          historyDateRange: 'all',
         };
 
         const cstFormatter = new Intl.DateTimeFormat('en-US', {
@@ -2107,8 +2000,9 @@
         }
 
         function switchView(view) {
-          const allowed = new Set(['attention', 'workboard', 'pipelines', 'queue']);
-          const resolvedView = allowed.has(view) ? view : 'attention';
+          const allowed = new Set(['attention', 'workboard', 'pipelines', 'history', 'queue']);
+          let resolvedView = allowed.has(view) ? view : 'attention';
+          if (resolvedView === 'queue') resolvedView = 'history';
           state.activeView = resolvedView;
           document.querySelectorAll('.sub-nav-btn').forEach((btn) => {
             btn.classList.toggle('active', btn.dataset.view === resolvedView);
@@ -2116,9 +2010,12 @@
           document.getElementById('attentionView').style.display = resolvedView === 'attention' ? '' : 'none';
           document.getElementById('boardView').style.display = resolvedView === 'workboard' ? '' : 'none';
           document.getElementById('pipelinesView').style.display = resolvedView === 'pipelines' ? '' : 'none';
-          document.getElementById('queueView').style.display = resolvedView === 'queue' ? '' : 'none';
+          document.getElementById('historyView').style.display = resolvedView === 'history' ? '' : 'none';
           document.getElementById('tasks-templates-view').style.display = 'none';
           document.getElementById('addTaskBtn').style.display = resolvedView === 'workboard' ? '' : 'none';
+          if (location.hash === '#queue') {
+            history.replaceState(null, '', '#history');
+          }
           if (location.hash !== `#${resolvedView}`) {
             location.hash = resolvedView;
           }
@@ -2139,9 +2036,20 @@
           if (resolvedView === 'pipelines') {
             renderPipelines();
           }
-          if (resolvedView === 'queue') {
+          if (resolvedView === 'history') {
             renderQueue();
           }
+        }
+
+        function renderPipelineSummary(stats) {
+          const summary = stats?.summary || {};
+          const avg = summary.avg_days_to_done == null ? '—' : Number(summary.avg_days_to_done).toFixed(1);
+          document.getElementById('pipelineStatsGrid').innerHTML = [
+            ['Total Open', fmtNum(summary.total_open || 0)],
+            ['In Review', fmtNum(summary.in_review || 0)],
+            ['Avg Days to Done', avg],
+            ['Stuck Count', fmtNum(summary.stuck_count || 0)],
+          ].map(([k, v]) => `<div class="pipeline-stat-card"><div class="pipeline-stat-k">${k}</div><div class="pipeline-stat-v">${v}</div></div>`).join('');
         }
 
         function renderPipelineFunnel(tasks) {
@@ -2151,16 +2059,39 @@
           stages.forEach((s) => { counts[s] = 0; });
           tasks.forEach((t) => { if (counts[t.status] !== undefined) counts[t.status] += 1; });
           const max = Math.max(...Object.values(counts), 1);
+          document.getElementById('pipelineFunnel').innerHTML = stages.map((s) => `<div class="funnel-row"><span class="funnel-label">${labels[s]}</span><div class="funnel-bar-track"><div class="funnel-bar ${s}" style="width:${(counts[s] / max) * 100}%"></div></div><span class="funnel-count">${fmtNum(counts[s])}</span></div>`).join('');
+        }
 
-          document.getElementById('pipelineFunnel').innerHTML = stages.map((s) =>
-            `<div class="funnel-row">
-              <span class="funnel-label">${labels[s]}</span>
-              <div class="funnel-bar-track">
-                <div class="funnel-bar ${s}" style="width:${(counts[s] / max) * 100}%"></div>
-              </div>
-              <span class="funnel-count">${counts[s]}</span>
-            </div>`
-          ).join('');
+        function renderProposalConversion(stats) {
+          const pc = stats?.proposal_conversion || {};
+          if (!Number(pc.submitted || 0)) {
+            document.getElementById('pipelineProposalConversion').innerHTML = '<div style="text-align:center;padding:16px;color:#8c95ad;font-size:0.78rem">No work requests yet.</div>';
+            return;
+          }
+          const rows = [
+            ['Submitted', pc.submitted || 0],
+            ['Preview Ready', pc.preview_ready || 0],
+            ['Approved', pc.approved || 0],
+            ['Canceled', pc.canceled || 0],
+            ['Failed', pc.failed || 0],
+          ];
+          const max = Math.max(...rows.map((r) => Number(r[1] || 0)), 1);
+          document.getElementById('pipelineProposalConversion').innerHTML = rows.map(([label, count]) => `<div class="funnel-row"><span class="funnel-label">${label}</span><div class="funnel-bar-track"><div class="funnel-bar proposed" style="width:${(Number(count || 0) / max) * 100}%"></div></div><span class="funnel-count">${fmtNum(count)}</span></div>`).join('');
+        }
+
+        function renderCompletionTrend(stats) {
+          const trend = Array.isArray(stats?.completion_trend) ? stats.completion_trend : [];
+          if (!trend.length || trend.every((d) => !Number(d.count || 0))) {
+            document.getElementById('pipelineCompletionTrend').innerHTML = '<div style="text-align:center;padding:16px;color:#8c95ad;font-size:0.78rem">No tasks completed in the last 14 days.</div>';
+            return;
+          }
+          const max = Math.max(...trend.map((d) => Number(d.count || 0)), 1);
+          document.getElementById('pipelineCompletionTrend').innerHTML = `<div class="completion-chart">${trend.map((day) => {
+            const date = new Date(day.date);
+            const label = Number.isNaN(date.getTime()) ? day.date : `${date.getMonth() + 1}/${date.getDate()}`;
+            const h = Math.round((Number(day.count || 0) / max) * 100);
+            return `<div class="completion-col"><div class="completion-count">${fmtNum(day.count || 0)}</div><div class="completion-track"><div class="completion-bar" style="height:${Math.max(h, day.count ? 6 : 2)}%"></div></div><div class="completion-label">${label}</div></div>`;
+          }).join('')}</div>`;
         }
 
         function renderPipelineSources(tasks) {
@@ -2182,11 +2113,7 @@
           });
 
           const headerRow = '<div class="source-cell header"></div>' + stages.map((s) => `<div class="source-cell header">${shortLabels[s]}</div>`).join('');
-          const dataRows = sources.map((src) =>
-            `<div class="source-cell label">${sourceLabels[src]}</div>` +
-            stages.map((s) => `<div class="source-cell"><span class="count">${grid[src][s]}</span></div>`).join('')
-          ).join('');
-
+          const dataRows = sources.map((src) => `<div class="source-cell label">${sourceLabels[src]}</div>` + stages.map((st) => `<div class="source-cell"><span class="count">${grid[src][st]}</span></div>`).join('')).join('');
           document.getElementById('pipelineSources').innerHTML = `<div class="source-grid">${headerRow}${dataRows}</div>`;
         }
 
@@ -2196,133 +2123,94 @@
             const data = await res.json();
             const items = data.transitions || [];
             if (items.length === 0) {
-              document.getElementById('pipelineTransitions').innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-tertiary);font-size:0.78rem">No transitions recorded.</div>';
+              document.getElementById('pipelineTransitions').innerHTML = '<div style="text-align:center;padding:16px;color:#8c95ad;font-size:0.78rem">No transitions recorded.</div>';
               return;
             }
             const max = items[0].count || 1;
-            const labels = {
-              status_changed: 'Status Changed',
-              created: 'Created',
-              updated: 'Updated',
-              transition_rejected: 'Transition Rejected',
-              review_entered: 'Entered Review',
-              auto_approved: 'Auto Approved',
-              comment: 'Comment Added',
-              dispatch: 'Dispatched',
-            };
-            document.getElementById('pipelineTransitions').innerHTML = items.map((t) =>
-              `<div class="transition-row">
-                <span class="transition-label">${labels[t.action] || t.action}</span>
-                <div class="transition-bar-track">
-                  <div class="transition-bar" style="width:${(t.count / max) * 100}%"></div>
-                </div>
-                <span class="transition-count">${t.count}</span>
-              </div>`
-            ).join('');
+            const labels = { status_changed: 'Status Changed', created: 'Created', updated: 'Updated', transition_rejected: 'Transition Rejected', review_entered: 'Entered Review', auto_approved: 'Auto Approved', comment: 'Comment Added', dispatch: 'Dispatched' };
+            document.getElementById('pipelineTransitions').innerHTML = items.map((t) => `<div class="transition-row"><span class="transition-label">${labels[t.action] || t.action}</span><div class="transition-bar-track"><div class="transition-bar" style="width:${(t.count / max) * 100}%"></div></div><span class="transition-count">${fmtNum(t.count)}</span></div>`).join('');
           } catch {
-            document.getElementById('pipelineTransitions').innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-tertiary);font-size:0.78rem">Unable to load transitions.</div>';
+            document.getElementById('pipelineTransitions').innerHTML = '<div style="text-align:center;padding:16px;color:#8c95ad;font-size:0.78rem">Unable to load transitions.</div>';
           }
         }
 
-        function renderPipelineInstances(tasks, pipelines) {
-          const el = document.getElementById('pipelineInstances');
-          if (!el) return;
-          const grouped = new Map();
-          (tasks || []).forEach((task) => {
-            if (!task.group_id) return;
-            if (!grouped.has(task.group_id)) grouped.set(task.group_id, []);
-            grouped.get(task.group_id).push(task);
-          });
-          const instances = Array.from(grouped.entries()).map(([pipelineId, groupedTasks]) => {
-            const pipeline = (pipelines || []).find((p) => p.id === pipelineId);
-            return {
-              id: pipelineId,
-              name: groupedTasks[0]?.group_name || pipeline?.name || pipelineId,
-              taskCount: groupedTasks.length,
-              autoEnabled: Number(pipeline?.auto_advance_enabled) === 1,
-            };
-          }).sort((a, b) => a.name.localeCompare(b.name));
+        function actorLabel(actor) {
+          const raw = String(actor || '').toLowerCase();
+          if (!raw || raw === 'system') return 'System';
+          if (raw.includes('operator') || raw === 'adam' || raw === 'human') return 'Operator';
+          return 'Team';
+        }
 
-          if (!instances.length) {
-            el.innerHTML = '<div style="color:var(--text-tertiary);font-size:0.78rem">No pipeline-linked tasks yet.</div>';
+        function buildHistoryIcon(objectType) {
+          if (objectType === 'proposal') return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v4H4z"></path><path d="M7 8v12h10V8"></path></svg>';
+          if (objectType === 'brief') return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h9l5 5v13H6z"></path><path d="M15 3v5h5"></path></svg>';
+          return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20"></path><path d="M2 12h20"></path></svg>';
+        }
+
+        function renderHistoryFeed() {
+          const range = Number(state.historyDateRange);
+          const now = Date.now();
+          let rows = [...(state.historyFeed || [])];
+          if (state.historyTypeFilter !== 'all') rows = rows.filter((item) => item.object_type === state.historyTypeFilter);
+          if (Number.isFinite(range) && range > 0) {
+            const cutoff = now - (range * 24 * 60 * 60 * 1000);
+            rows = rows.filter((item) => (Date.parse(item.timestamp) || 0) >= cutoff);
+          }
+          const feedEl = document.getElementById('historyFeed');
+          if (!rows.length) {
+            feedEl.innerHTML = '';
+            document.getElementById('historyEmpty').style.display = '';
             return;
           }
-
-          el.innerHTML = instances.map((pipeline) => `
-            <div class="pipeline-instance-row">
-              <span class="pipeline-instance-name">${esc(pipeline.name)}</span>
-              ${pipeline.autoEnabled ? '<span class="pipeline-auto-badge">auto</span>' : ''}
-              <span style="color:var(--text-tertiary)">${pipeline.taskCount} task${pipeline.taskCount === 1 ? '' : 's'}</span>
-            </div>
-          `).join('');
+          document.getElementById('historyEmpty').style.display = 'none';
+          feedEl.className = 'history-feed';
+          feedEl.innerHTML = rows.map((item) => {
+            const objectType = item.object_type || 'task';
+            const title = esc(item.title || `${objectType} event`);
+            let titleMarkup = `<span class="history-title">${title}</span>`;
+            if (objectType === 'task' && Number.isInteger(Number(item.object_id))) titleMarkup = `<a href="#" data-history-task-id="${Number(item.object_id)}" class="history-title">${title}</a>`;
+            if (objectType === 'proposal' && item.object_id) titleMarkup = `<a href="#" data-history-session-id="${esc(item.object_id)}" class="history-title">${title}</a>`;
+            return `<div class="history-item"><div class="history-icon">${buildHistoryIcon(objectType)}</div><div class="history-main"><div class="history-top"><span class="history-type ${esc(objectType)}">${esc(objectType)}</span>${titleMarkup}</div><div class="history-summary">${esc(item.summary || 'Updated')}</div></div><div class="history-meta"><div>${esc(actorLabel(item.actor))}</div><div>${esc(relativeTime(item.timestamp))}</div></div></div>`;
+          }).join('');
         }
 
         async function renderPipelines() {
           try {
-            const [tasksRes, pipelinesRes] = await Promise.all([
+            const [tasksRes, statsRes] = await Promise.all([
               fetch('/api/tasks', { credentials: 'same-origin' }),
-              fetch('/api/pipelines', { credentials: 'same-origin' }),
+              fetch('/api/tasks/pipeline-stats', { credentials: 'same-origin' }),
             ]);
             const tasksData = await tasksRes.json();
-            const pipelinesData = await pipelinesRes.json();
+            const statsData = await statsRes.json();
             const tasks = Array.isArray(tasksData) ? tasksData : (Array.isArray(tasksData.tasks) ? tasksData.tasks : []);
-            const pipelines = Array.isArray(pipelinesData?.pipelines) ? pipelinesData.pipelines : [];
+            state.pipelineStats = statsData || {};
+            renderPipelineSummary(state.pipelineStats);
             renderPipelineFunnel(tasks);
+            renderProposalConversion(state.pipelineStats);
+            renderCompletionTrend(state.pipelineStats);
             renderPipelineSources(tasks);
-            renderPipelineInstances(tasks, pipelines);
             await renderPipelineTransitions();
           } catch {
-            document.getElementById('pipelinesView').innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-tertiary)">Unable to load pipeline data.</div>';
+            document.getElementById('pipelinesView').innerHTML = '<div style="text-align:center;padding:40px;color:#8c95ad">Unable to load pipeline data.</div>';
+          }
+        }
+
+        async function renderHistory() {
+          try {
+            const res = await fetch('/api/tasks/history-feed', { credentials: 'same-origin' });
+            const data = await res.json();
+            state.historyFeed = Array.isArray(data?.events) ? data.events : [];
+            renderHistoryFeed();
+          } catch {
+            state.historyFeed = [];
+            renderHistoryFeed();
           }
         }
 
         function renderQueue() {
-          const tasks = state.tasks || [];
-
-          const reviewTasks = tasks.filter((t) => t.status === 'review');
-          const proposedTasks = tasks.filter((t) => t.status === 'proposed');
-          const staleTasks = tasks.filter((t) => Number(t.stale_dependency || 0) > 0 && t.status !== 'archive' && t.status !== 'done');
-          const intentChanged = tasks.filter((t) =>
-            t.original_intent && t.active_intent &&
-            t.original_intent !== t.active_intent &&
-            t.status !== 'archive' && t.status !== 'done'
-          );
-
-          const renderQueueItems = (items, listId) => {
-            const list = document.getElementById(listId);
-            if (!list) return;
-            if (items.length === 0) {
-              list.innerHTML = '<div class="queue-item-empty">None</div>';
-              return;
-            }
-            list.innerHTML = items.map((task) => {
-              const typeConfig = taskTypeMap[task.task_type] || { label: task.task_type || 'operational', color: '#6b7280' };
-              const accentColor = typeConfig.color || '#6b7280';
-              return `
-                <div class="queue-item" data-id="${task.id}">
-                  <span class="queue-item-id">#${task.id}</span>
-                  <span class="queue-item-title">${esc(task.title)}</span>
-                  <span class="card-type-pill" style="background:${accentColor}20;color:${accentColor}">${esc(typeConfig.label)}</span>
-                  <span class="card-priority priority-${esc(task.priority)}">${esc(task.priority)}</span>
-                  <span class="queue-item-age">${ageLabel(task.updated_at || task.created_at)}</span>
-                </div>
-              `;
-            }).join('');
-          };
-
-          renderQueueItems(reviewTasks, 'queueReviewList');
-          renderQueueItems(proposedTasks, 'queueProposedList');
-          renderQueueItems(staleTasks, 'queueStaleList');
-          renderQueueItems(intentChanged, 'queueIntentList');
-
-          document.getElementById('queueReview').style.display = reviewTasks.length ? '' : 'none';
-          document.getElementById('queueProposed').style.display = proposedTasks.length ? '' : 'none';
-          document.getElementById('queueStale').style.display = staleTasks.length ? '' : 'none';
-          document.getElementById('queueIntentChanged').style.display = intentChanged.length ? '' : 'none';
-
-          const totalItems = reviewTasks.length + proposedTasks.length + staleTasks.length + intentChanged.length;
-          document.getElementById('queueEmpty').style.display = totalItems === 0 ? '' : 'none';
+          return renderHistory();
         }
+
 
 
         function templateDateLabel(iso) {
@@ -3513,6 +3401,11 @@
           if (btn) switchView(btn.dataset.view);
         });
 
+        document.getElementById('historyDateRange').addEventListener('change', (e) => {
+          state.historyDateRange = e.target.value || 'all';
+          renderHistoryFeed();
+        });
+
         document.getElementById('attentionStats').addEventListener('click', (e) => {
           const target = e.target.closest('[data-scroll-target]');
           if (!target) return;
@@ -3707,12 +3600,24 @@
           }
         });
 
-        document.getElementById('queueView').addEventListener('click', (e) => {
-          const item = e.target.closest('.queue-item');
-          if (!item) return;
-          const taskId = Number(item.dataset.id);
-          if (Number.isInteger(taskId)) {
-            openPanel(taskId).catch((err) => alert(err.message));
+        document.getElementById('historyView').addEventListener('click', (e) => {
+          const taskLink = e.target.closest('[data-history-task-id]');
+          if (taskLink) {
+            const taskId = Number(taskLink.getAttribute('data-history-task-id'));
+            if (Number.isInteger(taskId)) openPanel(taskId).catch((err) => alert(err.message));
+            return;
+          }
+          const proposalLink = e.target.closest('[data-history-session-id]');
+          if (proposalLink) {
+            const sessionId = proposalLink.getAttribute('data-history-session-id');
+            if (sessionId) loadWorkRequestSession(sessionId).catch((err) => notify(err.message || 'Unable to load proposal preview', 'error'));
+            return;
+          }
+          const filter = e.target.closest('[data-history-type]');
+          if (filter) {
+            state.historyTypeFilter = filter.getAttribute('data-history-type') || 'all';
+            document.querySelectorAll('.history-filter-btn').forEach((btn) => btn.classList.toggle('active', btn === filter));
+            renderHistoryFeed();
           }
         });
 
@@ -3908,7 +3813,7 @@
         });
 
         const hashView = (location.hash || '').replace(/^#/, '');
-        const initialView = ['attention', 'workboard', 'pipelines', 'queue'].includes(hashView) ? hashView : 'attention';
+        const initialView = ['attention', 'workboard', 'pipelines', 'history', 'queue'].includes(hashView) ? hashView : 'attention';
         switchView(initialView);
 
         if (window.__tasksPollTimer) clearInterval(window.__tasksPollTimer);
