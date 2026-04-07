@@ -2390,6 +2390,7 @@ function getTaskAttentionSourceRows() {
     FROM tasks t
     ${goalsJoinClause}
     ${briefsJoinClause}
+    WHERE t.status NOT IN ('archive', 'done')
   `;
 
   return normalizeTaskRows(conn.prepare(sql).all());
