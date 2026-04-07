@@ -264,21 +264,46 @@
     .btn-warning:hover { border-color: #f59e0b; }
     .btn-small { padding: 4px 8px; font-size: 0.72rem; }
 
+    .workboard-toolbar {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
     .stats-bar {
       display: grid;
       grid-template-columns: repeat(4, minmax(140px, 1fr));
       gap: 10px;
-      margin-bottom: 14px;
+      margin-bottom: 0;
+      flex: 1;
     }
     .stat {
-      background: var(--bg-secondary);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-md);
+      background: #1e2535;
+      border: 1px solid #363b4d;
+      border-radius: 6px;
       padding: 10px 12px;
+      position: relative;
+      overflow: hidden;
+    }
+    .stat::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 2px;
+      height: 100%;
+      background: linear-gradient(180deg, #818cf8 0%, #6366f1 100%);
     }
     .stat .k { font-size: 0.72rem; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.06em; }
-    .stat .v { font-size: 1.1rem; font-weight: 700; margin-top: 2px; }
+    .stat .v { font-size: 1.1rem; font-weight: 700; margin-top: 2px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
     .stuck-alert .v { color: #f87171; }
+    .workboard-select-toggle.active {
+      background: #6366f1;
+      border-color: #6366f1;
+      color: #0c0f14;
+      font-weight: 700;
+    }
 
     .board-wrap {
       overflow-x: auto;
@@ -302,38 +327,79 @@
     }
     .column-header {
       padding: 10px 12px;
-      border-bottom: 1px solid var(--border-subtle);
+      border-bottom: 1px solid #363b4d;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      font-size: 0.82rem;
-      font-weight: 700;
+      font-size: 14px;
+      font-weight: 600;
       position: sticky;
       top: 0;
-      background: var(--bg-secondary);
+      background: #161b26;
       z-index: 1;
     }
+    .column-header-count {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      border: 1px solid #3f4661;
+      border-radius: 999px;
+      color: #c9d4ff;
+      background: rgba(99, 102, 241, 0.12);
+      min-width: 30px;
+      text-align: center;
+      padding: 2px 8px;
+      font-variant-numeric: tabular-nums;
+    }
+    #archiveColumn.archive-collapsed .column-header { opacity: 0.72; }
     .column-body {
       padding: 6px;
       overflow-y: auto;
       display: flex;
       flex-direction: column;
       gap: 4px;
+      background: transparent;
+      border: 1px solid transparent;
+      transition: all 120ms ease;
     }
     .archive-collapsed .column-body { display: none; }
 
     /* ── Task Card v2 ──────────────────────── */
     .task-card {
       padding: 8px 10px;
-      background: var(--bg-secondary);
-      border: 1px solid var(--border-subtle);
+      background: #1e2535;
+      border: 1px solid #2a3040;
       border-left: 3px solid var(--text-tertiary);
-      border-radius: 6px;
+      border-radius: 8px;
       margin-bottom: 6px;
       cursor: pointer;
       transition: all 150ms;
+      position: relative;
     }
-    .task-card:hover { border-color: var(--border); background: var(--surface); }
+    .task-card:hover { border-color: rgba(99, 102, 241, 0.4); transform: translateY(-1px); }
+    .task-card.has-artifacts::before {
+      content: "";
+      position: absolute;
+      left: -1px;
+      top: -1px;
+      bottom: -1px;
+      width: 2px;
+      border-radius: 8px 0 0 8px;
+      background: linear-gradient(180deg, #818cf8 0%, #6366f1 100%);
+    }
+    .task-card.is-dragging { opacity: 0.4; }
+    .task-card.select-mode { padding-left: 28px; }
+    .card-select {
+      position: absolute;
+      left: 7px;
+      top: 7px;
+      z-index: 2;
+      transform: scale(0.85);
+    }
+    .column-body.drag-over {
+      background: rgba(99, 102, 241, 0.06);
+      border: 1px dashed rgba(99, 102, 241, 0.3);
+      border-radius: 8px;
+    }
 
     .card-line-1 {
       display: flex;
@@ -385,6 +451,14 @@
     .card-priority.priority-high { background: rgba(245,158,11,0.15); color: #f59e0b; }
     .card-priority.priority-medium { background: rgba(161,161,170,0.1); color: var(--text-secondary); }
     .card-priority.priority-low { background: rgba(161,161,170,0.06); color: var(--text-tertiary); }
+    .priority-chip-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      display: inline-block;
+      margin-right: 4px;
+      vertical-align: middle;
+    }
 
     .artifact-progress {
       font-size: 0.6rem;
@@ -1178,11 +1252,49 @@
       justify-content: center;
       min-height: 180px;
     }
+    .bulk-action-bar {
+      position: fixed;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: 16px;
+      background: #161b26;
+      border: 1px solid #363b4d;
+      border-radius: 8px;
+      padding: 10px 12px;
+      display: none;
+      align-items: center;
+      gap: 8px;
+      z-index: 50;
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+    }
+    .bulk-action-bar.show { display: flex; }
+    .bulk-action-count { font-size: 0.78rem; color: var(--text-secondary); margin-right: 6px; }
+    .advanced-toggle {
+      border: none;
+      background: transparent;
+      color: #8ea2ff;
+      font-size: 0.72rem;
+      text-decoration: underline;
+      cursor: pointer;
+      padding: 0;
+      margin-top: 8px;
+    }
+    .advanced-section {
+      border-top: 1px dashed #363b4d;
+      padding-top: 10px;
+      margin-top: 10px;
+    }
+    .advanced-section .field .value {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: #8c95ad;
+    }
 
     @media (max-width: 980px) {
       .stats-bar { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
       .page-header h1 { font-size: 1.7rem; }
       .column { min-height: 460px; }
+      .workboard-toolbar { flex-direction: column; }
     }
   </style>
 </head>
@@ -1217,41 +1329,57 @@
     </div>
 
     <div id="boardView" style="display:none">
-      <section class="stats-bar" id="statsBar">
-        <div class="stat"><div class="k">Total Tasks</div><div class="v" id="statTotal">0</div></div>
-        <div class="stat"><div class="k">Completion Rate</div><div class="v" id="statCompletion">0%</div></div>
-        <div class="stat"><div class="k">Token Spend</div><div class="v" id="statTokens">0</div></div>
-        <div class="stat stuck-alert"><div class="k">Stuck (&gt;24h)</div><div class="v" id="statStuck">0</div></div>
-      </section>
+      <div class="workboard-toolbar">
+        <section class="stats-bar" id="statsBar">
+          <div class="stat"><div class="k">Total Active</div><div class="v" id="statTotal">0</div></div>
+          <div class="stat"><div class="k">In Progress</div><div class="v" id="statInProgress">0</div></div>
+          <div class="stat"><div class="k">In Review</div><div class="v" id="statInReview">0</div></div>
+          <div class="stat stuck-alert"><div class="k">Stuck</div><div class="v" id="statStuck">0</div></div>
+        </section>
+        <button class="btn workboard-select-toggle" id="workboardSelectToggle">Select</button>
+      </div>
 
       <div class="board-wrap">
         <section class="board">
         <div class="column" data-status="proposed">
-          <div class="column-header"><span>Proposed</span><span id="count-proposed">0</span></div>
-          <div class="column-body" id="col-proposed"></div>
+          <div class="column-header"><span>Proposed</span><span class="column-header-count" id="count-proposed">0</span></div>
+          <div class="column-body" id="col-proposed" data-status="proposed"></div>
         </div>
         <div class="column" data-status="backlog">
-          <div class="column-header"><span>Backlog</span><span id="count-backlog">0</span></div>
-          <div class="column-body" id="col-backlog"></div>
+          <div class="column-header"><span>Backlog</span><span class="column-header-count" id="count-backlog">0</span></div>
+          <div class="column-body" id="col-backlog" data-status="backlog"></div>
         </div>
         <div class="column" data-status="in_progress">
-          <div class="column-header"><span>In Progress</span><span id="count-in_progress">0</span></div>
-          <div class="column-body" id="col-in_progress"></div>
+          <div class="column-header"><span>In Progress</span><span class="column-header-count" id="count-in_progress">0</span></div>
+          <div class="column-body" id="col-in_progress" data-status="in_progress"></div>
         </div>
         <div class="column" data-status="review">
-          <div class="column-header"><span>Review</span><span id="count-review">0</span></div>
-          <div class="column-body" id="col-review"></div>
+          <div class="column-header"><span>Review</span><span class="column-header-count" id="count-review">0</span></div>
+          <div class="column-body" id="col-review" data-status="review"></div>
         </div>
         <div class="column" data-status="done">
-          <div class="column-header"><span>Done</span><span id="count-done">0</span></div>
-          <div class="column-body" id="col-done"></div>
+          <div class="column-header"><span>Done</span><span class="column-header-count" id="count-done">0</span></div>
+          <div class="column-body" id="col-done" data-status="done"></div>
         </div>
         <div class="column archive-collapsed" id="archiveColumn" data-status="archive">
           <div class="column-header"><span>Archive</span><button class="btn btn-small" id="archiveToggle">Expand</button></div>
-          <div class="column-body" id="col-archive"></div>
+          <div class="column-body" id="col-archive" data-status="archive"></div>
         </div>
       </section>
     </div>
+      <div class="bulk-action-bar" id="workboardBulkBar">
+        <span class="bulk-action-count" id="workboardSelectedCount">0 selected</span>
+        <button class="btn btn-small" data-bulk-action="prioritize">Prioritize</button>
+        <select id="bulkPrioritySelect" style="display:none">
+          <option value="critical">Critical</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+        </select>
+        <button class="btn btn-small" data-bulk-action="pause">Pause</button>
+        <button class="btn btn-small btn-warning" data-bulk-action="archive">Archive</button>
+        <button class="btn btn-small" data-bulk-action="cancel-selection">Cancel Selection</button>
+      </div>
     </div>
 
     <div id="pipelinesView" style="display:none">
@@ -1455,6 +1583,10 @@
           workRequestRegenerating: false,
           operatorSummaries: {},
           reassignInputTaskId: null,
+          workboardSelectMode: false,
+          selectedTaskIds: new Set(),
+          workboardDragActive: false,
+          advancedDetailsOpen: false,
         };
 
         const cstFormatter = new Intl.DateTimeFormat('en-US', {
@@ -1999,6 +2131,10 @@
           }
           if (resolvedView === 'workboard') {
             refreshAll().catch((err) => console.error('Workboard refresh failed:', err));
+            startWorkboardPolling();
+          } else {
+            stopWorkboardPolling();
+            if (state.workboardSelectMode) setSelectMode(false);
           }
           if (resolvedView === 'pipelines') {
             renderPipelines();
@@ -2499,6 +2635,10 @@
           const reviewRequired = config ? (config.review_artifacts || []).length : 0;
           const doneRequired = config ? (config.done_artifacts || []).length : 0;
           const totalRequired = reviewRequired + doneRequired;
+          const hasArtifacts = Number(task.artifact_count || 0) > 0
+            || Number(task.review_artifact_count || 0) > 0
+            || Number(task.done_artifact_count || 0) > 0
+            || (Array.isArray(task.artifacts) && task.artifacts.length > 0);
           const progressHtml = totalRequired > 0
             ? `<span class="artifact-progress" title="${totalRequired} artifacts required">${'○'.repeat(totalRequired)}</span>`
             : '';
@@ -2515,16 +2655,22 @@
           const claimer = task.claimed_by || task.assigned_agent || '';
           const claimerHtml = claimer ? `<span class="card-claimer">${esc(claimer)}</span>` : '';
           const accentColor = typeConfig.color || '#6b7280';
+          const priorityDotColor = task.priority === 'critical' ? '#ef4444'
+            : task.priority === 'high' ? '#f59e0b'
+              : task.priority === 'medium' ? '#6366f1'
+                : '#6b7280';
+          const selected = state.selectedTaskIds.has(String(task.id));
 
           return `
-            <article class="task-card" data-id="${task.id}" style="border-left-color:${accentColor}">
+            <article class="task-card ${hasArtifacts ? 'has-artifacts' : ''} ${state.workboardSelectMode ? 'select-mode' : ''}" data-id="${task.id}" data-status="${esc(task.status)}" draggable="true" style="border-left-color:${accentColor}">
+              ${state.workboardSelectMode ? `<input type="checkbox" class="card-select" data-task-select="${task.id}" ${selected ? 'checked' : ''}>` : ''}
               <div class="card-line-1">
                 <span class="card-id">#${task.id}</span>
                 <span class="card-title-text" title="${esc(task.title)}">${esc(task.title)}</span>
               </div>
               <div class="card-line-2">
                 <span class="card-type-pill" style="background:${accentColor}20;color:${accentColor}">${esc(typeConfig.label)}</span>
-                <span class="card-priority priority-${esc(task.priority)}">${esc(task.priority)}</span>
+                <span class="card-priority priority-${esc(task.priority)}"><span class="priority-chip-dot" style="background:${priorityDotColor}"></span>${esc(task.priority)}</span>
                 ${progressHtml}
               </div>
               <div class="card-line-3">
@@ -2553,10 +2699,32 @@
 
         function renderStats() {
           const stats = state.stats || {};
-          document.getElementById('statTotal').textContent = fmtNum(stats.total || 0);
-          document.getElementById('statCompletion').textContent = fmtPct(stats.completion_rate || 0);
-          document.getElementById('statTokens').textContent = fmtNum(stats.total_tokens_actual || 0);
+          const inProgress = state.tasks.filter((task) => task.status === 'in_progress').length;
+          const inReview = state.tasks.filter((task) => task.status === 'review').length;
+          const activeTotal = state.tasks.filter((task) => task.status !== 'archive').length;
+          document.getElementById('statTotal').textContent = fmtNum(activeTotal || stats.total || 0);
+          document.getElementById('statInProgress').textContent = fmtNum(inProgress);
+          document.getElementById('statInReview').textContent = fmtNum(inReview);
           document.getElementById('statStuck').textContent = fmtNum((stats.stuck_tasks || []).length);
+        }
+
+        function renderBulkBar() {
+          const bar = document.getElementById('workboardBulkBar');
+          const count = state.selectedTaskIds.size;
+          document.getElementById('workboardSelectedCount').textContent = `${count} selected`;
+          bar.classList.toggle('show', state.workboardSelectMode);
+        }
+
+        function setSelectMode(enabled) {
+          state.workboardSelectMode = !!enabled;
+          if (!enabled) {
+            state.selectedTaskIds = new Set();
+            document.getElementById('bulkPrioritySelect').style.display = 'none';
+          }
+          document.getElementById('workboardSelectToggle').classList.toggle('active', state.workboardSelectMode);
+          document.getElementById('workboardSelectToggle').textContent = state.workboardSelectMode ? 'Done Selecting' : 'Select';
+          renderColumns();
+          renderBulkBar();
         }
 
         function renderColumns() {
@@ -2574,6 +2742,7 @@
           const archiveToggle = document.getElementById('archiveToggle');
           archiveToggle.textContent = state.archiveCollapsed ? `Expand (${archiveTasks.length})` : `Collapse (${archiveTasks.length})`;
           document.getElementById('archiveColumn').classList.toggle('archive-collapsed', state.archiveCollapsed);
+          renderBulkBar();
         }
 
         function closePanel() {
@@ -2657,6 +2826,7 @@
           const claimer = task.claimed_by || 'unclaimed';
           const claimExpiry = task.claim_expires_at ? ` (expires ${esc(cstFormatter.format(new Date(task.claim_expires_at)))})` : '';
           const staleDep = Number(task.stale_dependency || 0) > 0;
+          const driftDetected = Boolean(task.active_intent && task.original_intent && task.active_intent !== task.original_intent);
 
           const intentHtml = task.original_intent || task.active_intent ? `
             <div class="field"><div class="label">Intent</div></div>
@@ -2676,6 +2846,19 @@
             : `Retries: ${failureCount} / ${maxRetries}`;
           const reasonLines = lastReason ? lastReason.split(/\r?\n/).length : 0;
           const needsReasonToggle = reasonLines > 3;
+          const advancedHtml = `
+            <button class="advanced-toggle" type="button" data-action="toggle-advanced-details">${state.advancedDetailsOpen ? 'Hide advanced details' : 'Show advanced details'}</button>
+            ${state.advancedDetailsOpen ? `
+              <div class="advanced-section">
+                <div class="field"><div class="label">Claim state</div><div class="value">claimed_by=${esc(task.claimed_by || 'null')} · claimed_at=${esc(task.claimed_at || 'null')} · claim_expires_at=${esc(task.claim_expires_at || 'null')} · claim_release_requested=${esc(String(task.claim_release_requested || false))}</div></div>
+                <div class="field"><div class="label">Intent versions</div><div class="value">original_intent=${esc(task.original_intent || 'null')} · active_intent=${esc(task.active_intent || 'null')} · active_intent_version=${esc(task.active_intent_version || 'null')} · drift_detection=${driftDetected ? 'true' : 'false'}</div></div>
+                <div class="field"><div class="label">Checkpoint IDs</div><div class="value">parent_checkpoint_id=${esc(task.parent_checkpoint_id || 'null')} · parent_intent_version=${esc(task.parent_intent_version || 'null')}</div></div>
+                <div class="field"><div class="label">Raw dependencies</div><div class="value">depends_on=${esc(task.depends_on || 'null')} · task_dependencies=${esc(JSON.stringify(task.task_dependencies || []))}</div></div>
+                <div class="field"><div class="label">Import provenance</div><div class="value">source_import_session_id=${esc(task.source_import_session_id || 'null')} · brief_id=${esc(task.brief_id || 'null')} · brief_version_id=${esc(task.brief_version_id || 'null')}</div></div>
+                <div class="field"><div class="label">Concurrency</div><div class="value">version=${esc(task.version || 'null')}</div></div>
+              </div>
+            ` : ''}
+          `;
 
           return `
             <div class="field"><div class="label">Status</div><div class="value">${esc(task.status)}${staleDep ? ' <span style="color:#f59e0b">stale dependency</span>' : ''}</div></div>
@@ -2688,6 +2871,7 @@
             <div class="field"><div class="label">Last Updated</div><div class="value field-mono">${esc(cstFormatter.format(new Date(task.updated_at)))}</div></div>
             ${task.description ? `<div class="field"><div class="label">Description</div><div class="value">${esc(task.description)}</div></div>` : ''}
             ${intentHtml}
+            ${advancedHtml}
             ${task.goal_id ? `<div class="field"><div class="label">Goal</div><div class="value">#${task.goal_id}</div></div>` : ''}
             ${(state.operatorSummaries[task.id] && state.operatorSummaries[task.id].summary_text)
               ? `<div class="field"><div class="label">Operator Summary</div><div class="value">${esc(state.operatorSummaries[task.id].summary_text)}<div class="attention-item-muted">Requested ${relativeTime(state.operatorSummaries[task.id].created_at)}</div></div></div>`
@@ -2960,6 +3144,7 @@
         async function openPanel(taskId) {
           state.selectedTaskId = taskId;
           state.failureReasonExpanded = false;
+          state.advancedDetailsOpen = false;
           state.panelTab = 'overview';
           state.journey = [];
           state.journeyShowDetails = false;
@@ -2980,6 +3165,16 @@
           const data = await res.json();
           if (!res.ok) throw new Error(data.message || data.error || 'Failed to update task');
           return data.task;
+        }
+
+        function translateTransitionError(message) {
+          const text = String(message || '');
+          const lowered = text.toLowerCase();
+          if (lowered.includes('artifact') || lowered.includes('gate')) return 'This task isn’t ready for that step yet. Required evidence is missing.';
+          if (lowered.includes('claim') || lowered.includes('claimed')) return 'No agent has picked this up yet.';
+          if (lowered.includes('human only')) return 'Only you can make this transition.';
+          if (text.includes('Invalid transition')) return 'That move isn’t allowed from the current status.';
+          return text || 'Task update failed';
         }
 
         async function runAction(taskId, action) {
@@ -3033,6 +3228,26 @@
           } catch (err) {
             notify(err.message || 'Task update failed', 'error');
           }
+        }
+
+        function startWorkboardPolling() {
+          if (state.pollTimer) return;
+          state.pollTimer = setInterval(() => {
+            if (state.activeView !== 'workboard' || state.workboardDragActive) return;
+            refreshAll().catch((err) => console.error('Workboard auto-refresh failed:', err));
+          }, 30000);
+        }
+
+        function stopWorkboardPolling() {
+          if (!state.pollTimer) return;
+          clearInterval(state.pollTimer);
+          state.pollTimer = null;
+        }
+
+        function setDragActive(active) {
+          state.workboardDragActive = !!active;
+          if (active) stopWorkboardPolling();
+          else if (state.activeView === 'workboard') startWorkboardPolling();
         }
 
         async function postComment() {
@@ -3521,9 +3736,69 @@
           const card = e.target.closest('.task-card');
           if (!card) return;
           const taskId = Number(card.dataset.id);
-          if (Number.isInteger(taskId)) {
-            openPanel(taskId).catch((err) => alert(err.message));
+          if (!Number.isInteger(taskId)) return;
+          if (state.workboardSelectMode) {
+            const key = String(taskId);
+            if (state.selectedTaskIds.has(key)) state.selectedTaskIds.delete(key);
+            else state.selectedTaskIds.add(key);
+            renderColumns();
+            return;
           }
+          openPanel(taskId).catch((err) => alert(err.message));
+        });
+
+        document.querySelector('.board').addEventListener('dragstart', (e) => {
+          if (state.activeView !== 'workboard' || state.workboardSelectMode) return;
+          if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) return;
+          const card = e.target.closest('.task-card');
+          if (!card) return;
+          const taskId = Number(card.dataset.id);
+          if (!Number.isInteger(taskId)) return;
+          e.dataTransfer.setData('text/task-id', String(taskId));
+          e.dataTransfer.setData('text/source-status', card.dataset.status || '');
+          e.dataTransfer.effectAllowed = 'move';
+          card.classList.add('is-dragging');
+          setDragActive(true);
+        });
+
+        document.querySelector('.board').addEventListener('dragend', (e) => {
+          const card = e.target.closest('.task-card');
+          if (card) card.classList.remove('is-dragging');
+          document.querySelectorAll('.column-body.drag-over').forEach((el) => el.classList.remove('drag-over'));
+          setDragActive(false);
+        });
+
+        document.querySelectorAll('.column-body').forEach((body) => {
+          body.addEventListener('dragover', (e) => {
+            if (state.activeView !== 'workboard' || state.workboardSelectMode) return;
+            e.preventDefault();
+            body.classList.add('drag-over');
+          });
+          body.addEventListener('dragleave', () => {
+            body.classList.remove('drag-over');
+          });
+          body.addEventListener('drop', async (e) => {
+            if (state.activeView !== 'workboard' || state.workboardSelectMode) return;
+            e.preventDefault();
+            body.classList.remove('drag-over');
+            const taskId = Number(e.dataTransfer.getData('text/task-id'));
+            const sourceStatus = normalizeStatus(e.dataTransfer.getData('text/source-status'));
+            const targetStatus = normalizeStatus(body.dataset.status || '');
+            if (!Number.isInteger(taskId) || !targetStatus || sourceStatus === targetStatus) {
+              setDragActive(false);
+              return;
+            }
+            try {
+              await patchTask(taskId, { status: targetStatus });
+              await refreshAll();
+              notify(`Task moved to ${targetStatus}.`, 'success');
+            } catch (err) {
+              notify(translateTransitionError(err.message), 'error');
+              await refreshAll();
+            } finally {
+              setDragActive(false);
+            }
+          });
         });
 
         document.getElementById('panelBody').addEventListener('click', (e) => {
@@ -3546,6 +3821,62 @@
           if (tabBtn) {
             state.panelTab = tabBtn.dataset.panelTab;
             renderPanel();
+            return;
+          }
+          const advBtn = e.target.closest('[data-action="toggle-advanced-details"]');
+          if (advBtn) {
+            state.advancedDetailsOpen = !state.advancedDetailsOpen;
+            renderPanel();
+          }
+        });
+
+        document.getElementById('workboardSelectToggle').addEventListener('click', () => {
+          setSelectMode(!state.workboardSelectMode);
+        });
+
+        document.getElementById('workboardBulkBar').addEventListener('click', async (e) => {
+          const btn = e.target.closest('[data-bulk-action]');
+          if (!btn) return;
+          const action = btn.getAttribute('data-bulk-action');
+          const selectedIds = Array.from(state.selectedTaskIds).map((id) => Number(id)).filter(Number.isInteger);
+          if (!selectedIds.length && action !== 'cancel-selection') return;
+          try {
+            if (action === 'cancel-selection') {
+              setSelectMode(false);
+              return;
+            }
+            if (action === 'prioritize') {
+              const select = document.getElementById('bulkPrioritySelect');
+              const expanded = select.style.display !== 'none';
+              if (!expanded) {
+                select.style.display = '';
+                return;
+              }
+              const nextPriority = select.value;
+              const results = await Promise.allSettled(selectedIds.map((id) => patchTask(id, { priority: nextPriority })));
+              const failed = results.filter((r) => r.status === 'rejected').length;
+              notify(`Updated priority for ${selectedIds.length} tasks.${failed ? ` ${failed} failed.` : ''}`, failed ? 'warning' : 'success');
+              select.style.display = 'none';
+            }
+            if (action === 'pause') {
+              const results = await Promise.allSettled(selectedIds.map(async (id) => {
+                const res = await fetch(`/api/tasks/${id}/pause`, { ...FETCH_OPTS, method: 'POST' });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Failed to pause task');
+              }));
+              const failed = results.filter((r) => r.status === 'rejected').length;
+              notify(`Paused ${selectedIds.length} tasks.${failed ? ` ${failed} failed.` : ''}`, failed ? 'warning' : 'success');
+            }
+            if (action === 'archive') {
+              if (!confirm(`Archive ${selectedIds.length} tasks?`)) return;
+              const results = await Promise.allSettled(selectedIds.map((id) => patchTask(id, { status: 'archive' })));
+              const failed = results.filter((r) => r.status === 'rejected').length;
+              notify(`Archived ${selectedIds.length} tasks.${failed ? ` ${failed} failed.` : ''}`, failed ? 'warning' : 'success');
+            }
+            setSelectMode(false);
+            await refreshAll();
+          } catch (err) {
+            notify(err.message || 'Bulk action failed', 'error');
           }
         });
 
