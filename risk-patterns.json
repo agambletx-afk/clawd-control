@@ -1,0 +1,36 @@
+{
+  "version": "1.0",
+  "protectedPaths": [
+    "SOUL.md",
+    "AGENTS.md",
+    "IDENTITY.md",
+    "HEARTBEAT.md",
+    "security-hook",
+    "delegation-rules.json",
+    "openclaw.json",
+    "auth-profiles.json",
+    ".critical-file-hashes.json"
+  ],
+  "sharedLibraries": [
+    "tasks-db.mjs",
+    "server.mjs"
+  ],
+  "contentPatterns": {
+    "critical": [
+      { "name": "destructive_sql", "pattern": "\\b(DELETE|DROP|TRUNCATE|ALTER\\s+TABLE|DESTROY)\\b", "flags": "i" },
+      { "name": "secrets_auth", "pattern": "\\b(api[_-]?key|secret|token|password|credential)\\b", "flags": "i" },
+      { "name": "outbound_messaging", "pattern": "(webhook|telegram|sendgrid|twilio|agentmail).*\\.(send|post)", "flags": "i" },
+      { "name": "auth_bypass", "pattern": "Authorization.*Bearer|auth.*disable|bypass.*auth", "flags": "i" },
+      { "name": "infra_mutation", "pattern": "systemctl|systemd|\\.service|nginx|iptables|ufw", "flags": "i" },
+      { "name": "env_vars", "pattern": "\\.env|process\\.env\\.\\w+\\s*=", "flags": "" },
+      { "name": "protected_files", "pattern": "protectedPaths|security.*hook|SOUL\\.md|AGENTS\\.md", "flags": "i" }
+    ],
+    "elevated": [
+      { "name": "new_imports", "pattern": "require\\(|import\\s+.*from\\s+['\"][^.]", "flags": "" },
+      { "name": "network_calls", "pattern": "fetch\\(|https?://[^'\"\\s]+", "flags": "" },
+      { "name": "exec_calls", "pattern": "\\.exec\\(|child_process|spawn\\(", "flags": "" },
+      { "name": "scheduled_ops", "pattern": "cron|schedule|setInterval|setTimeout.*[0-9]{4,}", "flags": "" },
+      { "name": "data_mutation", "pattern": "DELETE\\s+FROM|UPDATE\\s+.*SET", "flags": "i" }
+    ]
+  }
+}
