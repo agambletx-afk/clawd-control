@@ -1,460 +1,591 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Agents — Clawd Control</title>
+  <style>
+    * { box-sizing: border-box; }
+
+    :root {
+      --page-base: #0f1419;
+      --panel-bg: #161b26;
+      --card-bg: #1e2535;
+      --border: #363b4d;
+      --accent: #f59e0b;
+      --text-primary: #c9d1d9;
+      --text-muted: #8b949e;
+      --pill-filled: #30363d;
+    }
+
+    body {
+      margin: 0;
+      background: var(--page-base);
+      color: var(--text-primary);
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      font-size: 13px;
+    }
+
+    main.main {
+      padding: 24px;
+      max-width: 1600px;
+      margin: 0 auto;
+      display: grid;
+      gap: 24px;
+    }
+
+    .zone-a {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .stat-card {
+      position: relative;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      padding: 16px;
+      border-radius: 8px;
+      min-height: 112px;
+      display: grid;
+      gap: 8px;
+      align-content: start;
+    }
+
+    .stat-card::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 3px;
+      background: #f59e0b;
+      border-radius: 8px 0 0 8px;
+    }
+
+    .stat-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-muted);
+      margin: 0;
+    }
+
+    .stat-value {
+      font-size: 28px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+      margin: 0;
+    }
+
+    .stat-subtitle {
+      margin: 0;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .zone-b {
+      background: var(--panel-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel-bg);
+    }
+
+    .domain-capsule {
+      width: 16px;
+      height: 4px;
+      border-radius: 4px;
+      background: #f59e0b;
+      flex-shrink: 0;
+    }
+
+    .panel-title-wrap { display: grid; gap: 4px; }
+    .panel-title { margin: 0; font-size: 14px; font-weight: 600; }
+    .panel-subtitle { margin: 0; font-size: 12px; color: var(--text-muted); }
+
+    .api-warning {
+      margin: 16px 24px 0;
+      padding: 8px 16px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-primary);
+      font-size: 12px;
+      background: rgba(245, 158, 11, 0.12);
+      display: none;
+    }
+
+    .roster-head,
+    .agent-row {
+      display: grid;
+      grid-template-columns: 24px minmax(160px, 2fr) minmax(80px, 1fr) minmax(72px, auto) minmax(220px, 2fr) minmax(120px, 1fr) 16px 24px;
+      gap: 16px;
+      align-items: center;
+      padding: 16px 24px;
+    }
+
+    .roster-head {
+      border-bottom: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      background: var(--panel-bg);
+    }
+
+    .roster-head > div:first-child,
+    .roster-head > div:nth-child(7),
+    .roster-head > div:nth-child(8) { color: transparent; }
+
+    .agent-item { border-bottom: 1px solid var(--border); }
+
+    .agent-row {
+      background: #1e2535;
+      cursor: pointer;
+      border: 0;
+      text-align: left;
+      width: 100%;
+      color: inherit;
+      font: inherit;
+    }
+
+    .agent-row:focus-visible {
+      outline: 1px solid #f59e0b;
+      outline-offset: -1px;
+    }
+
+    .bot-icon, .chevron-icon { width: 20px; height: 20px; stroke: #8b949e; fill: none; stroke-width: 2; }
+    .chevron-icon { width: 16px; height: 16px; transition: transform 160ms ease; }
+    .agent-item[aria-expanded="true"] .chevron-icon { transform: rotate(180deg); }
+
+    .agent-name-wrap { display: grid; gap: 4px; min-width: 0; }
+    .agent-name { margin: 0; font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .agent-id { margin: 0; font-size: 12px; color: var(--text-muted); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    .field { font-size: 13px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 56px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      line-height: 1;
+      border: 1px solid var(--border);
+      color: #8b949e;
+      background: transparent;
+    }
+    .status-pill.active { background: #30363d; border-color: #30363d; color: #ffffff; }
+    .status-pill.ready { color: #737d88; }
+
+    .assignment { display: grid; gap: 4px; min-width: 0; }
+    .assignment-title { font-size: 13px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .assignment-id { font-size: 12px; color: var(--text-muted); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+
+    .tool-summary { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+    .health-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      justify-self: center;
+    }
+    .health-dot.green { background: #22c55e; }
+    .health-dot.amber { background: #f59e0b; }
+    .health-dot.red { background: #ef4444; }
+
+    .detail-panel {
+      background: #161b26;
+      border-top: 1px solid #363b4d;
+      padding: 16px 24px;
+      display: none;
+      gap: 16px;
+    }
+    .agent-item[aria-expanded="true"] .detail-panel { display: grid; }
+
+    .detail-block { display: grid; gap: 8px; }
+    .detail-title {
+      margin: 0;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #8b949e;
+    }
+
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+    .data-table th,
+    .data-table td {
+      text-align: left;
+      padding: 8px;
+      border-bottom: 1px solid #363b4d;
+      font-size: 12px;
+      color: #c9d1d9;
+      vertical-align: top;
+    }
+    .data-table th { color: #8b949e; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }
+    .data-table tr:last-child td { border-bottom: 0; }
+
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-variant-numeric: tabular-nums; }
+    .muted { color: #8b949e; }
+    .dimmer { color: #737d88; }
+
+    .tool-policy {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+    .tool-col { display: grid; gap: 8px; }
+    .tool-col-head { font-size: 12px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.04em; }
+    .tool-list { margin: 0; padding: 0 0 0 16px; display: grid; gap: 4px; }
+    .tool-list li { font-size: 12px; color: #c9d1d9; }
+
+    .task-summary-line { font-variant-numeric: tabular-nums; font-size: 13px; color: #c9d1d9; }
+    .task-list { display: grid; gap: 8px; }
+    .task-row {
+      display: grid;
+      grid-template-columns: minmax(100px, auto) minmax(0, 1fr) auto auto;
+      gap: 8px;
+      align-items: center;
+      padding: 8px;
+      background: #1e2535;
+      border: 1px solid #363b4d;
+      border-radius: 8px;
+    }
+    .risk-badge {
+      border: 1px solid #363b4d;
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 11px;
+      color: #8b949e;
+    }
+
+    .empty {
+      color: #8b949e;
+      font-size: 12px;
+      font-style: italic;
+    }
+
+    @media (max-width: 1280px) {
+      .zone-a { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .roster-head,
+      .agent-row {
+        grid-template-columns: 24px minmax(140px, 2fr) minmax(80px, 1fr) minmax(72px, auto) minmax(180px, 2fr) minmax(100px, 1fr) 16px 24px;
+        gap: 8px;
+      }
+    }
+  </style>
 </head>
 <body>
   <main class="main">
-    <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
-      <div>
-        <h1>Agents</h1>
-        <p class="subtitle">Agent fleet status and per-agent workspace.</p>
+    <section class="zone-a" id="summaryCards"></section>
+
+    <section class="zone-b">
+      <header class="panel-header">
+        <span class="domain-capsule" aria-hidden="true"></span>
+        <div class="panel-title-wrap">
+          <p class="panel-title">Agent Roster</p>
+          <p class="panel-subtitle">Fleet readiness and per-agent diagnostics</p>
+        </div>
+      </header>
+      <div class="api-warning" id="apiWarning">Unable to reach agents API. Showing last known data.</div>
+      <div class="roster-head" aria-hidden="true">
+        <div>&nbsp;</div><div>Agent</div><div>Model</div><div>Status</div><div>Latest Assignment</div><div>Tools</div><div>&nbsp;</div><div>&nbsp;</div>
       </div>
-      <button class="btn-instructions" id="instructionsBtn" type="button">
-        <i data-lucide="plus" style="width:14px;height:14px"></i>
-        New Agent
-      </button>
-    </div>
-
-    <div class="instructions-panel" id="instructionsPanel" hidden>
-      <div class="instructions-header">
-        <span class="instructions-title">Add a New Agent</span>
-        <button class="instructions-close" id="instructionsClose" type="button">&times;</button>
-      </div>
-      <pre class="instructions-code">ssh openclaw@&lt;host&gt;
-openclaw agent add --id &lt;name&gt; --workspace /path/to/workspace
-openclaw agent configure &lt;name&gt;</pre>
-      <p class="instructions-note">Agents are configured in the OpenClaw gateway. See the OpenClaw documentation for full setup instructions.</p>
-    </div>
-
-    <div class="stats-grid" id="agentStats">
-      <div class="stat-card">
-        <div class="stat-label">Registered</div>
-        <div class="stat-value" id="statRegistered">—</div>
-        <div class="stat-sub">Configured in gateway</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Running</div>
-        <div class="stat-value" id="statRunning">—</div>
-        <div class="stat-sub">Session active in last 5m</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Needs Attention</div>
-        <div class="stat-value" id="statAttention">—</div>
-        <div class="stat-sub">Health checks failing</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Offline</div>
-        <div class="stat-value" id="statOffline">—</div>
-        <div class="stat-sub">Not connected to gateway</div>
-      </div>
-    </div>
-
-    <div class="agent-list" id="agentList">
-      <div class="agent-list-empty">Waiting for gateway data…</div>
-    </div>
-
-    <style>
-      .page-header { margin-bottom: 16px; }
-      .page-header h1 {
-        font-size: 20px;
-        font-weight: 700;
-        margin-bottom: 8px;
-        color: var(--text-primary);
-        text-shadow: 0 0 8px rgba(245, 158, 11, 0.5);
-      }
-      .page-header .subtitle {
-        font-size: 13px;
-        font-weight: 400;
-        color: var(--text-secondary);
-        margin-top: 4px;
-      }
-
-      .btn-instructions {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 6px 14px;
-        border-radius: 9999px;
-        background: var(--surface);
-        border: 1px solid var(--border-subtle);
-        color: var(--text-secondary);
-        font-size: 13px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 150ms;
-        white-space: nowrap;
-      }
-      .btn-instructions:hover {
-        border-color: #f59e0b;
-        color: var(--text-primary);
-      }
-
-      .instructions-panel {
-        background: var(--surface);
-        border: 1px solid var(--border-subtle);
-        border-radius: var(--radius-md, 10px);
-        padding: 16px;
-        margin-bottom: 16px;
-      }
-      .instructions-panel[hidden] { display: none; }
-      .instructions-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 12px;
-      }
-      .instructions-title {
-        font-size: 14px;
-        font-weight: 700;
-        color: var(--text-primary);
-      }
-      .instructions-close {
-        border: none;
-        background: none;
-        color: var(--text-tertiary);
-        font-size: 18px;
-        cursor: pointer;
-        padding: 0 4px;
-      }
-      .instructions-close:hover { color: var(--text-primary); }
-      .instructions-code {
-        background: var(--bg-primary);
-        border: 1px solid var(--border-subtle);
-        border-radius: 6px;
-        padding: 12px;
-        font-family: var(--font-mono);
-        font-size: 12px;
-        color: var(--text-secondary);
-        line-height: 1.6;
-        overflow-x: auto;
-        margin: 0;
-      }
-      .instructions-note {
-        font-size: 12px;
-        color: var(--text-tertiary);
-        margin-top: 8px;
-      }
-
-      .stats-grid {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 12px;
-        margin-bottom: 16px;
-      }
-      .stat-card {
-        background: var(--surface);
-        border: 1px solid var(--border-subtle);
-        border-radius: var(--radius-md, 10px);
-        padding: 14px 16px;
-      }
-      .stat-label {
-        font-size: 0.65rem;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        color: var(--text-tertiary);
-        margin-bottom: 4px;
-        font-weight: 600;
-      }
-      .stat-value {
-        font-size: 1.5rem;
-        font-weight: 800;
-        line-height: 1;
-        font-variant-numeric: tabular-nums;
-        font-family: var(--font-mono);
-        color: var(--text-primary);
-      }
-      .stat-sub {
-        font-size: 0.7rem;
-        color: var(--text-tertiary);
-        margin-top: 4px;
-      }
-
-      .agent-list {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-      }
-      .agent-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 12px 16px;
-        background: var(--surface);
-        border: 1px solid var(--border-subtle);
-        border-radius: var(--radius-md, 10px);
-        text-decoration: none;
-        color: inherit;
-        transition: all 150ms;
-        cursor: pointer;
-      }
-      .agent-row:hover {
-        border-color: var(--border);
-        transform: translateY(-1px);
-        box-shadow: var(--shadow-md);
-      }
-      .agent-row:focus-visible {
-        outline: 2px solid var(--accent);
-        outline-offset: 2px;
-      }
-      .agent-row-left {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        min-width: 0;
-      }
-      .agent-row-icon {
-        width: 20px;
-        height: 20px;
-        opacity: 0.6;
-        flex-shrink: 0;
-      }
-      .agent-row-info { min-width: 0; }
-      .agent-row-name {
-        font-size: 14px;
-        font-weight: 700;
-        color: var(--text-primary);
-        display: flex;
-        align-items: center;
-      }
-      .agent-row-meta {
-        font-size: 0.72rem;
-        color: var(--text-tertiary);
-        margin-top: 2px;
-        display: flex;
-        gap: 6px;
-        font-variant-numeric: tabular-nums;
-        font-family: var(--font-mono);
-      }
-      .agent-row-right {
-        flex-shrink: 0;
-        text-align: right;
-      }
-      .agent-row-model {
-        font-size: 0.72rem;
-        color: var(--text-secondary);
-        font-family: var(--font-mono);
-      }
-      .agent-list-empty {
-        text-align: center;
-        padding: 60px 24px;
-        color: var(--text-secondary);
-        font-size: 0.85rem;
-      }
-
-      .activity-pill {
-        display: inline-flex;
-        align-items: center;
-        padding: 2px 8px;
-        border-radius: 9999px;
-        font-size: 0.65rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        margin-left: 8px;
-        vertical-align: middle;
-      }
-      .pill-running {
-        background: var(--bg-elevated);
-        color: var(--text-primary);
-      }
-      .pill-idle {
-        background: transparent;
-        border: 1px solid var(--border-subtle);
-        color: var(--text-secondary);
-      }
-      .pill-stale {
-        background: rgba(245, 158, 11, 0.12);
-        color: #f59e0b;
-      }
-      .pill-offline {
-        color: var(--text-tertiary);
-      }
-
-      .agent-attention-dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: #ef4444;
-        display: inline-block;
-        margin-left: 6px;
-        vertical-align: middle;
-        flex-shrink: 0;
-      }
-
-      @media (max-width: 1024px) {
-        .stats-grid { grid-template-columns: repeat(2, 1fr); }
-      }
-      @media (max-width: 640px) {
-        .stats-grid { grid-template-columns: 1fr; }
-        .agent-row-right { display: none; }
-      }
-    </style>
-
-    <script>
-      function escapeHtml(s) {
-        return String(s)
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-          .replace(/"/g, '&quot;');
-      }
-
-      function formatLastSeen(lastSeen) {
-        if (!lastSeen) return 'Never seen';
-        const ms = Date.now() - lastSeen;
-        if (ms < 60000) return 'Last seen just now';
-        if (ms < 3600000) return 'Last seen ' + Math.floor(ms / 60000) + 'm ago';
-        if (ms < 86400000) return 'Last seen ' + Math.floor(ms / 3600000) + 'h ago';
-        return 'Last seen ' + Math.floor(ms / 86400000) + 'd ago';
-      }
-
-      function renderAgents() {
-        const agents = window.agentState || {};
-        const ids = Object.keys(agents).sort();
-        const now = Date.now();
-
-        let running = 0;
-        let attention = 0;
-        let offline = 0;
-
-        for (const id of ids) {
-          const agent = agents[id] || {};
-          if (!agent.online) {
-            offline += 1;
-          } else {
-            const recent = agent.sessions && agent.sessions.recent && agent.sessions.recent[0];
-            const recentAge = recent && recent.updatedAt ? now - recent.updatedAt : Infinity;
-            if (recentAge < 300000) running += 1;
-          }
-
-          const health = window.computeHealth ? window.computeHealth(agent) : null;
-          if (health && Array.isArray(health.checks) && health.checks.some((c) => c && c.s === 'err')) {
-            attention += 1;
-          }
-        }
-
-        document.getElementById('statRegistered').textContent = String(ids.length);
-        document.getElementById('statRunning').textContent = String(running);
-        document.getElementById('statAttention').textContent = String(attention);
-        document.getElementById('statOffline').textContent = String(offline);
-
-        const list = document.getElementById('agentList');
-        if (ids.length === 0) {
-          list.innerHTML = '<div class="agent-list-empty">No agents registered. Agents are configured in the OpenClaw gateway.</div>';
-          return;
-        }
-
-        list.innerHTML = ids.map((id) => {
-          const agent = agents[id] || {};
-          const name = agent.name || id;
-          const online = Boolean(agent.online);
-          const lastSeen = agent.lastSeen;
-          const sessionCount = agent.sessions && agent.sessions.count ? agent.sessions.count : 0;
-          const recent = agent.sessions && agent.sessions.recent && agent.sessions.recent[0];
-          const recentAge = recent && recent.updatedAt ? now - recent.updatedAt : Infinity;
-          const model = ((agent.health && agent.health.config && agent.health.config.defaultModel) || '').replace('anthropic/', '') || '—';
-
-          let pillClass = 'pill-offline';
-          let pillLabel = 'Offline';
-          if (online) {
-            const stale = lastSeen && now - lastSeen > 600000;
-            if (stale) {
-              pillClass = 'pill-stale';
-              pillLabel = 'Stale';
-            } else if (recentAge < 300000) {
-              pillClass = 'pill-running';
-              pillLabel = 'Running';
-            } else {
-              pillClass = 'pill-idle';
-              pillLabel = 'Idle';
-            }
-          }
-
-          const health = window.computeHealth ? window.computeHealth(agent) : null;
-          const failCount = health && Array.isArray(health.checks)
-            ? health.checks.filter((c) => c && c.s === 'err').length
-            : 0;
-          const attentionHtml = failCount > 0
-            ? '<span class="agent-attention-dot" title="' + failCount + ' health check' + (failCount > 1 ? 's' : '') + ' failing"></span>'
-            : '';
-
-          return '<a href="/agent/' + encodeURIComponent(id) + '" class="agent-row" tabindex="0">'
-            + '<div class="agent-row-left">'
-            + '<i data-lucide="bot" class="agent-row-icon"></i>'
-            + '<div class="agent-row-info">'
-            + '<div class="agent-row-name">'
-            + escapeHtml(name)
-            + '<span class="activity-pill ' + pillClass + '">' + pillLabel + '</span>'
-            + attentionHtml
-            + '</div>'
-            + '<div class="agent-row-meta">'
-            + '<span>' + sessionCount + ' session' + (sessionCount !== 1 ? 's' : '') + '</span>'
-            + '<span>&middot;</span>'
-            + '<span>' + escapeHtml(formatLastSeen(lastSeen)) + '</span>'
-            + '</div>'
-            + '</div>'
-            + '</div>'
-            + '<div class="agent-row-right">'
-            + '<span class="agent-row-model">' + escapeHtml(model) + '</span>'
-            + '</div>'
-            + '</a>';
-        }).join('');
-
-        if (window.refreshIcons) window.refreshIcons();
-      }
-
-      function initInstructionsPanel() {
-        const btn = document.getElementById('instructionsBtn');
-        const panel = document.getElementById('instructionsPanel');
-        const close = document.getElementById('instructionsClose');
-        if (!btn || !panel) return;
-
-        const dismissed = localStorage.getItem('cc-agents-instructions-dismissed') === '1';
-        panel.hidden = dismissed;
-
-        btn.addEventListener('click', () => {
-          panel.hidden = !panel.hidden;
-          if (!panel.hidden) {
-            localStorage.removeItem('cc-agents-instructions-dismissed');
-          }
-        });
-
-        if (close) {
-          close.addEventListener('click', () => {
-            panel.hidden = true;
-            localStorage.setItem('cc-agents-instructions-dismissed', '1');
-          });
-        }
-      }
-
-      function initRowKeyboardSupport() {
-        const list = document.getElementById('agentList');
-        if (!list) return;
-
-        list.addEventListener('keydown', (event) => {
-          if (event.key !== ' ') return;
-          const row = event.target && event.target.closest ? event.target.closest('.agent-row') : null;
-          if (!row) return;
-          event.preventDefault();
-          row.click();
-        });
-      }
-
-      document.addEventListener('DOMContentLoaded', () => {
-        initInstructionsPanel();
-        initRowKeyboardSupport();
-        renderAgents();
-      });
-
-      document.addEventListener('layout:snapshot', renderAgents);
-      document.addEventListener('layout:agent-update', renderAgents);
-    </script>
+      <div id="agentRoster"></div>
+    </section>
   </main>
 
+  <script type="module">
+    const summaryCardsEl = document.getElementById('summaryCards');
+    const rosterEl = document.getElementById('agentRoster');
+    const warningEl = document.getElementById('apiWarning');
+
+    const STATE = {
+      agents: [],
+      summary: { registered: 0, healthy: 0, needs_attention: 0, active: 0 },
+      expandedId: null,
+      detailsCache: new Map(),
+    };
+
+    const WORKSPACE_FILES = ['AGENTS.md', 'SOUL.md', 'IDENTITY.md', 'TOOLS.md', 'HEARTBEAT.md', 'USER.md'];
+    const REQUIRED_FILES = new Set(['AGENTS.md', 'SOUL.md', 'IDENTITY.md', 'TOOLS.md']);
+
+    const esc = (v) => String(v ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
+    const trunc = (txt, n) => (String(txt ?? '').length > n ? `${String(txt).slice(0, n - 1)}…` : String(txt ?? ''));
+    const normalizeModel = (m) => {
+      const model = String(m ?? '—');
+      if (model.length <= 20 || !model.includes('/')) return model;
+      return model.split('/').pop() || model;
+    };
+
+    function botIcon() {
+      return '<svg class="bot-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="7" width="12" height="10" rx="2"></rect><path d="M12 3v4"></path><circle cx="9" cy="12" r="1"></circle><circle cx="15" cy="12" r="1"></circle><path d="M8 17v2M16 17v2M3 10h3M18 10h3"></path></svg>';
+    }
+
+    function chevronIcon() {
+      return '<svg class="chevron-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>';
+    }
+
+    function buildSummaryCards() {
+      const cards = [
+        ['REGISTERED', STATE.summary.registered, 'Configured in gateway'],
+        ['HEALTHY', STATE.summary.healthy, 'All checks passing'],
+        ['NEEDS ATTENTION', STATE.summary.needs_attention, 'Health checks failing'],
+        ['ACTIVE', STATE.summary.active, 'Session active in last 5m'],
+      ];
+      summaryCardsEl.innerHTML = cards.map(([label, value, subtitle]) => `
+        <article class="stat-card">
+          <p class="stat-label">${label}</p>
+          <p class="stat-value">${Number(value ?? 0)}</p>
+          <p class="stat-subtitle">${subtitle}</p>
+        </article>
+      `).join('');
+    }
+
+    function statusPillClass(status) {
+      const s = String(status || '').toLowerCase();
+      if (s === 'active') return 'active';
+      if (s === 'ready') return 'ready';
+      return 'idle';
+    }
+
+    function getHealthClass(status) {
+      const s = String(status || '').toLowerCase();
+      if (s === 'red') return 'red';
+      if (s === 'amber' || s === 'yellow') return 'amber';
+      return 'green';
+    }
+
+    function renderRoster() {
+      rosterEl.innerHTML = STATE.agents.map((agent) => {
+        const id = String(agent.id || 'unknown');
+        const expanded = STATE.expandedId === id;
+        const modelFull = String(agent.model || agent.default_model || '—');
+        const modelShort = normalizeModel(modelFull);
+        const assignment = agent.latest_assignment || null;
+        const taskTitle = assignment?.title ? trunc(assignment.title, 40) : '--';
+        const taskId = assignment?.id ? String(assignment.id) : '';
+        const allowed = Number(agent.tools?.allowed ?? agent.tool_policy?.allowed?.length ?? 0);
+        const denied = Number(agent.tools?.denied ?? agent.tool_policy?.denied?.length ?? 0);
+        const status = String(agent.status || 'Idle');
+        const healthClass = getHealthClass(agent.health?.status);
+
+        return `
+          <article class="agent-item" data-agent-id="${esc(id)}" aria-expanded="${expanded ? 'true' : 'false'}">
+            <button class="agent-row" type="button" aria-expanded="${expanded ? 'true' : 'false'}" aria-controls="detail-${esc(id)}">
+              <div>${botIcon()}</div>
+              <div class="agent-name-wrap">
+                <p class="agent-name">${esc(agent.name || id)}</p>
+                <p class="agent-id">${esc(id)}</p>
+              </div>
+              <div class="field" title="${esc(modelFull)}">${esc(modelShort)}</div>
+              <div><span class="status-pill ${statusPillClass(status)}">${esc(status)}</span></div>
+              <div class="assignment">
+                <div class="assignment-title muted">${esc(taskTitle)}</div>
+                <div class="assignment-id">${taskId ? esc(taskId) : ''}</div>
+              </div>
+              <div class="tool-summary">${allowed} allowed, ${denied} denied</div>
+              <div><span class="health-dot ${healthClass}" title="${esc(agent.health?.status || 'green')}"></span></div>
+              <div>${chevronIcon()}</div>
+            </button>
+            <section id="detail-${esc(id)}" class="detail-panel" aria-live="polite"></section>
+          </article>
+        `;
+      }).join('');
+
+      rosterEl.querySelectorAll('.agent-row').forEach((row) => {
+        row.addEventListener('click', () => toggleRow(row.closest('.agent-item')?.dataset.agentId || ''));
+        row.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            toggleRow(row.closest('.agent-item')?.dataset.agentId || '');
+          }
+        });
+      });
+
+      if (STATE.expandedId) {
+        const expandedEl = rosterEl.querySelector(`.agent-item[data-agent-id="${CSS.escape(STATE.expandedId)}"]`);
+        if (expandedEl) {
+          loadDetails(STATE.expandedId, expandedEl.querySelector('.detail-panel'));
+        }
+      }
+    }
+
+    async function fetchFleet(showWarningOnError = true) {
+      try {
+        const response = await fetch('/api/agents', { headers: { Accept: 'application/json' } });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        STATE.summary = data.summary || STATE.summary;
+        STATE.agents = Array.isArray(data.agents) ? data.agents : [];
+        warningEl.style.display = 'none';
+        buildSummaryCards();
+        renderRoster();
+      } catch (error) {
+        if (showWarningOnError) warningEl.style.display = 'block';
+        buildSummaryCards();
+        renderRoster();
+      }
+    }
+
+    function renderWorkspaceFiles(detail) {
+      const map = detail.workspace_files || detail.workspace?.files || {};
+      const normalized = new Map();
+      Object.entries(map).forEach(([k, v]) => normalized.set(String(k).toUpperCase(), v));
+
+      const rows = WORKSPACE_FILES.map((name) => {
+        const file = normalized.get(name.toUpperCase());
+        const present = Boolean(file?.present);
+        let statusText = 'Present';
+        let statusClass = '';
+        if (!present) {
+          if (REQUIRED_FILES.has(name)) {
+            statusText = 'Missing — required';
+            statusClass = 'muted';
+          } else {
+            statusText = 'Missing — optional';
+            statusClass = 'dimmer';
+          }
+        }
+        const modified = file?.last_modified_human || file?.last_modified || '--';
+        return `<tr><td class="mono">${name}</td><td class="${statusClass}">${esc(statusText)}</td><td class="muted">${esc(modified)}</td></tr>`;
+      }).join('');
+
+      return `
+        <div class="detail-block">
+          <h4 class="detail-title">Workspace Files</h4>
+          <table class="data-table">
+            <thead><tr><th>File</th><th>Status</th><th>Last Modified</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function renderToolPolicy(detail) {
+      const allowed = detail.tool_policy?.allowed || [];
+      const denied = detail.tool_policy?.denied || [];
+      const list = (items) => items.length
+        ? `<ul class="tool-list mono">${items.slice(0, 50).map((t) => `<li>${esc(t)}</li>`).join('')}</ul>`
+        : '<p class="empty">None</p>';
+      return `
+        <div class="detail-block">
+          <h4 class="detail-title">Tool Policy</h4>
+          <div class="tool-policy">
+            <div class="tool-col"><div class="tool-col-head">Allowed</div>${list(allowed)}</div>
+            <div class="tool-col"><div class="tool-col-head">Denied</div>${list(denied)}</div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderSessions(detail) {
+      const sessions = Array.isArray(detail.recent_sessions) ? detail.recent_sessions.slice(0, 5) : [];
+      if (!sessions.length) {
+        return `<div class="detail-block"><h4 class="detail-title">Recent Sessions</h4><p class="empty">No sessions recorded</p></div>`;
+      }
+      const rows = sessions.map((s) => `
+        <tr>
+          <td class="mono">${esc(s.id || s.session_id || '--')}</td>
+          <td class="muted">${esc(s.started_human || s.started || '--')}</td>
+          <td class="muted">${esc(s.duration_human || s.duration || '--')}</td>
+          <td class="muted">${esc(String(s.status || '--').toLowerCase())}</td>
+          <td class="muted">${esc(normalizeModel(s.model || '--'))}</td>
+        </tr>
+      `).join('');
+      return `
+        <div class="detail-block">
+          <h4 class="detail-title">Recent Sessions</h4>
+          <table class="data-table">
+            <thead><tr><th>Session</th><th>Started</th><th>Duration</th><th>Status</th><th>Model</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function renderTaskSummary(detail) {
+      const summary = detail.task_summary || {};
+      const recent = Array.isArray(detail.recent_tasks) ? detail.recent_tasks.slice(0, 5) : [];
+      const rows = recent.length ? recent.map((task) => `
+        <div class="task-row">
+          <div class="mono muted">${esc(task.id || '--')}</div>
+          <div title="${esc(task.title || '--')}">${esc(trunc(task.title || '--', 50))}</div>
+          <div class="muted">${esc(String(task.status || '--').toLowerCase())}</div>
+          <div class="risk-badge mono">${esc(task.risk_class || '--')}</div>
+        </div>
+      `).join('') : '<p class="empty">No tasks recorded</p>';
+
+      return `
+        <div class="detail-block">
+          <h4 class="detail-title">Task Summary</h4>
+          <div class="task-summary-line">${Number(summary.active ?? 0)} active · ${Number(summary.completed_7d ?? 0)} completed (7d) · ${Number(summary.failed_7d ?? 0)} failed (7d)</div>
+          <div class="task-list">${rows}</div>
+        </div>
+      `;
+    }
+
+    function renderSpawnedBy(detail) {
+      const text = detail.spawned_by_text || detail.spawned_by || '--';
+      return `<div class="detail-block"><h4 class="detail-title">Spawned By</h4><div class="muted">${esc(String(text))}</div></div>`;
+    }
+
+    function renderDetail(detailPanel, detailData) {
+      detailPanel.innerHTML = [
+        renderWorkspaceFiles(detailData),
+        renderToolPolicy(detailData),
+        renderSessions(detailData),
+        renderTaskSummary(detailData),
+        renderSpawnedBy(detailData),
+      ].join('');
+    }
+
+    async function loadDetails(agentId, detailPanel) {
+      if (!detailPanel) return;
+      const now = Date.now();
+      const cached = STATE.detailsCache.get(agentId);
+      if (cached && now - cached.fetchedAt < 60000) {
+        renderDetail(detailPanel, cached.data);
+        return;
+      }
+
+      detailPanel.innerHTML = '<p class="empty">Loading details…</p>';
+      try {
+        const response = await fetch(`/api/agents/${encodeURIComponent(agentId)}`, { headers: { Accept: 'application/json' } });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const detailData = await response.json();
+        STATE.detailsCache.set(agentId, { data: detailData, fetchedAt: now });
+        if (STATE.expandedId === agentId) renderDetail(detailPanel, detailData);
+      } catch {
+        detailPanel.innerHTML = '<p class="empty">Unable to load details</p>';
+      }
+    }
+
+    function toggleRow(agentId) {
+      if (!agentId) return;
+      STATE.expandedId = STATE.expandedId === agentId ? null : agentId;
+      renderRoster();
+    }
+
+    buildSummaryCards();
+    fetchFleet();
+    setInterval(() => fetchFleet(false), 30000);
+  </script>
+
   <script src="/layout.js"></script>
-  <script>if (window.lucide) lucide.createIcons();</script>
 </body>
 </html>
