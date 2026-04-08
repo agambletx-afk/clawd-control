@@ -46,6 +46,13 @@ type AgentRateCounter = {
 };
 
 type RuleMatch = { matched: boolean; rule?: string };
+type DelegationRulesConfig = {
+  enabled?: boolean;
+  enforceFor?: string[];
+  blockedTools?: string[];
+  overridePhrase?: string;
+  overrideScope?: "session" | string;
+};
 
 const DEFAULT_CONFIG: SecurityHookConfig = {
   version: "1.2",
@@ -621,11 +628,71 @@ function blockCall(reason: string): { block: true; blockReason: string } {
   return { block: true, blockReason: reason };
 }
 
+function extractAgentIdForDelegation(ctx: any): string | null {
+  const directCandidate =
+    ctx?.session?.agentId ??
+    ctx?.agentId ??
+    ctx?.run?.agentId ??
+    ctx?.agent?.id ??
+    null;
+  if (directCandidate != null && String(directCandidate).trim().length > 0) {
+    return String(directCandidate).trim();
+  }
+
+  const sessionKeyCandidate = ctx?.sessionKey ?? ctx?.session?.key ?? ctx?.session_id ?? ctx?.sessionId ?? null;
+  if (sessionKeyCandidate != null) {
+    const match = String(sessionKeyCandidate).match(/agent:([^:]+):/);
+    if (match?.[1]) {
+      return match[1];
+    }
+  }
+
+  // OpenClaw context may not expose agent identity in some versions; fail open in this case.
+  return null;
+}
+
+function findMostRecentUserMessageText(event: any, ctx: any): string {
+  const sources = [
+    ctx?.session?.messages,
+    ctx?.messages,
+    ctx?.conversation?.messages,
+    event?.session?.messages,
+    event?.messages,
+  ];
+  for (const source of sources) {
+    if (!Array.isArray(source)) {
+      continue;
+    }
+    for (let index = source.length - 1; index >= 0; index -= 1) {
+      const message = source[index];
+      const role = String(message?.role ?? message?.author ?? "").toLowerCase();
+      if (role !== "user") {
+        continue;
+      }
+      const content = message?.content ?? message?.text ?? message?.message ?? "";
+      if (typeof content === "string") {
+        return content;
+      }
+      if (Array.isArray(content)) {
+        const textParts = content
+          .map((part) => String(part?.text ?? part?.content ?? ""))
+          .filter((part) => part.length > 0);
+        if (textParts.length > 0) {
+          return textParts.join(" ");
+        }
+      }
+      return String(content ?? "");
+    }
+  }
+  return "";
+}
+
 export default function securityHook(api: any) {
   const homeDir = process.env.HOME ?? "/home/openclaw";
   const openclawDir = path.join(homeDir, ".openclaw");
   const logsDir = path.join(openclawDir, "logs");
   const configPath = path.join(openclawDir, "security-hook.json");
+  const delegationRulesPath = path.join(openclawDir, "config", "delegation-rules.json");
   const logPath = path.join(logsDir, "security-hook.log");
 
   ensureDir(logsDir);
@@ -639,6 +706,7 @@ export default function securityHook(api: any) {
   let structuredLogWarned = false;
   let structuredDb: any = null;
   let insertStructuredDecisionStmt: any = null;
+  const delegationOverrideSessions = new Set<string>();
 
   try {
     if (!fs.existsSync(configPath)) {
@@ -885,9 +953,63 @@ export default function securityHook(api: any) {
     const command: string | null = event?.params?.command ?? event?.params?.cmd ?? null;
     const targetPath: string | null = event?.params?.path ?? event?.params?.file_path ?? event?.params?.target ?? null;
     const agentId = String(ctx?.agentId ?? "unknown");
+    const sessionId = extractSessionId(ctx);
 
     if (toolName === "security_hook_status") {
       return;
+    }
+
+    // Step 0: delegation enforcement before all existing security checks.
+    try {
+      const delegationRaw = fs.readFileSync(delegationRulesPath, "utf8");
+      const delegationRules = JSON.parse(delegationRaw) as DelegationRulesConfig;
+      if (delegationRules?.enabled === true) {
+        const delegationAgentId = extractAgentIdForDelegation(ctx);
+        if (delegationAgentId) {
+          const enforceFor = Array.isArray(delegationRules.enforceFor) ? delegationRules.enforceFor : [];
+          const blockedTools = Array.isArray(delegationRules.blockedTools) ? delegationRules.blockedTools : [];
+          const isEnforced = enforceFor.includes(delegationAgentId);
+          const blockedToolSet = new Set(blockedTools.map((name) => String(name).toLowerCase()));
+          const isBlockedTool = blockedToolSet.has(toolName.toLowerCase());
+
+          if (isEnforced && isBlockedTool) {
+            const overridePhrase =
+              typeof delegationRules.overridePhrase === "string" ? delegationRules.overridePhrase : "";
+            const overrideScope = String(delegationRules.overrideScope ?? "session").toLowerCase();
+            const recentUserMessage = findMostRecentUserMessageText(event, ctx);
+            const sessionOverrideActive = sessionId ? delegationOverrideSessions.has(sessionId) : false;
+            const triggeredByMessage = Boolean(
+              overridePhrase &&
+                recentUserMessage.includes(overridePhrase) &&
+                overrideScope === "session" &&
+                sessionId,
+            );
+
+            if (triggeredByMessage && sessionId) {
+              delegationOverrideSessions.add(sessionId);
+              api.logger.warn(
+                `security-hook: delegation override active for session=${sessionId} agent=${delegationAgentId}`,
+              );
+            }
+
+            if (!sessionOverrideActive && !triggeredByMessage) {
+              await appendBlockedLog(logPath, {
+                timestamp: new Date().toISOString(),
+                action: "delegation_blocked",
+                agent_id: delegationAgentId,
+                tool_name: toolName,
+              });
+              return blockCall(
+                `DELEGATION ENFORCED: You cannot use ${toolName} directly. Delegate this work to the appropriate worker agent via sessions_spawn. Blocked tools for orchestrator: ${blockedTools.join(", ")}. To override for this session, the operator must include "DIRECT EXECUTE" in a message.`,
+              );
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.warn(
+        `security-hook: delegation rules unavailable or invalid at ${delegationRulesPath}; failing open (${String(error)})`,
+      );
     }
 
     // Fail-closed: block all exec-capable calls when config is invalid
