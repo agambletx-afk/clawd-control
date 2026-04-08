@@ -100,6 +100,9 @@ function sanitizeCreateData(data = {}) {
   if (typeof data.priority === 'string' && VALID_PRIORITIES.has(data.priority)) out.priority = data.priority;
   if (typeof data.assigned_agent === 'string') out.assigned_agent = data.assigned_agent.trim() || null;
   if (data.assigned_agent === null) out.assigned_agent = null;
+  if (Object.hasOwn(data, 'risk_class')) {
+    out.risk_class = data.risk_class == null ? null : String(data.risk_class).trim() || null;
+  }
   if (Object.hasOwn(data, 'depends_on')) out.depends_on = normalizeDependsOn(data.depends_on);
   if (Object.hasOwn(data, 'handoff_payload')) {
     out.handoff_payload = data.handoff_payload == null ? null : String(data.handoff_payload);
@@ -193,6 +196,11 @@ function sanitizeUpdateData(data = {}) {
     'group_id',
     'group_name',
     'step_order',
+    'risk_class',
+    'merge_eligible',
+    'scope_drift',
+    'base_commit',
+    'brief_hash',
   ];
   const out = {};
   for (const key of allowed) {
@@ -234,6 +242,16 @@ function sanitizeUpdateData(data = {}) {
       out.accepted_at = data.accepted_at == null ? null : String(data.accepted_at);
     } else if (key === 'user_notified_at') {
       out.user_notified_at = data.user_notified_at == null ? null : String(data.user_notified_at);
+    } else if (key === 'risk_class') {
+      out.risk_class = data.risk_class == null ? null : String(data.risk_class).trim() || null;
+    } else if (key === 'merge_eligible') {
+      out.merge_eligible = data.merge_eligible == null ? null : (Number(data.merge_eligible) ? 1 : 0);
+    } else if (key === 'scope_drift') {
+      out.scope_drift = data.scope_drift == null ? null : String(data.scope_drift);
+    } else if (key === 'base_commit') {
+      out.base_commit = data.base_commit == null ? null : String(data.base_commit).trim() || null;
+    } else if (key === 'brief_hash') {
+      out.brief_hash = data.brief_hash == null ? null : String(data.brief_hash).trim() || null;
     }
   }
   return out;
@@ -467,6 +485,21 @@ export function getDb() {
   if (!taskColumns.has('last_failure_reason')) {
     db.exec('ALTER TABLE tasks ADD COLUMN last_failure_reason TEXT');
   }
+  if (!taskColumns.has('risk_class')) {
+    db.exec('ALTER TABLE tasks ADD COLUMN risk_class TEXT');
+  }
+  if (!taskColumns.has('merge_eligible')) {
+    db.exec('ALTER TABLE tasks ADD COLUMN merge_eligible INTEGER');
+  }
+  if (!taskColumns.has('scope_drift')) {
+    db.exec('ALTER TABLE tasks ADD COLUMN scope_drift TEXT');
+  }
+  if (!taskColumns.has('base_commit')) {
+    db.exec('ALTER TABLE tasks ADD COLUMN base_commit TEXT');
+  }
+  if (!taskColumns.has('brief_hash')) {
+    db.exec('ALTER TABLE tasks ADD COLUMN brief_hash TEXT');
+  }
   if (!taskColumns.has('last_activity_at')) {
     db.exec('ALTER TABLE tasks ADD COLUMN last_activity_at INTEGER');
   }
@@ -512,10 +545,27 @@ export function getDb() {
   try { db.exec('ALTER TABLE tasks ADD COLUMN source_import_session_id TEXT'); } catch {}
   try { db.exec('ALTER TABLE tasks ADD COLUMN blocked_by_unapproved_dependency INTEGER DEFAULT 0'); } catch {}
 
+  const taskHistoryColumns = new Set(db.prepare('PRAGMA table_info(task_history)').all().map((row) => row.name));
+  if (!taskHistoryColumns.has('attempt_id')) {
+    db.exec('ALTER TABLE task_history ADD COLUMN attempt_id INTEGER');
+  }
+  if (!taskHistoryColumns.has('brief_hash')) {
+    db.exec('ALTER TABLE task_history ADD COLUMN brief_hash TEXT');
+  }
+  if (!taskHistoryColumns.has('base_commit')) {
+    db.exec('ALTER TABLE task_history ADD COLUMN base_commit TEXT');
+  }
+  if (!taskHistoryColumns.has('agent_id')) {
+    db.exec('ALTER TABLE task_history ADD COLUMN agent_id TEXT');
+  }
+
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_tasks_last_activity ON tasks(last_activity_at);
     CREATE INDEX IF NOT EXISTS idx_tasks_goal_id ON tasks(goal_id);
     CREATE INDEX IF NOT EXISTS idx_tasks_due_at ON tasks(due_at);
+    CREATE INDEX IF NOT EXISTS idx_tasks_risk_class ON tasks(risk_class);
+    CREATE INDEX IF NOT EXISTS idx_tasks_assigned_agent ON tasks(assigned_agent);
+    CREATE INDEX IF NOT EXISTS idx_tasks_merge_eligible ON tasks(merge_eligible);
 
     UPDATE tasks
     SET last_activity_at = COALESCE(
@@ -678,7 +728,8 @@ export function createTask(data) {
         handoff_payload, created_by, source, token_estimate, token_actual, max_retries, last_activity_at, goal_id,
         brief_id, brief_version_id, source_import_session_id, blocked_by_unapproved_dependency,
         due_at, delivery_channel, execution_mode, requested_via, accepted_at, user_notified_at,
-        task_type, original_intent, active_intent, acceptance_criteria, scoped_contribution, non_goals
+        task_type, original_intent, active_intent, acceptance_criteria, scoped_contribution, non_goals,
+        risk_class
       ) VALUES (
         @title,
         @description,
@@ -709,7 +760,8 @@ export function createTask(data) {
         @active_intent,
         @acceptance_criteria,
         @scoped_contribution,
-        @non_goals
+        @non_goals,
+        @risk_class
       )
     `);
 
@@ -744,6 +796,7 @@ export function createTask(data) {
       acceptance_criteria: payload.acceptance_criteria ?? null,
       scoped_contribution: payload.scoped_contribution ?? null,
       non_goals: payload.non_goals ?? null,
+      risk_class: payload.risk_class ?? null,
     });
 
     addHistory(result.lastInsertRowid, payload.created_by ?? 'adam', 'created', '');
