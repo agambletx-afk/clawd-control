@@ -10394,6 +10394,126 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (path.startsWith('/api/tasks/') && path.endsWith('/verifier-envelope') && req.method === 'POST') {
+    const parts = path.split('/');
+    const taskId = Number.parseInt(parts[3], 10);
+    if (!Number.isInteger(taskId) || taskId <= 0) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid task id' }));
+      return;
+    }
+
+    readJsonBody(req).then((body) => {
+      const task = getTaskById(taskId);
+      if (!task) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Task not found' }));
+        return;
+      }
+
+      const briefContent = body?.brief_content;
+      if (typeof briefContent !== 'string' || briefContent.trim().length === 0) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'brief_content must be a non-empty string' }));
+        return;
+      }
+
+      const diffText = body?.diff_text;
+      if (typeof diffText !== 'string') {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'diff_text must be a string' }));
+        return;
+      }
+
+      const normalizeOptionalString = (value) => typeof value === 'string' ? value : null;
+      const baseCommit = normalizeOptionalString(body?.base_commit);
+      const testOutput = normalizeOptionalString(body?.test_output);
+      const testOutputBefore = normalizeOptionalString(body?.test_output_before);
+      const rollbackPlan = normalizeOptionalString(body?.rollback_plan);
+      const negativeScope = normalizeOptionalString(body?.negative_scope);
+      const changedFiles = Array.isArray(body?.changed_files) ? body.changed_files.map((value) => String(value ?? '')) : null;
+
+      const riskClass = ['routine', 'elevated', 'critical'].includes(task.risk_class) ? task.risk_class : 'routine';
+      const tier = riskClass;
+      const acceptanceCriteria = task.acceptance_criteria || 'None specified';
+      const title = task.title || 'Untitled Task';
+
+      const routineEnvelope = `You are reviewing task #${taskId}: ${title}
+
+<brief>
+${briefContent}
+</brief>
+
+<diff>
+${diffText}
+</diff>
+
+<acceptance_criteria>
+${acceptanceCriteria}
+</acceptance_criteria>
+
+Evaluate this change and return your JSON verdict per your AGENTS.md instructions.`;
+
+      const elevatedOrCriticalEnvelope = `You are reviewing task #${taskId}: ${title}
+Risk classification: ${riskClass}
+
+<brief>
+${briefContent}
+</brief>
+
+<diff>
+${diffText}
+</diff>
+
+<acceptance_criteria>
+${acceptanceCriteria}
+</acceptance_criteria>
+
+<base_commit>
+${baseCommit || 'Not provided'}
+</base_commit>
+
+<changed_files>
+${changedFiles && changedFiles.length ? changedFiles.join('\n') : 'Not provided'}
+</changed_files>
+
+<test_deltas>
+Before: ${testOutputBefore || 'Not provided'}
+After: ${testOutput || 'Not provided'}
+</test_deltas>
+
+<risk_class>
+${riskClass}
+</risk_class>
+
+<rollback_plan>
+${rollbackPlan || 'Not provided'}
+</rollback_plan>
+
+<negative_scope>
+${negativeScope || 'Not provided'}
+</negative_scope>
+
+Evaluate this change and return your JSON verdict per your AGENTS.md instructions.
+For elevated/critical tasks, criteria_checked with evidence is REQUIRED.`;
+
+      const envelope = riskClass === 'routine' ? routineEnvelope : elevatedOrCriticalEnvelope;
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        tier,
+        envelope,
+        task_id: taskId,
+        risk_class: riskClass,
+      }));
+    }).catch((e) => {
+      console.error('[API] /api/tasks/:id/verifier-envelope error:', e.message);
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message || 'Invalid JSON body' }));
+    });
+    return;
+  }
+
   if (path === '/api/tasks/overdue' && req.method === 'GET') {
     try {
       const overdue = getOverdueTasks();
