@@ -111,6 +111,7 @@ import { recordRun, getHistory as getWatcherHistory, getTrends as getWatcherTren
 import { createSnapshot, listSnapshots, getSnapshotManifest, restoreSnapshot, deleteSnapshot, enforceRetention } from './ops-backup.mjs';
 import { ChatGatewayClient, getChatMessages, getLatestMessage } from './chat-api.mjs';
 import { parseTranscriptContent } from './lib/session-transcript-parser.mjs';
+import { classifyTaskRisk, reclassifyPostExecution } from './risk-engine.mjs';
 
 const PORT = parseInt(process.argv.find((_, i, a) => a[i - 1] === '--port') || '3100');
 const DIR = new URL('.', import.meta.url).pathname;
@@ -10335,6 +10336,64 @@ const server = createServer(async (req, res) => {
   }
 
 
+
+  if (path.startsWith('/api/tasks/') && path.endsWith('/classify') && req.method === 'POST') {
+    const parts = path.split('/');
+    const taskId = Number.parseInt(parts[3], 10);
+    if (!Number.isInteger(taskId) || taskId <= 0) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid task id' }));
+      return;
+    }
+
+    readJsonBody(req).then((body) => {
+      const task = getTaskById(taskId);
+      if (!task) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Task not found' }));
+        return;
+      }
+
+      const changedFilesProvided = Object.hasOwn(body || {}, 'changedFiles');
+      const changedFiles = Array.isArray(body?.changedFiles) ? body.changedFiles.map((value) => String(value || '')) : [];
+      const diffText = typeof body?.diffText === 'string' ? body.diffText : '';
+      const initialTier = task.risk_class || 'routine';
+
+      const result = changedFilesProvided
+        ? reclassifyPostExecution(task, initialTier, changedFiles, diffText)
+        : (() => {
+          const fileClassification = classifyTaskRisk(task, []);
+          const contentScan = { tier: 'routine', matches: [] };
+          const realizedTier = fileClassification.tier;
+          const promoted = false;
+          return {
+            initialTier,
+            realizedTier,
+            promoted,
+            scopeDrift: null,
+            fileClassification,
+            contentScan,
+          };
+        })();
+
+      const persisted = updateTask(taskId, {
+        risk_class: result.realizedTier,
+        scope_drift: result.scopeDrift ? JSON.stringify(result.scopeDrift) : null,
+      });
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        ...result,
+        task: persisted,
+      }));
+    }).catch((e) => {
+      console.error('[API] /api/tasks/:id/classify error:', e.message);
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message || 'Invalid JSON body' }));
+    });
+    return;
+  }
+
   if (path === '/api/tasks/overdue' && req.method === 'GET') {
     try {
       const overdue = getOverdueTasks();
@@ -10477,6 +10536,15 @@ const server = createServer(async (req, res) => {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'handoff_payload must be <= 2000 chars' }));
           return;
+        }
+
+        if (Object.hasOwn(body, 'risk_class')) {
+          const validRisk = new Set(['routine', 'elevated', 'critical']);
+          if (body.risk_class !== null && !validRisk.has(body.risk_class)) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: "risk_class must be one of 'routine', 'elevated', 'critical', or null" }));
+            return;
+          }
         }
 
         // Trivial guardrail
