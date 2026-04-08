@@ -3056,6 +3056,242 @@ function computeAgentMetrics() {
   return agentsData;
 }
 
+function readFleetAgentsConfig() {
+  try {
+    if (!existsSync('/home/openclaw/.openclaw/openclaw.json')) return [];
+    const config = JSON.parse(readFileSync('/home/openclaw/.openclaw/openclaw.json', 'utf8'));
+    const defaults = config?.agents?.defaults || {};
+    const list = Array.isArray(config?.agents?.list) ? config.agents.list : [];
+    const globalTools = config?.tools || {};
+    return list.map((agent) => {
+      const id = String(agent?.id || '').trim();
+      const workspace = agent?.workspace || defaults.workspace || null;
+      const agentDir = agent?.agentDir || join('/home/openclaw/.openclaw/agents', id, 'agent');
+      const model = agent?.model || defaults?.model?.primary || null;
+      const toolsAllow = Array.isArray(agent?.tools?.allow)
+        ? agent.tools.allow
+        : (Array.isArray(globalTools.allow) ? globalTools.allow : []);
+      const toolsDeny = Array.isArray(agent?.tools?.deny)
+        ? agent.tools.deny
+        : (Array.isArray(globalTools.deny) ? globalTools.deny : []);
+      return {
+        id,
+        name: agent?.name || id,
+        model,
+        workspace,
+        agentDir,
+        toolsAllow,
+        toolsDeny,
+      };
+    }).filter((agent) => agent.id);
+  } catch {
+    return [];
+  }
+}
+
+function evaluateAgentHealth(agent) {
+  const checks = [
+    { name: 'workspace_exists', pass: Boolean(agent.workspace && existsSync(agent.workspace)), required: true },
+    { name: 'agents_md_present', pass: Boolean(agent.workspace && existsSync(join(agent.workspace, 'AGENTS.md'))), required: true },
+    { name: 'auth_profiles_present', pass: Boolean(agent.agentDir && existsSync(join(agent.agentDir, 'auth-profiles.json'))), required: true },
+    { name: 'model_configured', pass: Boolean(agent.model), required: true },
+    { name: 'soul_md_present', pass: Boolean(agent.workspace && existsSync(join(agent.workspace, 'SOUL.md'))), required: false },
+    { name: 'identity_md_present', pass: Boolean(agent.workspace && existsSync(join(agent.workspace, 'IDENTITY.md'))), required: false },
+  ];
+  const requiredFail = checks.some((check) => check.required && !check.pass);
+  const optionalFail = checks.some((check) => !check.required && !check.pass);
+  let status = 'green';
+  if (requiredFail) status = 'red';
+  else if (optionalFail) status = 'amber';
+  return { status, checks };
+}
+
+function getAgentLastSessionActivity(agentId) {
+  const sessionsDir = join('/home/openclaw/.openclaw/agents', agentId, 'sessions');
+  try {
+    const entries = readdirSync(sessionsDir);
+    if (!entries.length) return null;
+    let newestMtime = 0;
+    for (const entry of entries) {
+      const fullPath = join(sessionsDir, entry);
+      try {
+        const stats = statSync(fullPath);
+        if (stats.mtimeMs > newestMtime) newestMtime = stats.mtimeMs;
+      } catch {
+        // Ignore unreadable files.
+      }
+    }
+    return newestMtime > 0 ? new Date(newestMtime).toISOString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function deriveSessionState(lastActivityIso) {
+  if (!lastActivityIso) return 'ready';
+  const ageMs = Date.now() - new Date(lastActivityIso).getTime();
+  if (ageMs <= 5 * 60 * 1000) return 'active';
+  if (ageMs <= 24 * 60 * 60 * 1000) return 'idle';
+  return 'ready';
+}
+
+function getLatestAssignment(agentId) {
+  try {
+    const db = getDb();
+    const stmt = db.prepare(`
+      SELECT id AS task_id, title, status
+      FROM tasks
+      WHERE assigned_agent = ?
+        AND status NOT IN ('done', 'archive', 'failed')
+      ORDER BY last_activity_at DESC
+      LIMIT 1
+    `);
+    return stmt.get(agentId) || null;
+  } catch {
+    return null;
+  }
+}
+
+function buildFleetAgentPayload(agent) {
+  const health = evaluateAgentHealth(agent);
+  const lastActivity = getAgentLastSessionActivity(agent.id);
+  const sessionState = deriveSessionState(lastActivity);
+  return {
+    id: agent.id,
+    name: agent.name,
+    model: agent.model,
+    workspace: agent.workspace,
+    agentDir: agent.agentDir,
+    role: agent.id === 'main' ? 'orchestrator' : 'worker',
+    spawned_by: agent.id === 'main' ? null : 'main',
+    tools: {
+      allow: agent.toolsAllow,
+      deny: agent.toolsDeny,
+      summary: `${agent.toolsAllow.length} allowed, ${agent.toolsDeny.length} denied`,
+    },
+    health,
+    session_recency: {
+      state: sessionState,
+      last_activity: lastActivity,
+    },
+    latest_assignment: getLatestAssignment(agent.id),
+  };
+}
+
+function buildWorkspaceFilesPayload(workspace) {
+  const fileSpecs = [
+    { name: 'AGENTS.md', required: true },
+    { name: 'SOUL.md', required: false },
+    { name: 'IDENTITY.md', required: false },
+    { name: 'TOOLS.md', required: false },
+    { name: 'HEARTBEAT.md', required: false },
+    { name: 'USER.md', required: false },
+  ];
+  return fileSpecs.map((spec) => {
+    const fullPath = workspace ? join(workspace, spec.name) : null;
+    const present = Boolean(fullPath && existsSync(fullPath));
+    let lastModified = null;
+    if (present) {
+      try {
+        lastModified = statSync(fullPath).mtime.toISOString();
+      } catch {
+        lastModified = null;
+      }
+    }
+    return {
+      name: spec.name,
+      present,
+      required: spec.required,
+      last_modified: lastModified,
+    };
+  });
+}
+
+function buildRecentSessionsPayload(agentId, model) {
+  const sessionsDir = join('/home/openclaw/.openclaw/agents', agentId, 'sessions');
+  try {
+    const files = readdirSync(sessionsDir)
+      .filter((name) => name.endsWith('.jsonl'))
+      .map((name) => {
+        const fullPath = join(sessionsDir, name);
+        try {
+          const stats = statSync(fullPath);
+          return { name, stats };
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.stats.mtimeMs - a.stats.mtimeMs)
+      .slice(0, 5);
+
+    return files.map(({ name, stats }) => {
+      const stem = name.replace(/\.[^.]+$/, '');
+      const startedAt = stats.ctime.toISOString();
+      const status = (Date.now() - stats.mtimeMs) <= (5 * 60 * 1000) ? 'active' : 'completed';
+      const durationSeconds = status === 'active'
+        ? null
+        : Math.max(0, Math.floor((stats.mtimeMs - stats.ctimeMs) / 1000));
+      return {
+        session_key: stem.slice(0, 60),
+        started_at: startedAt,
+        duration_seconds: durationSeconds,
+        status,
+        model,
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
+function buildTaskSummaryPayload(agentId) {
+  try {
+    const db = getDb();
+    const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+    const active = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM tasks
+      WHERE assigned_agent = ?
+        AND status NOT IN ('done', 'archive', 'failed')
+    `).get(agentId)?.count || 0;
+    const completed7d = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM tasks
+      WHERE assigned_agent = ?
+        AND status = 'done'
+        AND last_activity_at > ?
+    `).get(agentId, sevenDaysAgo)?.count || 0;
+    const failed7d = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM tasks
+      WHERE assigned_agent = ?
+        AND status = 'failed'
+        AND last_activity_at > ?
+    `).get(agentId, sevenDaysAgo)?.count || 0;
+    const recentTasks = db.prepare(`
+      SELECT id, title, status, risk_class, last_activity_at
+      FROM tasks
+      WHERE assigned_agent = ?
+      ORDER BY last_activity_at DESC
+      LIMIT 5
+    `).all(agentId) || [];
+    return {
+      active,
+      completed_7d: completed7d,
+      failed_7d: failed7d,
+      recent_tasks: recentTasks,
+    };
+  } catch {
+    return {
+      active: 0,
+      completed_7d: 0,
+      failed_7d: 0,
+      recent_tasks: [],
+    };
+  }
+}
+
 function getAnalytics(rangeStr, agentFilter) {
   const AGENTS_DIR = join(homedir(), '.openclaw', 'agents');
   const pricingTable = getMergedModelPricing();
@@ -6340,9 +6576,15 @@ const server = createServer(async (req, res) => {
 
   if (path === '/api/agents' && req.method === 'GET') {
     try {
-      const agents = computeAgentMetrics();
+      const agents = readFleetAgentsConfig().map(buildFleetAgentPayload);
+      const summary = {
+        registered: agents.length,
+        healthy: agents.filter((agent) => agent.health.status === 'green').length,
+        needs_attention: agents.filter((agent) => agent.health.status !== 'green').length,
+        active: agents.filter((agent) => agent.session_recency.state === 'active').length,
+      };
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(Object.values(agents)));
+      res.end(JSON.stringify({ summary, agents }));
     } catch (e) {
       console.error('[API] /api/agents error:', e.message);
       res.writeHead(500, { 'Content-Type': 'application/json' });
@@ -6351,16 +6593,35 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  if (path.startsWith('/api/agents/') && path.split('/').length === 4) {
-    const id = path.split('/')[3];
-    const state = collector.state.get(id);
-    if (!state) {
-      res.writeHead(404, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'agent not found' }));
-      return;
+  if (path.startsWith('/api/agents/') && path.split('/').length === 4 && req.method === 'GET') {
+    try {
+      const id = decodeURIComponent(path.split('/')[3] || '');
+      const agents = readFleetAgentsConfig();
+      const agent = agents.find((item) => item.id === id);
+      if (!agent) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Agent not found' }));
+        return;
+      }
+
+      const basePayload = buildFleetAgentPayload(agent);
+      const detailPayload = {
+        ...basePayload,
+        workspace_files: buildWorkspaceFilesPayload(agent.workspace),
+        tool_policy: {
+          allow: agent.toolsAllow,
+          deny: agent.toolsDeny,
+        },
+        recent_sessions: buildRecentSessionsPayload(agent.id, agent.model),
+        task_summary: buildTaskSummaryPayload(agent.id),
+      };
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(detailPayload));
+    } catch (e) {
+      console.error('[API] /api/agents/:id error:', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Internal server error' }));
     }
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(state));
     return;
   }
 
