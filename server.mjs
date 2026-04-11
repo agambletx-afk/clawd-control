@@ -1168,6 +1168,12 @@ async function callCodexResponses(modelConfig, body) {
     input: otherMsgs.map(m => ({ role: m.role, content: m.content })),
     store: false, stream: true,
   };
+  if (body.reasoning_effort) {
+    reqBody.reasoning = { effort: body.reasoning_effort };
+  }
+  if (body.response_format) {
+    reqBody.text = { format: body.response_format };
+  }
   const res = await fetch('https://chatgpt.com/backend-api/codex/responses', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + accessToken },
@@ -5316,6 +5322,7 @@ async function runWorkRequestPipeline({
         { role: 'user', content: inputText },
       ],
       temperature: 0.3,
+      reasoning_effort: 'xhigh',
     });
     step1Output = extractAssistantContent(step1Response);
   }
