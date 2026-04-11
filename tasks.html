@@ -1524,6 +1524,7 @@
         function attentionChipStyle(operatorStatus) {
           const status = String(operatorStatus || '').toLowerCase();
           if (status === 'proposed') return { label: 'Proposed', color: '#6366f1' };
+          if (status === 'backlog') return { label: 'Queued', color: '#3b82f6' };
           if (status === 'working') return { label: 'Working', color: '#3b82f6' };
           if (status === 'needs review') return { label: 'Needs Review', color: '#f59e0b' };
           if (status === 'done') return { label: 'Done', color: '#22c55e' };
@@ -2933,7 +2934,7 @@
               html += lineage.siblings.map((s) => `
                 <button type="button" class="lineage-sibling" data-lineage-task-id="${s.id}">
                   <span class="value">${esc(s.title || `Task #${s.id}`)}</span>
-                  <span class="card-type-pill" style="background:${lineageChipStyle(s.operator_status)}20;color:${lineageChipStyle(s.operator_status)}">${esc(s.operator_status || s.status || 'Working')}</span>
+                  <span class="card-type-pill" style="background:${lineageChipStyle(s.operator_status)}20;color:${lineageChipStyle(s.operator_status)}">${esc(s.operator_status || s.status || 'Unknown')}</span>
                 </button>
               `).join('');
             }
