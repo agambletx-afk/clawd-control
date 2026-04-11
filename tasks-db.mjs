@@ -698,7 +698,7 @@ export function addHistory(taskId, actor, action, detail = '') {
         .run(taskId, overflow);
     }
 
-    return conn.prepare('SELECT * FROM task_history WHERE task_id = ? ORDER BY id DESC LIMIT 1').get(taskId);
+    return conn.prepare('SELECT * FROM task_history WHERE task_id = ? ORDER BY created_at DESC LIMIT 1').get(taskId);
   });
 
   return tx();
@@ -2893,7 +2893,7 @@ export function createTaskDependency(task_id, depends_on_task_id) {
   return conn.prepare(`
     SELECT * FROM task_dependencies
     WHERE task_id = ? AND depends_on_task_id = ?
-    ORDER BY id DESC
+    ORDER BY created_at DESC
     LIMIT 1
   `).get(Number(task_id), Number(depends_on_task_id)) || null;
 }

@@ -6705,7 +6705,6 @@ const server = createServer(async (req, res) => {
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Failed to start fresh session' }));
       }
-    }).catch(() => {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Invalid JSON body' }));
     });
@@ -6877,7 +6876,6 @@ const server = createServer(async (req, res) => {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: e.message }));
       }
-    }).catch(() => {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Invalid JSON body' }));
     });
@@ -6913,7 +6911,6 @@ const server = createServer(async (req, res) => {
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: e.message }));
       }
-    }).catch(() => {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Invalid JSON body' }));
     });
@@ -7236,7 +7233,6 @@ const server = createServer(async (req, res) => {
       writeJsonAtomic(OPS_DOCTOR_SUPPRESSED_PATH, suppressed);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ suppressed }));
-    }).catch(() => {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Invalid JSON body' }));
     });
@@ -7256,7 +7252,6 @@ const server = createServer(async (req, res) => {
       writeJsonAtomic(OPS_DOCTOR_SUPPRESSED_PATH, suppressed);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ suppressed }));
-    }).catch(() => {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Invalid JSON body' }));
     });
@@ -7303,7 +7298,6 @@ const server = createServer(async (req, res) => {
       const suppressed = readJsonSafe(OPS_DOCTOR_SUPPRESSED_PATH, {});
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(mergeDoctorSuppressions(payload, suppressed)));
-    }).catch(() => {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Invalid JSON body' }));
     });
@@ -9399,7 +9393,6 @@ const server = createServer(async (req, res) => {
       writeWorkRequestConfigAtomically(config);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(getWorkRequestConfigForClient(config)));
-    }).catch(() => {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Invalid JSON body' }));
     });
@@ -9626,7 +9619,6 @@ const server = createServer(async (req, res) => {
       const updated = getImportSessionById(sessionId);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(buildWorkRequestResponsePayload(updated?.session, updated?.revision, updated?.drafts || [], { id: 'unknown' }, { id: 'unknown' }, loadWorkRequestConfig() || {})));
-    }).catch(() => { res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Invalid JSON body' })); });
     return;
   }
 
@@ -9768,7 +9760,6 @@ const server = createServer(async (req, res) => {
         session_status: sessionStatus,
         remaining_drafts: remainingDrafts,
       }));
-    }).catch(() => {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Invalid JSON body' }));
     });
