@@ -9697,77 +9697,77 @@ const server = createServer(async (req, res) => {
         approved_at: new Date().toISOString(),
       });
 
-      const draftRefToTaskId = new Map();
-      const approvedTaskIds = [];
-      approvedDrafts.forEach((draft) => {
-        const dependsOnRefs = parseRefsJson(draft.depends_on_refs_json);
-        const blockedByUnapprovedDependency = mode === 'selected'
-          ? dependsOnRefs.some((ref) => !approvedDraftRefSet.has(ref))
-          : false;
-        const task = createTask({
-          title: draft.title,
-          description: draft.display_summary,
-          status: 'backlog',
-          priority: draft.priority,
-          task_type: draft.task_type,
-          source: 'dashboard',
-          created_by: 'operator',
-          goal_id: session.goal_id,
-          brief_id: briefId,
-          brief_version_id: briefVersionId,
-          source_import_session_id: session.id,
-          blocked_by_unapproved_dependency: blockedByUnapprovedDependency ? 1 : 0,
-        });
-        if (task?.id) {
-          draftRefToTaskId.set(draft.draft_ref, task.id);
-          approvedTaskIds.push(task.id);
-        }
-      });
-
-      approvedDrafts.forEach((draft) => {
-        const taskId = draftRefToTaskId.get(draft.draft_ref);
-        if (!taskId) return;
-        const dependsOnRefs = parseRefsJson(draft.depends_on_refs_json);
-        dependsOnRefs.forEach((ref) => {
-          const dependsOnTaskId = draftRefToTaskId.get(ref);
-          if (dependsOnTaskId) {
-            createTaskDependency(taskId, dependsOnTaskId);
+      const txResult = getDb().transaction(() => {
+        const draftRefToTaskId = new Map();
+        const approvedTaskIds = [];
+        approvedDrafts.forEach((draft) => {
+          const dependsOnRefs = parseRefsJson(draft.depends_on_refs_json);
+          const blockedByUnapprovedDependency = mode === 'selected'
+            ? dependsOnRefs.some((ref) => !approvedDraftRefSet.has(ref))
+            : false;
+          const task = createTask({
+            title: draft.title,
+            description: draft.display_summary,
+            status: 'backlog',
+            priority: draft.priority,
+            task_type: draft.task_type,
+            source: 'dashboard',
+            created_by: 'operator',
+            goal_id: session.goal_id,
+            brief_id: briefId,
+            brief_version_id: briefVersionId,
+            source_import_session_id: session.id,
+            blocked_by_unapproved_dependency: blockedByUnapprovedDependency ? 1 : 0,
+          });
+          if (task?.id) {
+            draftRefToTaskId.set(draft.draft_ref, task.id);
+            approvedTaskIds.push(task.id);
           }
         });
-      });
-
-      if (mode === 'all') {
-        updateAllDraftsForRevision(revision.id, 'approved');
-      } else {
-        approvedDraftIdSet.forEach((draftId) => {
-          updateImportSessionDraftState(draftId, 'approved');
+        approvedDrafts.forEach((draft) => {
+          const taskId = draftRefToTaskId.get(draft.draft_ref);
+          if (!taskId) return;
+          const dependsOnRefs = parseRefsJson(draft.depends_on_refs_json);
+          dependsOnRefs.forEach((ref) => {
+            const dependsOnTaskId = draftRefToTaskId.get(ref);
+            if (dependsOnTaskId) {
+              createTaskDependency(taskId, dependsOnTaskId);
+            }
+          });
         });
-      }
-
-      const remainingDrafts = getDraftsByRevisionId(revision.id).filter((draft) => draft.draft_state !== 'approved').length;
-      const sessionStatus = mode === 'all' ? 'approved_all' : 'partially_approved';
-      if (mode === 'all') {
-        getDb().prepare(`
-          UPDATE import_sessions
-          SET session_status = ?, closed_at = datetime('now'), brief_id = ?
-          WHERE id = ?
-        `).run(sessionStatus, briefId, session.id);
-      } else {
-        getDb().prepare(`
-          UPDATE import_sessions
-          SET session_status = ?, brief_id = ?
-          WHERE id = ?
-        `).run(sessionStatus, briefId, session.id);
-      }
-
+        if (mode === 'all') {
+          updateAllDraftsForRevision(revision.id, 'approved');
+        } else {
+          approvedDraftIdSet.forEach((draftId) => {
+            updateImportSessionDraftState(draftId, 'approved');
+          });
+        }
+        const remainingDrafts = getDraftsByRevisionId(revision.id).filter((draft) => draft.draft_state !== 'approved').length;
+        const sessionStatus = mode === 'all' ? 'approved_all' : 'partially_approved';
+        if (mode === 'all') {
+          getDb().prepare(`
+            UPDATE import_sessions
+            SET session_status = ?, closed_at = datetime('now'), brief_id = ?
+            WHERE id = ?
+          `).run(sessionStatus, briefId, session.id);
+        } else {
+          getDb().prepare(`
+            UPDATE import_sessions
+            SET session_status = ?, brief_id = ?
+            WHERE id = ?
+          `).run(sessionStatus, briefId, session.id);
+        }
+        return { approvedTaskIds, remainingDrafts, sessionStatus };
+      })();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
-        approved_task_ids: approvedTaskIds,
+        approved_task_ids: txResult.approvedTaskIds,
         brief_id: briefId,
         brief_version_id: briefVersionId,
-        session_status: sessionStatus,
-        remaining_drafts: remainingDrafts,
+        session_status: txResult.sessionStatus,
+        remaining_drafts: txResult.remainingDrafts,
       }));
+
     }).catch(() => {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Invalid JSON body' }));
